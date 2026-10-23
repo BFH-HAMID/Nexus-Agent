@@ -1,0 +1,130 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="300" viewBox="0 0 720 300" role="img" aria-labelledby="routingTitle" style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji'; background: #0b0f19;">
+  <defs>
+    <style>
+      @keyframes pulse {
+        0%, 100% { opacity: 1; filter: brightness(1); }
+        50% { opacity: 0.85; filter: brightness(1.2) drop-shadow(0 0 8px rgba(56,189,248,0.6)); }
+      }
+      @keyframes slideIn {
+        0% { transform: translateX(-10px); opacity: 0; }
+        100% { transform: translateX(0); opacity: 1; }
+      }
+      @keyframes blink {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.3; }
+      }
+      @keyframes switchText {
+        0%, 20% { opacity: 1; }
+        25%, 75% { opacity: 0; }
+        80%, 100% { opacity: 1; }
+      }
+      .box { rx: 8; ry: 8; }
+      .label { font-size: 14px; font-weight: 700; fill: #e2e8f0; letter-spacing: 0.5px; }
+      .badge { font-size: 11px; font-weight: 700; fill: #fff; }
+      .arrow { fill: none; stroke: #334155; stroke-width: 2; marker-end: url(#arrowhead); }
+      .arrow.active { stroke: #38bdf8; stroke-dasharray: 6,4; animation: slideIn 0.6s ease-in-out infinite; }
+      .route-line { fill: none; stroke-width: 2.5; stroke-linecap: round; }
+      .role-tag { font-size: 12px; font-weight: 600; fill: #cbd5e1; }
+      .agent-tag { font-size: 12px; font-weight: 700; fill: #f472b6; }
+      .switch-text { font-size: 12px; font-family: 'Courier New', monospace; fill: #a5f3fc; font-weight: 700; }
+      .switch-text.animating { animation: switchText 4s ease-in-out infinite; }
+      .dot { fill: #38bdf8; animation: blink 1.2s ease-in-out infinite; }
+      .task-chip { font-size: 12px; font-weight: 600; fill: #e2e8f0; animation: switchText 5s ease-in-out infinite; }
+    </style>
+    <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#38bdf8"/>
+    </marker>
+    <linearGradient id="gradRouter" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1e293b"/>
+      <stop offset="100%" stop-color="#0f172a"/>
+    </linearGradient>
+    <linearGradient id="gradClaude" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#3b82f6"/>
+      <stop offset="100%" stop-color="#2563eb"/>
+    </linearGradient>
+    <linearGradient id="gradHermes" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#10b981"/>
+      <stop offset="100%" stop-color="#059669"/>
+    </linearGradient>
+    <linearGradient id="gradOllama" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#f59e0b"/>
+      <stop offset="100%" stop-color="#d97706"/>
+    </linearGradient>
+    <linearGradient id="gradUncensored" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#ec4899"/>
+      <stop offset="100%" stop-color="#be185d"/>
+    </linearGradient>
+  </defs>
+
+  <title id="routingTitle">Nexus role → agent routing animation</title>
+
+  <!-- Background grid -->
+  <rect width="720" height="300" fill="#0b0f19"/>
+  <path d="M0 150 L720 150" stroke="#1e293b" stroke-width="1" stroke-dasharray="4,4"/>
+  <path d="M220 0 L220 300" stroke="#1e293b" stroke-width="1" stroke-dasharray="4,4"/>
+  <path d="M480 0 L480 300" stroke="#1e293b" stroke-width="1" stroke-dasharray="4,4"/>
+
+  <!-- LEFT: Task input -->
+  <g transform="translate(30, 40)">
+    <rect x="0" y="0" width="170" height="220" fill="#1e293b" class="box"/>
+    <text x="20" y="30" class="label">📥 TASK</text>
+    <text x="20" y="70" class="task-chip" data-text="pentesting lab box">run nmap + priv esc</text>
+    <text x="20" y="100" class="role-tag">→ route →</text>
+    <circle cx="20" cy="130" r="5" class="dot"/>
+    <text x="20" y="170" class="task-chip" data-text="react dashboard">build frontend UI</text>
+    <circle cx="20" cy="200" r="5" class="dot" style="animation-delay: 0.4s;"/>
+    <text x="20" y="240" class="task-chip" data-text="api pagination">add cursor pagination</text>
+    <circle cx="20" cy="270" r="5" class="dot" style="animation-delay: 0.8s;"/>
+  </g>
+
+  <!-- CENTER: Router -->
+  <g transform="translate(260, 60)">
+    <rect x="0" y="0" width="200" height="180" fill="url(#gradRouter)" class="box"/>
+    <text x="20" y="35" class="label">🔀 ROUTER</text>
+    <text x="20" y="60" class="badge" style="fill:#94a3b8;">keyword → LLM fallback</text>
+    <circle cx="100" cy="100" r="14" fill="#38bdf8" class="dot" style="animation-delay: 0.2s;"/>
+    <text x="50" y="150" class="label" style="font-size:12px;fill:#64748b;">sanitize · validate → role</text>
+    <text x="20" y="185" class="role-tag">general fallback</text>
+  </g>
+
+  <!-- RIGHT: Role → Agent lanes -->
+  <!-- Lane 1: Claude -->
+  <g transform="translate(510, 40)">
+    <rect x="0" y="0" width="180" height="60" fill="#1e293b" class="box"/>
+    <text x="12" y="22" class="role-tag">backend</text>
+    <text x="100" y="22" class="agent-tag" style="fill:#60a5fa;">claude</text>
+    <text x="12" y="42" class="switch-text animating">⇄ role: backend → agent: claude</text>
+    <rect x="12" y="50" width="156" height="6" rx="3" fill="#1e293b"/>
+    <rect x="12" y="50" width="78" height="6" rx="3" fill="url(#gradClaude)"/>
+  </g>
+
+  <!-- Lane 2: Hermes -->
+  <g transform="translate(510, 115)">
+    <rect x="0" y="0" width="180" height="60" fill="#1e293b" class="box"/>
+    <text x="12" y="22" class="role-tag">qa</text>
+    <text x="100" y="22" class="agent-tag" style="fill:#34d399;">hermes</text>
+    <text x="12" y="42" class="switch-text animating" style="animation-delay:1s;">⇄ role: qa → agent: hermes</text>
+    <rect x="12" y="50" width="156" height="6" rx="3" fill="#1e293b"/>
+    <rect x="12" y="50" width="90" height="6" rx="3" fill="url(#gradHermes)"/>
+  </g>
+
+  <!-- Lane 3: Ollama uncensored -->
+  <g transform="translate(510, 190)">
+    <rect x="0" y="0" width="180" height="60" fill="#1e293b" class="box"/>
+    <text x="12" y="22" class="role-tag">pentesting</text>
+    <text x="100" y="22" class="agent-tag" style="fill:#fbbf24;">ollama-uncensored</text>
+    <text x="12" y="42" class="switch-text animating" style="animation-delay:2s;">⇄ role: pentesting → agent: ollama-uncensored</text>
+    <rect x="12" y="50" width="156" height="6" rx="3" fill="#1e293b"/>
+    <rect x="12" y="50" width="110" height="6" rx="3" fill="url(#gradOllama)"/>
+  </g>
+
+  <!-- Arrows: task → router -->
+  <line x1="200" y1="150" x2="260" y2="150" class="arrow active"/>
+  <!-- Arrows: router → lanes -->
+  <line x1="460" y1="100" x2="510" y2="70" class="arrow active"/>
+  <line x1="460" y1="150" x2="510" y2="145" class="arrow active"/>
+  <line x1="460" y1="200" x2="510" y2="220" class="arrow active"/>
+
+  <!-- Footer -->
+  <text x="20" y="290" class="badge" style="fill:#64748b;font-size:11px;">Nexus — role classifier → model mapping → tools → approval</text>
+</svg>

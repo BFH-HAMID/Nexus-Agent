@@ -11,6 +11,14 @@ fits it best: Claude for real code edits, Hermes for cheap bulk work, an uncenso
 Ollama model for authorized offensive-security research. Then it uses tools (files, shell,
 git, GitHub), asks you before anything destructive, and can open the PR for you.
 
+<p align="center">
+  <img src="assets/nexus-routing.svg" alt="Nexus role → agent routing animation" width="720"/>
+  <br/>
+  <em>The router picks a role, the role picks its agent — `⇄ role: pentesting → agent: ollama-uncensored` — all automatic, no role flag needed.</em>
+</p>
+
+<!-- end hero -->
+
 ```
                          ┌─────────────────────────┐
                          │        User (you)        │
