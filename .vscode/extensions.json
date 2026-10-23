@@ -1,0 +1,10 @@
+{
+  "recommendations": [
+    "ms-python.python",
+    "ms-python.debugpy",
+    "redhat.vscode-yaml",
+    "charliermarsh.ruff",
+    "GitHub.vscode-pull-request-github",
+    "ms-vscode.vscode-typescript-next"
+  ]
+}

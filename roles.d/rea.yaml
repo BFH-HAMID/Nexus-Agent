@@ -1,0 +1,516 @@
+# Imported by `nexus addagent https://github.com/morluto/rea`
+# 5 agent(s) from rea - generated 2026-10-23.
+# Regenerate with: nexus addagent https://github.com/morluto/rea --dest repo --force
+# Edit freely; this file is just a roles.yaml layer.
+roles:
+  rea-analysis-optimization:
+    title: rea-analysis-optimization
+    category: skills
+    agent: ''
+    persona: |-
+      Optimize REA providers and shared analysis workflows for agent context, latency, CPU, and memory while preserving correctness and Evidence. Use for analysis bottlenecks and cache or query design; CI/test-suite optimization belongs to rea-ci-tests-audit.
+
+      # REA analysis optimization
+
+      Find a concrete source of unnecessary work, change it at its owner, and verify
+      equivalent completed investigations. A useful outcome can also be a measured
+      decision to leave an implementation alone.
+
+      Follow the checkout's [performance priorities](../../../AGENTS.md#performance),
+      [tool design](../../../docs/tool-design.md), and
+      [testing guide](../../../docs/testing.md). This skill supplies an optimization
+      workflow, not additional permission to execute targets, publish, or merge.
+      Use the current contracts, provider prerequisites, and user authorization.
+
+      Read [the Kuna case study](references/kuna-case-study.md) when selecting a
+      reuse strategy or interpreting a benchmark. Its pinned observations illustrate
+      tradeoffs; they are not current-provider guarantees or universal speedups.
+
+      ## Pin the question and the correctness oracle
+
+      Describe the analyst's completed task, including the facts and relationships
+      needed to answer it, requested detail, source access, and meaningful unknowns.
+      Choose a representative real artifact and a small or empty case. Record the
+      baseline revision, target digest, engine identity, options, host, and entrypoint.
+      Use a separate checkout for changes without disturbing other work.
+
+      Establish an oracle independent of the changed implementation: source-built
+      fixture expectations, independently mapped file bytes, or a native producer
+      paired with checks of its interpretation. Comparing two wrappers around the
+      same faulty decoder does not establish correctness. Preserve address widths,
+      same-address alternatives, unresolved endpoints, coverage, and source linkage.
+      An empty result proves absence only within the actually examined scope.
+
+      ## Locate the earliest unnecessary work
+
+      Trace one public CLI or MCP task through shared application code to its producer.
+      Measure relevant phases: admission and identity checks, native analysis,
+      decoding, lookup, projection, serialization, Evidence retention, and cleanup.
+      Include catalog discovery and extra calls when they affect the completed task.
+
+      Use the evidence to choose the smallest structural correction:
+
+      | Observed cost                     | Candidate correction                                       | Condition to establish                                                               |
+      | --------------------------------- | ---------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+      | Repeated scans of validated facts | Reuse existing order or lookup structure                   | The owner establishes ordering and identity; every matching alternative survives     |
+      | Repeated equivalent engine work   | Share a validated result or in-flight producer             | Inputs, freshness, lifetime, and per-caller outcomes remain explicit                 |
+      | Full reports for selected facts   | Push selection or projection to the earliest capable owner | Required facts and evidence remain reachable; examined coverage is reported          |
+      | Large temporary transport buffers | Decode incrementally or use bounded source reads           | Validate the whole admitted document; retained facts and copies still consume memory |
+      | Many repeated homogeneous reads   | Share admission, decoding, or batch work                   | Preserve item identity, order where required, and individual failures                |
+
+      Do not introduce an index, generic cache, batch endpoint, or orchestration layer
+      without identifying the work it removes and its maintenance/resource cost.
+      Projection after materializing a full report may reduce output while leaving
+      analysis time and peak memory unchanged. Fix missing or incorrect facts before
+      benchmarking an alternative composition against a better-covered workflow.
+
+      ## Keep one interpretation and a defined reuse lifetime
+
+      Let the producer boundary validate and normalize facts once. Consumers query
+      that representation through the shared CLI/MCP implementation; adapters should
+      not rebuild relationships or independently reinterpret raw reports. Keep lookup
+      identity separate from display formatting. Reuse contracts when their intent
+      matches, honoring requested detail and complete Evidence access.
+
+      For every cache or shared producer, state its key, owner, invalidation, retained
+      size, and lifetime. Account for result-affecting target bytes, engine contents,
+      analysis options, architecture/load mapping, and parser/schema versions where
+      they affect reuse. Validate live state before calling a cached observation
+      current. Cache a refusal only when it is deterministic for that validated key;
+      malformed, partial, transient, or cancelled attempts need explicit retry policy.
+
+      One cancelled waiter must not invalidate a successful peer. Preserve producer
+      failure context and each caller's cancellation reason. Retain ownership and
+      capacity charges until shared work and cleanup settle; preserve completed
+      observations when cleanup fails. Exercise invalidation, concurrent consumers,
+      last-waiter cancellation, close, and cleanup retry when those paths change.
+
+      Bound the process family and retained state, not just a parent heap or worker
+      count. Account for decoding and serialization expansion before allocation.
+      Choose CPU, memory, concurrency, and disk limits from the host and workload;
+      stop before OOM and verify owned cleanup. A guard-stopped task is incomplete.
+      Do not replace a transport buffer cap with an unbounded retained inventory or
+      hide partial results behind a success status.
+
+      ## Compare completed tasks and limit the claim
+
+      Run the affected real public workflow before and after with equivalent inputs,
+
+      [... truncated on import]
+    keywords:
+    - rea-analysis-optimization
+    - test-suite
+    - rea-ci-tests-audit
+    - optimize
+    - rea
+    - providers
+    - shared
+    - analysis
+    - workflows
+    - context
+    - latency
+    - cpu
+    - memory
+    - while
+  rea-changelog-update:
+    title: rea-changelog-update
+    category: skills
+    agent: ''
+    persona: |-
+      Prepare or rewrite REA release changelogs and GitHub release notes from pinned Git history, with verified contributor thanks and Release Please synchronization.
+
+      # REA changelog update
+
+      Use this for release-note preparation and contributor attribution. Read
+      [docs/releasing.md](../../../docs/releasing.md) from the repository root for
+      publication authority and the existing checkpoint checks. This skill prepares
+      notes; it does not authorize merging, tagging, or publishing.
+
+      ## Inventory before prose
+
+      Fetch complete history and tags. Select the published baseline tag from
+      `.release-please-manifest.json` on the release PR's **base branch**, and pin that
+      branch's exact SHA as the editorial target. REA tags are `rea-agents-VERSION`.
+      Use the proposed version, including its prerelease suffix; do not change the
+      `always-bump-minor` strategy to imitate OpenClaw's calendar versions.
+
+      ```bash
+      node scripts/release-notes.mjs inventory \
+        --repository morluto/rea --base rea-agents-PREVIOUS \
+        --target FULL_BASE_BRANCH_SHA --version VERSION \
+        --manifest /tmp/rea-VERSION.contributions.json
+      node scripts/release-notes.mjs record \
+        --manifest /tmp/rea-VERSION.contributions.json \
+        --summary \
+        --output /tmp/rea-VERSION.record.md
+      ```
+
+      Read the inventory, not just the existing bot draft. It includes side-branch
+      commits, GitHub-associated PRs whose merge commits are in the range, commit
+      authors/co-authors, and confirmed closing issues with their reporters. GitHub
+      connections are paginated. Network errors stop generation; rerun into a new
+      output file after recovery. Existing output files are never overwritten.
+
+      Unresolved commit identities are retained as names/emails with `user: null`;
+      never guess a handle or thank the merger as a substitute. The report preserves
+      unknowns. This is a reviewed metadata snapshot, not independent proof that a
+      human authored a patch. For unattributed identities, unusual merge strategies,
+      backports, reversions, or references that GitHub did not associate, inspect
+      the source PRs and diffs and report the limitation. The current collector uses
+      confirmed PR-closing relationships for issue-reporter credit; unrelated issue
+      mentions are not automatically credited. Do not claim that merely inventoried
+      work still ships after a revert.
+
+      ## Write for users and retain credit
+
+      Rewrite only the newest `## [VERSION]` section in `CHANGELOG.md`, preserving its
+      version/date/link heading. Use single-line Markdown list items under:
+
+      - `### Highlights`: a few release-defining user outcomes; no quota for small releases.
+      - `### Changes`: capabilities and meaningful behavior changes.
+      - `### Fixes`: reliability, correctness, compatibility, and safety fixes.
+      - `### ⚠ BREAKING CHANGES`: retain when applicable, with migrations and original
+        PR/commit references required by the existing checkpoint validator.
+
+      Group related work by analyst workflow or user impact. Explain the resulting
+      behavior in short, concrete entries. Highlights summarize the release; avoid
+      repeating their full descriptions in Changes. Internal cleanup, tests, CI, and
+      routine documentation generally belong only in the provenance file. Read ambiguous PRs/diffs before making
+      claims. Distinguish simulated-provider checks from real-provider verification.
+
+      Credit each represented contribution once in the public notes with its link
+      and `Thanks @...` for its verified human author, known co-authors, and confirmed
+      closing-issue reporters. Grouping preserves all those credits in one line.
+      When Highlights, detailed entries or migrations reference the same work,
+      put its thanks in one of those entries, not all of them. Include issue links.
+      Direct-commit bullets carry the commit link and known human credit.
+      Exclude GitHub bots and known agent accounts. REA's observed Anthropic, Cursor
+      and Codex co-author trailers resolve to `@claude`, `@cursoragent` and `@codex`
+      with GitHub type `User`; the credit policy excludes them while retaining their metadata.
+      At the REA maintainer's request, omit `@morluto` self-thanks while preserving
+      authorship in the inventory. Other human contributors remain eligible.
+      Use explicit GitHub links for cross-repository references to avoid ambiguous
+      `#NNN` numbers. Unknown handles stay unknown; they are not fabricated credit.
+
+      Append the generated `record --summary` provenance link verbatim at the end
+      of this release. The linked inventory accounts for every discovered in-range
+      PR and direct contribution, including internal work omitted from the prose.
+      Do not paste the full `record` output into public notes: it duplicates thanks
+      and obscures the user-facing changes. Full records remain available for review.
+      Do not hand-edit generated credits to make validation pass. Refresh the inventory
+      when product history changes; a prose-only correction can reuse the snapshot.
+
+      ## Finalize with Release Please
+
+      Before changing the live release PR, have authorization for that PR update.
+      Local preparation and validation can proceed independently.
+
+      1. Add `rea:release-notes-finalized` to the selected open release PR **before**
+         editing its branch/body. Main proposal pushes respect this label. This is
+         our workflow guard, not Release Please's `autorelease: snooze` mechanism.
+         A proposal already running must finish before editing. Do not dispatch
+         manual preparation over finalized notes.
+      2. On that release branch, save the reviewed inventory as
+         `docs/releases/VERSION.contributions.json`. This is durable public release
+         provenance, not a temporary planning file. Do not add credentials or local
+         environment dumps. Keep the existing version artifacts aligned.
+      3. Run the existing checkpoint validator and the new checker:
+
+         ```bash
+         node scripts/release-notes.mjs check \
+           --manifest docs/releases/VERSION.contributions.json
+         node scripts/release-notes.mjs render \
+           --manifest docs/releases/VERSION.contributions.json \
+           --output /tmp/rea-VERSION.notes.md
+         ```
+
+      [... truncated on import]
+    keywords:
+    - rea-changelog-update
+    - prepare
+    - rewrite
+    - rea
+    - release
+    - changelogs
+    - github
+    - notes
+    - pinned
+    - git
+    - history
+    - verified
+    - contributor
+    - thanks
+  rea-ci-tests-audit:
+    title: rea-ci-tests-audit
+    category: skills
+    agent: ''
+    persona: |-
+      Audit REA CI and test suites for correctness, fixture drift, false passes, and measured performance; use for suite or workflow investigations and efficiency changes, rather than ordinary feature testing or a single test failure.
+
+      # REA CI and tests audit
+
+      Establish which checks still catch real regressions and which costs can be
+      removed without losing that protection. The outcome may be a verified fix,
+      an evidence-backed recommendation, or an explicit decision to stop.
+
+      Follow the checkout's `AGENTS.md`, [testing guide](../../../docs/testing.md),
+      and [contribution rules](../../../CONTRIBUTING.md). Use their current commands
+      and pinned toolchain, rather than commands remembered from an earlier audit.
+      Preserve the requested scope: investigation alone does not authorize edits;
+      this skill does not grant permission to publish issues, push, or merge. Existing
+      user authorization still applies. Keep audit notes and raw results outside the
+      tracked tree, normally in a task-specific `/tmp` directory.
+
+      ## Establish the executed baseline
+
+      Fetch when the user asks for latest main. Pin the baseline SHA and inspected
+      workflow revision; use an isolated worktree when changing or comparing code.
+      Do not modify another task's checkout. Record dirty changes and the exact
+      command, toolchain, host, selected tests, instrumentation, and prerequisites.
+      An old run is evidence for its executed revision, even if main advances.
+
+      Trace workflow triggers, changed-path selection, job dependencies, reusable
+      actions, package scripts, test discovery, artifact producers, and report gates
+      through to the commands that actually execute. Include scripts, generated data,
+      runtime registration, and subprocess boundaries missing from import graphs.
+      Check positive and negative selection paths: required files must be discovered
+      once per intended test configuration; deliberate platform/configuration repeats
+      are separate coverage. A missing explicit test or missing required report must
+      not turn green. Optional lanes may skip; preserve their stated prerequisites.
+
+      Use existing timing and failure artifacts to select suspicious families. Run
+      relevant checks to establish a baseline; reserve a full local suite for broad
+      CI diagnosis or uncertainty that focused checks cannot resolve. Do not rebuild
+      or rerun an unchanged complete suite after every documentation edit.
+
+      ## Prove the failure or protection
+
+      For each candidate, state the expected observable behavior and its owner,
+      then construct the smallest reproduction against production behavior. Follow
+      the producer and affected consumers before deciding where to fix it.
+
+      - For drift, compare fixtures with current admission requirements, protocol
+        replies, named contracts, tool versions, and actual public entrypoints. A
+        plausible-looking mock can fail before the behavior its test claims to cover.
+        Search the whole affected fixture family, including other version strings.
+        Preserve intentionally malformed fixtures and test their intended rejection.
+      - For a suspicious green test, perturb the relevant behavior in an isolated
+        copy or inject a controlled failure. Verify that the existing assertion or
+        gate detects it. A test may merely repeat its mock, import abandoned code,
+        or hide a subprocess/checker failure. Restore mutations after the experiment.
+      - For shared setup or pruning, map distinct assertions to their retained
+        scenarios. Preserve malformed inputs, cancellation, cleanup failure,
+        permissions, capacity, identity, and meaningful concurrency interactions.
+        A faster run that skips a case or weakens its oracle is not an improvement.
+      - For provider coverage, separate fake-producer, boundary, and actual-engine
+        evidence. Inspect named skips and prerequisites; fixtures do not establish
+        real Ghidra, LLDB, browser, or other provider behavior.
+
+      Classify findings as reproduced defects, supported costs, hypotheses, or
+      unavailable evidence. Record the baseline command, observed output/exit status,
+      expected result, affected scope, and competing explanation. A failure on main
+      may be pre-existing; that does not by itself make it irrelevant to a CI audit.
+      Attribute PR failures using the executed revision and a clean baseline, not
+      just their resemblance to a previous failure. Retry only to test a specific
+      transient explanation; retain the original failure and stop when repetition
+      adds no evidence. A passing retry does not establish a root cause or a fix.
+
+      ## Assess efficiency without losing the gate
+
+      Read [measurement and CI checks](references/measurement-and-ci.md) when
+      investigating slowness, caching, runner waits, shared artifacts, or log noise.
+      Compare equivalent completed work before claiming a speedup. Distinguish
+      setup/build time, test execution, coverage instrumentation, dependency waits,
+      and runner scheduling; state which costs remain unmeasured.
+
+      Prefer removing proven duplicate preparation, reusing immutable setup, and
+      reducing repeated subprocess work before shrinking correctness coverage.
+      Preserve independent sessions where lifecycle or concurrency is the oracle.
+      Keep live tests fresh; a cached previous pass cannot validate current host,
+      installed provider contents, permissions, or external state.
+
+      ## Fix, verify, and hand off within scope
+
+      If implementation is authorized, make the smallest structural change at the
+      owning boundary and add a regression that fails on the baseline for the right
+      reason. Retest affected consumers and meaningful negative paths; verify cache
+      invalidation or discovery when those mechanisms change. Read the installed
+      Turbo documentation before changing its configuration or commands.
+
+      Run the repository's applicable checks and inspect complete current-head CI
+      results before an authorized merge. Preserve required coverage and discovery
+      gates. Do not suppress a failure, add blanket retries, raise timeouts, or delete
+      distinct assertions solely to make CI green. Changes to these controls need
+      their own demonstrated reason and retained failure detection.
+
+      [... truncated on import]
+    keywords:
+    - rea-ci-tests-audit
+    - audit
+    - rea
+    - test
+    - suites
+    - correctness
+    - fixture
+    - drift
+    - 'false'
+    - passes
+    - measured
+    - performance
+    - suite
+    - workflow
+  rea-tool-design:
+    title: rea-tool-design
+    category: skills
+    agent: ''
+    persona: |-
+      Design or change REA investigation tools, CLI/MCP contracts, provider capabilities, and Evidence semantics.
+
+      # REA tool design
+
+      Use the [tool-design guide](../../../docs/tool-design.md) for tool boundaries,
+      contract semantics, provider ownership, and discoverability. Inspect the current
+      contract and nearest existing tool relevant to the analyst question; source,
+      documentation, and live catalogs may describe different versions.
+
+      For a design request, return the proposed boundary, input/result shape, Evidence
+      semantics, nearest alternative, and verification approach. Implement when
+      requested, preserving the user's scope and existing authorization.
+
+      For implementation or verification, consult [testing](../../../docs/testing.md)
+      for the affected consumer and provider lanes, and
+      [contributing](../../../CONTRIBUTING.md) for generated-file ownership. Read
+      provider/workflow guides only as the task requires.
+    keywords:
+    - rea-tool-design
+    - design
+    - change
+    - rea
+    - investigation
+    - cli
+    - mcp
+    - contracts
+    - provider
+    - capabilities
+    - evidence
+    - semantics
+    - design change
+    - change rea
+  reverse-engineer-anything:
+    title: reverse-engineer-anything
+    category: skills
+    agent: ollama-uncensored
+    persona: |-
+      Reverse engineer native, managed, Electron/JavaScript, packaged, firmware, and browser targets with REA. Use shipped-artifact or requested runtime evidence to explain features, compare versions, decompile code, or guide a reconstruction. Skip REA for ordinary source-repository architecture analysis.
+
+      # REA
+
+      Use REA when a claim depends on a shipped binary or package, decompilation,
+      requested runtime evidence, or comparison with
+      behavior not established by available source. For ordinary analysis of a
+      complete source repository, use normal repository tools and do not run REA
+      readiness or provider commands.
+
+      ## Connect only when needed
+
+      Installing this skill supplies instructions; it does not register the REA MCP
+      server, install analysis engines, or add tools to an already-running agent.
+
+      If REA tools are available and their registration is not known to be stale,
+      proceed directly to the target. Do not run diagnostics or setup before every
+      investigation. Use the connected server's actual tool list and input schemas;
+      a skill installed from repository main may describe capabilities absent from
+      an older npm release. Keep complete inline Evidence when that server does not
+      advertise retained references.
+
+      If tools are absent, a call is blocked by the client, or a required provider is
+      unavailable, read [connection and recovery](references/connection-and-recovery.md).
+      Diagnose the observed blocker, continue useful supported work, and resume the
+      original task after repair. Client approval, shell PATH, registration and engine
+      availability have different remedies; avoid repeating setup for all of them.
+      If the host times out without a REA result, do not repeat the unchanged call or
+      assume work stopped. Read the recovery guide's deadline distinction before retrying.
+      If the MCP connection drops, retry that call once only when it is safe to
+      repeat or known not to have started. If it may already have changed the
+      target, or it fails again, tell the user and ask them to restart the MCP
+      client. If REA could not start its connection, retry once, then tell the user
+      and ask them to restart the MCP client. Do not retry a startup failure that
+      returns the same unchanged result. Run `rea doctor` when REA could not start
+      or tools stay missing after that restart. For `cleanup_incomplete`, a retryable
+      capacity limit, or `configuration_invalid`, follow the recovery guide's ladder
+      before asking for a restart. Read that guide before a second repair attempt.
+
+      1. Diagnose without changing REA or client configuration. `npx` may download
+         the package and write to npm's cache. For Codex, run
+         `npx -y rea-agents@latest doctor --client codex --json`. Substitute the current
+         supported client: `claude_code`, `claude_desktop`, `codex`, `cursor`,
+         `gemini_cli`, `windsurf`, `devin`, `opencode`, `antigravity`, `copilot_cli`,
+         `commandcode`, `vscode`, `grok_build`, `omp`, or `grok_bot`. `grok_bot` has no local
+         file registration: doctor reports the Grok Bot chat step, and setup does not
+         write `mcp.json`. If the client is unknown, use `doctor --json` and
+         inspect its registration results before choosing a setup scope.
+      2. Distinguish the reason. Missing, malformed, or stale registration needs a
+         scoped configuration repair. An aligned registration with no tools in the
+         active session needs a restart/reconnection; doctor cannot prove that the
+         current agent has connected. A missing provider affects only tasks requiring
+         that provider: static JavaScript inspection needs neither Hopper nor Ghidra,
+         and Android inspection has separate bring-your-own JADX/Java prerequisites.
+      3. For a configuration repair, prepare the read-only plan:
+         `npx -y rea-agents@latest setup --client codex --dry-run --json`.
+         Use the current client's ID, show its exact proposed paths, backups, and
+         changes, and obtain approval before setup writes configuration or installs
+         Hopper. Setup normally installs the matching bundled skill too; include that
+         replacement in the reviewed plan. After approval, apply the same scope with
+         `npx -y rea-agents@latest setup --client codex --yes`. Add `--install-hopper`
+         only if that separate installation was needed and explicitly approved.
+      4. Restart/reconnect the affected agent. Verify that REA tools actually appear
+         in the session, then resume the original investigation. If they remain
+         absent, inspect the client's MCP launch error rather than repeating setup.
+
+      REA setup never installs or upgrades Node.js, npm, Homebrew, Java, Ghidra, IDA,
+      JADX, Kuna, Binwalk, or Unblob. Use existing prerequisites; do not install unrelated
+      software to repair MCP registration. For an unsupported client, use manual stdio
+      registration with a version-pinned `rea-agents` package or continue through the CLI.
+
+      A concrete CLI fallback for an operator-supplied JavaScript tree or ASAR is:
+
+      ```bash
+      npx -y rea-agents@latest analyze-javascript-application /absolute/path/to/app --json
+      ```
+
+      No MCP registration or native engine is required. Read the returned Evidence,
+      graph, limitations, and unknowns with the same care as an MCP result; the CLI
+      returns the Evidence record directly. This fallback does not establish that
+      MCP is configured. Native CLI tasks still require their selected engine.
+      Prefer an existing `rea` CLI. When none is installed and REA package acquisition
+      is within the authorized scope, use `npx -y rea-agents@latest` in its place.
+      Configuration repair starts with a read-only setup plan; show paths, backups and
+      skill replacement before applying authorized changes. Preserve existing approval
+      and target-execution boundaries.
+
+      ## Route the target first
+
+      Choose the first tool from the target the user supplied. Use `open_binary` for
+      active-target native or archive workflows; target-free tools take their own
+      explicit path or endpoint and do not need it.
+
+      - ASAR or extracted JavaScript/Electron tree:
+        `analyze_javascript_application`.
+      - Archive/package member inventory (ZIP/APK/IPA/MSIX/AppX, DMG, or a PyInstaller
+
+      [... truncated on import]
+    keywords:
+    - reverse-engineer-anything
+    - shipped-artifact
+    - source-repository
+    - reverse
+    - engineer
+    - native
+    - managed
+    - electron
+    - javascript
+    - packaged
+    - firmware
+    - browser
+    - targets
+    - rea

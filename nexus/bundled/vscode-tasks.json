@@ -1,0 +1,149 @@
+{
+  // Nexus Agent — VS Code tasks (Phase 5, terminal-based).
+  // Ctrl+Shift+P -> "Tasks: Run Task" -> pick one.
+  // These assume the repo is your workspace folder and nexus is installed with:
+  //   python -m venv .venv && . .venv/bin/activate && pip install -e .
+  "version": "2.0.0",
+  "presentation": {
+    "reveal": "always",
+    "panel": "dedicated",
+    "clear": false,
+    "focus": true
+  },
+  "tasks": [
+    {
+      "label": "Nexus: chat",
+      "detail": "Interactive REPL with role auto-routing and /commands",
+      "type": "shell",
+      "command": "nexus chat",
+      "problemMatcher": [],
+      "presentation": { "reveal": "always", "panel": "dedicated", "focus": true }
+    },
+    {
+      "label": "Nexus: ask (read-only)",
+      "detail": "Ask a question about this repo - no files are modified",
+      "type": "shell",
+      "command": "nexus ask '${input:nexusQuestion}'",
+      "problemMatcher": []
+    },
+    {
+      "label": "Nexus: task…",
+      "detail": "Run one autonomous task (prompts for approval before writes)",
+      "type": "shell",
+      "command": "nexus task '${input:nexusTask}'",
+      "problemMatcher": []
+    },
+    {
+      "label": "Nexus: task --yes (no prompts)",
+      "detail": "Same, but auto-approves non-dangerous tool calls",
+      "type": "shell",
+      "command": "nexus task '${input:nexusTask}' --yes",
+      "problemMatcher": []
+    },
+    {
+      "label": "Nexus: plan (read-only)",
+      "detail": "Produce an implementation plan without touching the repo",
+      "type": "shell",
+      "command": "nexus task '${input:nexusTask}' --plan",
+      "problemMatcher": []
+    },
+    {
+      "label": "Nexus: pick a role…",
+      "detail": "Force one specialist (skips the router)",
+      "type": "shell",
+      "command": "nexus task '${input:nexusTask}' --role ${input:nexusRole}",
+      "problemMatcher": []
+    },
+    {
+      "label": "Nexus: pipeline…",
+      "detail": "Multi-role handoff (build -> test -> review -> docs -> ship)",
+      "type": "shell",
+      "command": "nexus pipeline ${input:nexusPipeline} '${input:nexusTask}'",
+      "problemMatcher": []
+    },
+    {
+      "label": "Nexus: roles",
+      "detail": "List the whole team (107 roles)",
+      "type": "shell",
+      "command": "nexus roles",
+      "problemMatcher": [],
+      "presentation": { "panel": "shared" }
+    },
+    {
+      "label": "Nexus: doctor",
+      "detail": "Check API keys, local model servers, gh CLI and the repo",
+      "type": "shell",
+      "command": "nexus doctor",
+      "problemMatcher": []
+    },
+    {
+      "label": "Nexus: serve sidebar (background)",
+      "detail": "Start the local HTTP+SSE server the sidebar/panel talks to",
+      "type": "shell",
+      "command": "nexus serve --host 0.0.0.0 --port 8787",
+      "isBackground": true,
+      "problemMatcher": {
+        "owner": "nexus",
+        "pattern": [{ "regexp": "^$", "file": 1, "location": 2, "message": 3 }],
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": ".*nexus server.*",
+          "endsPattern": ".*panel.*http.*"
+        }
+      }
+    },
+    {
+      "label": "Nexus: open panel (browser)",
+      "detail": "Serve + open the built-in web panel (same UI as the sidebar)",
+      "type": "shell",
+      "command": "nexus panel --port 8787",
+      "isBackground": true,
+      "problemMatcher": []
+    },
+    {
+      "label": "Nexus: run tests",
+      "type": "shell",
+      "command": "python -m pytest -q",
+      "group": "test",
+      "problemMatcher": []
+    }
+  ],
+  "inputs": [
+    {
+      "id": "nexusQuestion",
+      "type": "promptString",
+      "description": "Ask Nexus (read-only)",
+      "default": "How does authentication work in this repo?"
+    },
+    {
+      "id": "nexusTask",
+      "type": "promptString",
+      "description": "Describe the task for Nexus",
+      "default": ""
+    },
+    {
+      "id": "nexusRole",
+      "type": "pickString",
+      "description": "Which specialist should handle it?",
+      "options": [
+        "frontend", "backend", "database", "devops", "mobile", "qa", "docs",
+        "security-audit", "pentesting", "osint", "data-science", "ai-engineering",
+        "debugging", "refactoring", "architecture", "marketing", "seo", "trading", "general"
+      ],
+      "default": "general"
+    },
+    {
+      "id": "nexusPipeline",
+      "type": "pickString",
+      "description": "Which pipeline?",
+      "options": ["ship-feature", "security-review", "bug-hunt", "content-drop", "release"],
+      "default": "ship-feature"
+    },
+    {
+      "id": "nexusRoleSearch",
+      "type": "promptString",
+      "description": "Filter roles (leave empty to list all)",
+      "default": ""
+    }
+  ]
+}

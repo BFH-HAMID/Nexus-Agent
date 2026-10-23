@@ -1,0 +1,162 @@
+{
+  "name": "nexus-agent-sidebar",
+  "displayName": "Nexus Agent",
+  "description": "Sidebar chat panel for Nexus Agent: shows the active role/agent live and gives you approve/deny buttons instead of a terminal y/N.",
+  "version": "0.1.0",
+  "publisher": "bfr-hamid",
+  "license": "MIT",
+  "private": true,
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "AI",
+    "Chat",
+    "Other"
+  ],
+  "keywords": [
+    "agent",
+    "llm",
+    "claude",
+    "ollama",
+    "hermes",
+    "multi-agent"
+  ],
+  "main": "./out/extension.js",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "nexusAgent",
+          "title": "Nexus",
+          "icon": "media/nexus.svg"
+        }
+      ]
+    },
+    "views": {
+      "nexusAgent": [
+        {
+          "type": "webview",
+          "id": "nexusAgent.sidebar",
+          "name": "Nexus Agent",
+          "icon": "media/nexus.svg",
+          "contextualTitle": "Nexus Agent"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "nexus.startServer",
+        "title": "Nexus: Start local server",
+        "category": "Nexus"
+      },
+      {
+        "command": "nexus.stopServer",
+        "title": "Nexus: Stop local server",
+        "category": "Nexus"
+      },
+      {
+        "command": "nexus.openPanel",
+        "title": "Nexus: Open sidebar",
+        "category": "Nexus"
+      },
+      {
+        "command": "nexus.sendSelection",
+        "title": "Nexus: Send selection as task",
+        "category": "Nexus"
+      },
+      {
+        "command": "nexus.askAboutFile",
+        "title": "Nexus: Ask about current file (read-only)",
+        "category": "Nexus"
+      },
+      {
+        "command": "nexus.runDoctor",
+        "title": "Nexus: Doctor (health check)",
+        "category": "Nexus"
+      },
+      {
+        "command": "nexus.selectRole",
+        "title": "Nexus: Pin a role…",
+        "category": "Nexus"
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "nexus.sendSelection",
+          "when": "editorHasSelection",
+          "group": "navigation@100"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "nexus.openPanel",
+          "when": "true"
+        }
+      ]
+    },
+    "keybindings": [
+      {
+        "command": "nexus.openPanel",
+        "key": "ctrl+shift+n",
+        "mac": "cmd+shift+n"
+      },
+      {
+        "command": "nexus.sendSelection",
+        "key": "ctrl+alt+n",
+        "mac": "cmd+alt+n",
+        "when": "editorHasSelection"
+      }
+    ],
+    "configuration": {
+      "title": "Nexus Agent",
+      "properties": {
+        "nexus.pythonPath": {
+          "type": "string",
+          "default": "python",
+          "description": "Python interpreter that has nexus-agent installed (e.g. ${workspaceFolder}/.venv/bin/python)."
+        },
+        "nexus.serverHost": {
+          "type": "string",
+          "default": "127.0.0.1",
+          "description": "Host the local Nexus server binds to."
+        },
+        "nexus.serverPort": {
+          "type": "number",
+          "default": 8787,
+          "description": "Port of the local Nexus server."
+        },
+        "nexus.autoStartServer": {
+          "type": "boolean",
+          "default": true,
+          "description": "Start `nexus serve` automatically when the sidebar opens."
+        },
+        "nexus.autoApprove": {
+          "type": "boolean",
+          "default": false,
+          "description": "DANGEROUS: let the server auto-approve non-dangerous tool calls (nexus serve --yes). Approval buttons are skipped."
+        },
+        "nexus.workspaceFolder": {
+          "type": "string",
+          "default": "",
+          "description": "Project directory Nexus works in. Empty = first workspace folder."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "package": "npm run compile && npx --yes @vscode/vsce package --no-dependencies"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/vscode": "^1.85.0",
+    "typescript": "^5.4.0"
+  }
+}
