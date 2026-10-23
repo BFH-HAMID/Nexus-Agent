@@ -1,0 +1,89 @@
+{
+  // Nexus Agent — debug configurations (F5).
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Nexus: chat (debug)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "nexus",
+      "args": ["chat"],
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}",
+      "justMyCode": false,
+      "envFile": "${workspaceFolder}/.env"
+    },
+    {
+      "name": "Nexus: task (debug)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "nexus",
+      "args": ["task", "${input:taskText}"],
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}",
+      "justMyCode": false,
+      "envFile": "${workspaceFolder}/.env"
+    },
+    {
+      "name": "Nexus: ask (read-only, debug)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "nexus",
+      "args": ["ask", "${input:taskText}"],
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}",
+      "justMyCode": false,
+      "envFile": "${workspaceFolder}/.env"
+    },
+    {
+      "name": "Nexus: pipeline ship-feature (debug)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "nexus",
+      "args": ["pipeline", "ship-feature", "${input:taskText}"],
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}",
+      "justMyCode": false,
+      "envFile": "${workspaceFolder}/.env"
+    },
+    {
+      "name": "Nexus: serve sidebar (debug)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "nexus",
+      "args": ["serve", "--host", "127.0.0.1", "--port", "8787"],
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}",
+      "justMyCode": false,
+      "envFile": "${workspaceFolder}/.env"
+    },
+    {
+      "name": "Nexus: doctor",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "nexus",
+      "args": ["doctor"],
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}",
+      "justMyCode": false
+    },
+    {
+      "name": "Pytest: nexus tests",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "pytest",
+      "args": ["tests", "-q"],
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}",
+      "justMyCode": false
+    }
+  ],
+  "inputs": [
+    {
+      "id": "taskText",
+      "type": "promptString",
+      "description": "Task for Nexus",
+      "default": "explain this repository's structure"
+    }
+  ]
+}

@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Nexus Agent</title>
+<style>
+  :root {
+    --bg: #0e1116; --panel: #151a21; --panel2: #1b222b; --line: #263041;
+    --fg: #e6edf3; --dim: #8b98a9; --accent: #4cc2ff; --ok: #4ade80;
+    --warn: #fbbf24; --bad: #f87171; --role: #c084fc;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  header {
+    display: flex; align-items: center; gap: 10px; padding: 10px 14px;
+    border-bottom: 1px solid var(--line); background: var(--panel);
+    position: sticky; top: 0; z-index: 5;
+  }
+  header h1 { font-size: 13px; margin: 0; letter-spacing: .08em; text-transform: uppercase; color: var(--accent); }
+  .pill {
+    padding: 2px 8px; border: 1px solid var(--line); border-radius: 999px;
+    background: var(--panel2); color: var(--dim); font-size: 11px; white-space: nowrap;
+  }
+  .pill b { color: var(--fg); font-weight: 600; }
+  .spacer { flex: 1; }
+  main { padding: 12px 14px 90px; max-width: 1100px; margin: 0 auto; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 8px; }
+  label { color: var(--dim); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
+  select, textarea, input, button {
+    font: inherit; color: var(--fg); background: var(--panel2);
+    border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px;
+  }
+  textarea { width: 100%; min-height: 74px; resize: vertical; }
+  button { cursor: pointer; }
+  button:hover { border-color: var(--accent); color: var(--accent); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #06121c; font-weight: 700; }
+  button.primary:hover { filter: brightness(1.1); color: #06121c; }
+  button.danger:hover { border-color: var(--bad); color: var(--bad); }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  #log { border: 1px solid var(--line); border-radius: 8px; background: var(--panel); padding: 10px; min-height: 220px; }
+  .ev { padding: 3px 0; border-bottom: 1px dashed rgba(255,255,255,.04); white-space: pre-wrap; word-break: break-word; }
+  .ev:last-child { border-bottom: 0; }
+  .ev .tag { display: inline-block; min-width: 82px; color: var(--dim); font-size: 11px; }
+  .ev.text { color: var(--ok); }
+  .ev.role { color: var(--role); font-weight: 600; }
+  .ev.agent { color: var(--accent); }
+  .ev.tool_call { color: #f0abfc; }
+  .ev.tool_result { color: var(--dim); }
+  .ev.error { color: var(--bad); }
+  .ev.approval { color: var(--warn); }
+  .ev.status { color: var(--dim); }
+  .approval-box {
+    margin: 10px 0; padding: 10px; border: 1px solid var(--warn); border-radius: 8px;
+    background: rgba(251,191,36,.07);
+  }
+  .approval-box pre {
+    margin: 8px 0; padding: 8px; background: #0b0e13; border-radius: 6px;
+    overflow: auto; max-height: 220px; color: var(--dim);
+  }
+  .summary { margin-top: 12px; padding: 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
+  .summary h3 { margin: 0 0 6px; font-size: 12px; color: var(--accent); text-transform: uppercase; letter-spacing: .06em; }
+  .files { color: var(--dim); }
+  .hidden { display: none !important; }
+  footer {
+    position: fixed; bottom: 0; left: 0; right: 0; padding: 8px 14px;
+    background: var(--panel); border-top: 1px solid var(--line); color: var(--dim); font-size: 11px;
+    display: flex; gap: 12px; align-items: center;
+  }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--dim); display: inline-block; }
+  .dot.live { background: var(--ok); box-shadow: 0 0 8px var(--ok); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Nexus</h1>
+  <span class="pill">workspace <b id="ws">…</b></span>
+  <span class="pill">role <b id="curRole">auto</b></span>
+  <span class="pill">agent <b id="curAgent">–</b></span>
+  <span class="spacer"></span>
+  <span class="pill"><span class="dot" id="dot"></span> <b id="status">idle</b></span>
+</header>
+
+<main>
+  <div class="row">
+    <label for="role">role</label>
+    <select id="role"><option value="">auto-route</option></select>
+    <label for="pipeline">pipeline</label>
+    <select id="pipeline"><option value="">none</option></select>
+    <label for="readonly"><input type="checkbox" id="readonly" /> read-only (plan)</label>
+    <label for="yes"><input type="checkbox" id="yes" /> auto-approve</label>
+  </div>
+  <textarea id="task" placeholder="Describe the task… e.g. add cursor pagination to /api/users and cover it with tests"></textarea>
+  <div class="row" style="margin-top:8px">
+    <button class="primary" id="run">Run ▶</button>
+    <button id="cancel" class="danger" disabled>Cancel</button>
+    <button id="clear">Clear log</button>
+    <span class="spacer"></span>
+    <span class="pill" id="taskInfo"></span>
+  </div>
+
+  <div id="approval" class="approval-box hidden">
+    <b>⚠ approval needed</b> — <span id="apTool"></span> <span id="apRisk" class="pill"></span>
+    <pre id="apPreview"></pre>
+    <div class="row">
+      <button class="primary" id="apYes">Approve</button>
+      <button id="apAlways">Approve &amp; remember this tool</button>
+      <button class="danger" id="apNo">Deny</button>
+    </div>
+  </div>
+
+  <div id="log"></div>
+  <div id="summary" class="summary hidden">
+    <h3>result</h3>
+    <div id="summaryBody"></div>
+    <div class="files" id="summaryFiles"></div>
+  </div>
+</main>
+
+<footer>
+  <span>POST /api/task · GET /api/events/&lt;id&gt; · POST /api/approve/&lt;id&gt;</span>
+  <span class="spacer"></span>
+  <span id="version"></span>
+</footer>
+
+<script src="panel.js"></script>
+</body>
+</html>

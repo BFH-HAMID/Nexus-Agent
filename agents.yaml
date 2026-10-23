@@ -1,0 +1,137 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Nexus Agent — agents.yaml
+#
+# "kon model kothay" — every callable model endpoint lives here. Roles point at
+# one of these names, the router never picks a model directly.
+#
+# ${VAR} and ${VAR:-default} are expanded from the environment (.env is loaded
+# automatically by the CLI).
+# ─────────────────────────────────────────────────────────────────────────────
+
+default_agent: claude
+
+agents:
+  # ── Claude (API) — best reasoning + most reliable native tool calling ──────
+  claude:
+    provider: anthropic
+    model: claude-sonnet-5-5          # alternatives: claude-opus-5-5, claude-fable-5-1
+    api_key_env: ANTHROPIC_API_KEY
+    base_url: ${ANTHROPIC_BASE_URL:-https://api.anthropic.com}
+    max_tokens: 8192
+    supports_tools: true
+    tool_mode: native
+    description: Default workhorse for real code edits, security review and anything subtle.
+
+  claude-big:
+    provider: anthropic
+    model: claude-opus-5-5
+    api_key_env: ANTHROPIC_API_KEY
+    max_tokens: 16384
+    supports_tools: true
+    tool_mode: native
+    fallback: claude
+    description: Long-horizon architecture, hard refactors, deep debugging.
+
+  claude-cheap:
+    provider: anthropic
+    model: claude-haiku-5-5           # fast + cheap: routing, classification, summaries
+    api_key_env: ANTHROPIC_API_KEY
+    max_tokens: 1024
+    temperature: 0.0
+    supports_tools: true
+    tool_mode: native
+    fallback: claude
+    description: Used by the router LLM fallback and other high-volume, low-stakes calls.
+
+  # ── Hermes 3 (local, Ollama) — cheap bulk work: docs, QA, marketing, trading
+  hermes:
+    provider: openai-compatible
+    model: hermes3:8b                 # hermes3 has a real tool template -> native tool calls
+    base_url: ${OLLAMA_HOST:-http://localhost:11434}/v1
+    api_key: ollama                   # required by the OpenAI shim, ignored by Ollama
+    max_tokens: 4096
+    temperature: 0.4
+    timeout: 300
+    supports_tools: true
+    tool_mode: native
+    fallback: claude                  # if Ollama is down, keep working (Phase 8)
+    description: Local, free, good enough for docs/QA/marketing/trading scripts.
+
+  hermes-big:
+    provider: openai-compatible
+    model: ${HERMES_BIG_MODEL:-hermes3:70b}
+    base_url: ${OLLAMA_HOST:-http://localhost:11434}/v1
+    api_key: ollama
+    max_tokens: 8192
+    timeout: 600
+    supports_tools: true
+    tool_mode: native
+    fallback: hermes
+    description: Bigger local Hermes when you have the VRAM.
+
+  # ── Uncensored local models — pentesting / OSINT / red-team research ───────
+  # dolphin-mixtral has NO tool template in Ollama, so tool_mode: text makes
+  # Nexus inject a JSON tool contract into the prompt and parse the reply.
+  ollama-uncensored:
+    provider: openai-compatible
+    model: dolphin-mixtral:latest
+    base_url: ${OLLAMA_HOST:-http://localhost:11434}/v1
+    api_key: ollama
+    max_tokens: 4096
+    temperature: 0.7
+    timeout: 420
+    supports_tools: true
+    tool_mode: text
+    fallback: ollama
+    description: Authorized offensive-security / OSINT work without over-refusals.
+
+  ollama:
+    provider: openai-compatible
+    model: ${OLLAMA_MODEL:-llama3.1:8b}
+    base_url: ${OLLAMA_HOST:-http://localhost:11434}/v1
+    api_key: ollama
+    max_tokens: 4096
+    timeout: 300
+    supports_tools: true
+    tool_mode: native
+    fallback: hermes
+    description: Generic local model for offline drafting and quick questions.
+
+  # ── Any other OpenAI-compatible endpoint (vLLM, llama.cpp, OpenRouter, ...) ─
+  openrouter:
+    provider: openai-compatible
+    model: ${OPENROUTER_MODEL:-nousresearch/hermes-3-llama-3.1-405b}
+    base_url: https://openrouter.ai/api/v1
+    api_key_env: OPENROUTER_API_KEY
+    max_tokens: 4096
+    timeout: 240
+    supports_tools: true
+    tool_mode: native
+    fallback: claude
+    description: Optional hosted route to open models when the local box is off.
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Behaviour knobs (all overridable with NEXUS_* environment variables)
+# ─────────────────────────────────────────────────────────────────────────────
+settings:
+  auto_route: true              # router decides the role for every task
+  router_min_score: 1.0         # keyword score needed to skip the LLM classifier
+  router_llm_fallback: true     # ask a model when no keyword matched
+  router_agent: claude-cheap    # which agent runs the classifier (empty = default)
+  max_turns: 24                 # hard stop for the tool loop
+  auto_yes: false               # true = never ask (dangerous calls still blocked)
+  allow_dangerous: false        # true = deny-listed commands become "ask" instead of "refuse"
+  command_timeout: 120          # seconds per shell command
+  max_output_chars: 24000       # tool output clipping
+  max_read_chars: 120000        # read_file clipping
+  context_char_budget: 240000   # compact old tool results above this
+  memory_enabled: true          # Phase 7: per-role notes in .nexus/memory
+  memory_dir: .nexus/memory
+  memory_max_chars: 4000
+  auto_branch: true             # Phase 4: feat/<role>-<slug>
+  branch_prefix: feat
+  auto_commit_message: true
+  pr_template: .github/PULL_REQUEST_TEMPLATE.md
+  always_allow_tools: []        # e.g. [run_command] to stop prompting for the shell
+  never_allow_tools: []         # e.g. [gh_merge_pr]
+  blocked_command_patterns: []  # extra regexes appended to the built-in deny list

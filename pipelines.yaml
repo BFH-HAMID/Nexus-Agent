@@ -1,0 +1,101 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Nexus Agent — pipelines.yaml  (Phase 6: multi-agent collaboration)
+#
+# A pipeline hands the same task to several specialists in order. Each step
+# receives the previous step's `finish` summary as a handoff note.
+#
+# Run one with:
+#   nexus pipeline ship-feature 'add a rate limiter to the public API'
+#   nexus pipeline --list
+#   /pipeline ship-feature add a rate limiter      (inside the REPL)
+# ─────────────────────────────────────────────────────────────────────────────
+
+pipelines:
+  ship-feature:
+    description: Build it, test it, review it for security, document it, ship it.
+    steps:
+      - role: backend
+        instruction: >-
+          Implement the feature end to end: models, service layer, HTTP handlers,
+          validation and error handling. Keep the diff minimal and idiomatic for
+          this repo. Do not write tests yet - QA owns that.
+      - role: qa
+        instruction: >-
+          Write and run automated tests for what the previous specialist built:
+          happy path, validation errors, edge cases and at least one integration
+          test. Report any failure with the exact command to reproduce it.
+        read_only: false
+      - role: security-audit
+        instruction: >-
+          Review the new code for authz/authn gaps, injection, SSRF, secrets in
+          logs, unsafe deserialization and missing rate limits. If you find a
+          real issue, fix it; otherwise state clearly that it passes.
+      - role: docs
+        instruction: >-
+          Update the docs for the change: README section or docs/ page, request
+          and response examples, and a one-line CHANGELOG entry.
+      - role: devops
+        instruction: >-
+          Finish the delivery: create the branch feat/<role>-<slug> if needed,
+          commit with a conventional message, push, and open a pull request with
+          the auto-filled template. Report the PR URL.
+
+  security-review:
+    description: Read-only defensive review of a target area, then a written report.
+    steps:
+      - role: security-audit
+        instruction: >-
+          Map the attack surface of the requested area (endpoints, auth, data
+          stores, third-party calls). Read code only - change nothing.
+        read_only: true
+      - role: pentesting
+        instruction: >-
+          For the surface just mapped, list concrete verification steps an
+          authorized tester would run in a lab, with the exact commands and the
+          expected evidence. Read-only.
+        read_only: true
+      - role: docs
+        instruction: >-
+          Turn both reports into a single prioritized findings document
+          (severity, evidence, fix, effort) and save it under docs/security/.
+
+  bug-hunt:
+    description: Reproduce, fix, regression-test.
+    steps:
+      - role: debugging
+        instruction: >-
+          Reproduce the bug, find the root cause and explain it with file:line
+          evidence. Do not fix it yet.
+        read_only: true
+      - role: backend
+        instruction: >-
+          Apply the smallest correct fix for the root cause described in the
+          handoff notes.
+      - role: qa
+        instruction: >-
+          Add a regression test that fails without the fix and passes with it,
+          then run the full test suite.
+
+  content-drop:
+    description: Research → write → SEO → review.
+    steps:
+      - role: research
+        instruction: Gather sources, facts and angles for the requested topic. Cite everything.
+        read_only: true
+      - role: content-writing
+        instruction: Write the piece using the research handoff. Match the repo's existing tone.
+      - role: seo
+        instruction: Optimize title, meta description, headings, internal links and keyword targeting.
+      - role: editor
+        instruction: Line-edit for clarity and consistency; fix typos; keep the author's voice.
+
+  release:
+    description: Version bump, changelog, tag, release notes.
+    steps:
+      - role: devops
+        instruction: Determine the next version from the commits since the last tag (semver).
+        read_only: true
+      - role: docs
+        instruction: Write the CHANGELOG entry and release notes from that version decision.
+      - role: release-engineering
+        instruction: Tag, push the tag and create the GitHub release with the notes.

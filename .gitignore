@@ -1,0 +1,49 @@
+# ── Python ────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+
+# ── Secrets: never commit real keys ───────────────────────────────────────
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# ── Nexus runtime state (per project) ─────────────────────────────────────
+.nexus/memory/
+.nexus/transcript-*.md
+.nexus/sessions/
+.nexus/*.log
+# output of `nexus --demo`
+demo/
+
+# ── Node / VS Code extension ─────────────────────────────────────────────
+node_modules/
+vscode-extension/out/
+vscode-extension/*.vsix
+npm-debug.log*
+
+# ── Editors / OS ──────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+.idea/
+*.swp
+.vscode/*
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/settings.json
+!.vscode/extensions.json
