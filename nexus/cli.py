@@ -1491,14 +1491,16 @@ def build_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "examples:\n"
+            "  nexus                        # just this: opens the agent\n"
             "  nexus keys set gemini        # paste a key once, no .env file\n"
-            "  nexus chat\n"
+            "  nexus local                  # Ollama: Hermes / uncensored models\n"
             "  nexus task 'add pagination to the /users API endpoint and write tests'\n"
             "  nexus ask 'explain how auth works in this repo' --role backend\n"
             "  nexus pipeline ship-feature 'add a rate limiter to the public API'\n"
             "  nexus roles --search security\n"
             "  nexus doctor\n"
             "  nexus gui                    # live GUI dashboard (localhost:8787)\n"
+            "  (inside the REPL: /help · /gui · /local · /roles · /exit)\n"
         ),
     )
     parser.add_argument("--version", action="store_true", help="print version and exit")
