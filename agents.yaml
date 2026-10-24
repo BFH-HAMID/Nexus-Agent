@@ -4,6 +4,11 @@
 # "kon model kothay" — every callable model endpoint lives here. Roles point at
 # one of these names; the router never picks a model directly.
 #
+# Every agent below is tuned for SPEED and (where possible) a $0 price tag:
+# Gemini Flash / Flash-Lite and OpenRouter's :free / free-router endpoints are
+# on the free tiers, DeepSeek Flash is the cheap fast workhorse. Streaming is
+# on by default, so the first tokens land in the terminal in a few hundred ms.
+#
 # All three supported providers speak the OpenAI chat-completions dialect, so a
 # single adapter drives them:
 #   gemini      -> https://generativelanguage.googleapis.com/v1beta/openai
@@ -80,13 +85,37 @@ agents:
   # ── OpenRouter (any hosted open model behind one key) ─────────────────────
   openrouter:
     provider: openrouter
-    model: ${OPENROUTER_MODEL:-openrouter/auto}   # or e.g. deepseek/deepseek-v4-pro
+    model: ${OPENROUTER_MODEL:-openrouter/free}   # free-models router: $0, picks a live :free model
     api_key_env: OPENROUTER_API_KEY
     max_tokens: 8192
     supports_tools: true
     tool_mode: native
     fallback: gemini
-    description: Hosted open models; `openrouter/auto` picks one for you.
+    description: Free hosted open models via the `openrouter/free` router ($0/token).
+
+  openrouter-fast:                    # lowest-latency free model (chat, classification)
+    provider: openrouter
+    model: ${OPENROUTER_FAST_MODEL:-nvidia/nemotron-3.5-lightning:free}
+    api_key_env: OPENROUTER_API_KEY
+    max_tokens: 4096
+    temperature: 0.2
+    timeout: 90
+    supports_tools: true
+    tool_mode: native
+    fallback: openrouter
+    description: Fastest free OpenRouter model - great for quick answers and routing.
+
+  hermes-free:                        # hosted Hermes, no Ollama needed, $0
+    provider: openrouter
+    model: ${HERMES_FREE_MODEL:-nousresearch/hermes-3-llama-3.1-405b:free}
+    api_key_env: OPENROUTER_API_KEY
+    max_tokens: 8192
+    temperature: 0.4
+    timeout: 180
+    supports_tools: true
+    tool_mode: native
+    fallback: openrouter
+    description: Hermes 3 (405B) on OpenRouter's free tier - Hermes without a local GPU.
 
   # Uncensored open model for authorized pentesting / OSINT / RE research.
   # Override the model with OPENROUTER_UNCENSORED_MODEL; `nexus models` lists ids.
@@ -125,7 +154,7 @@ agents:
     timeout: 300
     supports_tools: true
     tool_mode: native                 # hermes3 has a real tool template
-    fallback: deepseek                # Ollama down? continue on the API
+    fallback: hermes-free             # Ollama down? use the hosted Hermes, then DeepSeek
     optional: true
     description: Free local worker (hermes3) for bulk work; falls back to DeepSeek.
 
@@ -138,7 +167,7 @@ agents:
     timeout: 600
     supports_tools: true
     tool_mode: native
-    fallback: deepseek-pro
+    fallback: hermes-free
     optional: true
     description: Bigger local Hermes when you have the VRAM.
 
@@ -181,10 +210,16 @@ agents:
 # Behaviour knobs (all overridable with NEXUS_* environment variables)
 # ─────────────────────────────────────────────────────────────────────────────
 settings:
-  auto_route: true              # router decides the role for every task
+  auto_route: true
+  stream: true                  # stream tokens to the CLI/GUI (feels instant)
+  learning: true                # after non-trivial runs: write skills + memory (Hermes loop)
+  learning_agent: ""            # cheap model that reviews runs ("" = router_agent)
+  learning_min_tools: 4         # only review runs with at least this many tool calls
+  skill_nudge_interval: 8       # remind the agent to save skills every N turns (0 = off)
+  skills_enabled: true          # load SKILL.md skills into every prompt
   router_min_score: 1.0         # keyword score needed to skip the LLM classifier
   router_llm_fallback: true     # ask a model when no keyword matched
-  router_agent: gemini-flash    # which agent runs the classifier (empty = default)
+  router_agent: gemini-flash    # cheap + fast classifier (3.5-flash-lite, free tier)
   prefer_local: false           # true = try the matching local agent first, then the API
   max_turns: 24                 # hard stop for the tool loop
   auto_yes: false               # true = never ask (dangerous calls still blocked)

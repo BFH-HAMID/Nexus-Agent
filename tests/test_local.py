@@ -19,6 +19,7 @@ from nexus.config import apply_prefer_local, load_config
 from nexus.types import Message, ProviderError
 
 LOCAL = ("hermes", "hermes-big", "ollama", "ollama-uncensored")
+HOSTED_FREE = ("hermes-free", "openrouter-fast")
 
 
 # --------------------------------------------------------------------------- #
@@ -49,8 +50,8 @@ def test_local_agent_models_and_tool_modes(repo):
 
 def test_local_agents_fall_back_to_hosted_agents(repo):
     config = load_config(repo)
-    assert config.agents["hermes"].fallback == "deepseek"
-    assert config.agents["hermes-big"].fallback == "deepseek-pro"
+    assert config.agents["hermes"].fallback == "hermes-free"
+    assert config.agents["hermes-big"].fallback == "hermes-free"
     assert config.agents["ollama-uncensored"].fallback == "openrouter-uncensored"
     assert config.agents["ollama"].fallback == "gemini"
 
@@ -84,7 +85,7 @@ def test_prefer_local_falls_back_to_hosted_when_roles_are_already_local(repo, mo
     config = load_config(repo)
     cfg = config.agent_for_role(config.role("backend"))
     assert cfg.name == "hermes"
-    assert config.agents[cfg.fallback].key_family == "deepseek"
+    assert config.agents[cfg.fallback].key_family == "openrouter"   # hosted free Hermes
 
 
 def test_apply_prefer_local_is_a_noop_without_local_agents(repo):
@@ -232,3 +233,45 @@ def test_doctor_exit_code_ignores_optional_checks(capsys):
     assert code == 0
     assert "? agent:hermes" in out
     assert "all good." in out
+
+
+# --------------------------------------------------------------------------- #
+# Hermes & free agents, wired but not hidden
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize("name", HOSTED_FREE)
+def test_hosted_free_agents_exist_and_fall_back(repo, name):
+    config = load_config(repo)
+    cfg = config.agents[name]
+    assert cfg.provider == "openrouter"
+    assert cfg.key_family == "openrouter"
+    assert cfg.fallback in config.agents
+    assert cfg.stream is True
+
+
+def test_openrouter_defaults_to_the_free_router(repo):
+    config = load_config(repo)
+    assert config.agents["openrouter"].model == "openrouter/free"
+    assert config.agents["hermes-free"].model.endswith(":free")
+
+
+def test_local_roles_are_part_of_the_team(repo):
+    config = load_config(repo)
+    for role_name, agent_name in (
+        ("local-worker", "hermes"),
+        ("local-heavy", "hermes-big"),
+        ("uncensored-local", "ollama-uncensored"),
+        ("local-chat", "ollama"),
+    ):
+        role = config.role(role_name)
+        assert role.agent == agent_name
+        assert config.agent_for_role(role).name == agent_name
+    # and they are routable by keyword, not only reachable through /role
+    from nexus.router import Router
+
+    router = Router(config)
+    decision = router.keyword_route("use hermes offline for this refactor")
+    assert decision is not None and decision.role.name in {"local-worker", "local-heavy"}
+    decision = router.keyword_route("run the uncensored local model on this sample")
+    assert decision is not None and decision.role.name == "uncensored-local"

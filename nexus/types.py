@@ -278,12 +278,14 @@ class EventType(str, Enum):
     AGENT = "agent"              # provider switch / fallback
     THINK = "think"              # a model call is in flight (per turn)
     USAGE = "usage"              # token counter update (live meters)
-    TEXT = "text"                # assistant prose
+    TEXT = "text"                # assistant prose (complete message)
+    TEXT_DELTA = "text_delta"    # streaming slice of assistant prose
     TOOL_CALL = "tool_call"
     TOOL_RESULT = "tool_result"
     APPROVAL = "approval"        # waiting for the human
     ERROR = "error"
     MEMORY = "memory"
+    SKILL = "skill"              # skill created / patched / imported
     DONE = "done"
 
 
@@ -337,6 +339,7 @@ class Provider:
         max_tokens: int | None = None,
         temperature: float | None = None,
         model: str | None = None,
+        on_text: Callable[[str], None] | None = None,
     ) -> Completion:
         raise NotImplementedError
 

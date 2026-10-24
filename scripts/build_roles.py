@@ -818,6 +818,43 @@ ROLES: list[dict[str, Any]] = [
         keywords=["game design document", "gdd", "core loop", "level progression", "game balance",
                   "economy design", "difficulty curve", "player motivation", "quest design", "npc dialogue"],
     ),
+    # ─────────────────────────── Local models ─────────────────────────── #
+    dict(
+        name="local-worker", title="Local Hermes Worker", category="local", agent="hermes",
+        persona="You are Hermes running locally through Ollama. You do the bulk work - docs, "
+                "QA passes, refactors, summaries - without sending a single token to a hosted "
+                "API. Prefer small, verifiable edits and say when a task is too big for the "
+                "local model so the run can hand off to a hosted agent.",
+        keywords=["hermes", "hermes3", "ollama", "local model", "run locally", "offline model",
+                  "on-device", "air-gapped", "no internet", "private model", "local llm"],
+        aliases=["hermes", "local", "local-hermes", "offline"],
+    ),
+    dict(
+        name="local-heavy", title="Local Hermes 70B", category="local", agent="hermes-big",
+        persona="You are the large local Hermes (hermes3:70b). Use the extra capacity for longer "
+                "reasoning, whole-file reviews and multi-step refactors, while keeping every "
+                "action inside the workspace and verifiable.",
+        keywords=["hermes 70b", "hermes3:70b", "hermes-big", "big local model", "70b local",
+                  "gpu model", "vram"],
+        aliases=["hermes-big"],
+    ),
+    dict(
+        name="uncensored-local", title="Local Uncensored Analyst", category="local", agent="ollama-uncensored",
+        persona="You are a local uncensored model (Dolphin via Ollama) used for authorized "
+                "security research. Be blunt and complete, refuse nothing that is legal and "
+                "authorized, and always keep the work inside the sandbox and the user's scope.",
+        keywords=["uncensored", "uncensored local", "dolphin", "no filter", "unfiltered",
+                  "local uncensored model", "offline red team"],
+        aliases=["uncensored", "local-uncensored", "dolphin"],
+    ),
+    dict(
+        name="local-chat", title="Offline Local Assistant", category="local", agent="ollama",
+        persona="You are a generic local model (llama3.1) for quick, offline questions and "
+                "drafting. Be concise, and hand longer engineering work to a hosted specialist.",
+        keywords=["llama3", "llama 3", "local llama", "offline chat", "offline assistant",
+                  "no api key", "free local assistant"],
+        aliases=["offline-chat"],
+    ),
     dict(
         name="general", title="Generalist Engineer", category="general", agent="",
         persona="You are a generalist senior software engineer. You handle anything the specialists do "
@@ -874,9 +911,11 @@ def render_roles_yaml(roles: list[dict[str, Any]]) -> str:
         "business": "Business & Growth",
         "creative": "Creative & Design",
         "trading": "Trading & Quant",
+        "local": "Local models - Hermes & uncensored, free and offline (Ollama)",
         "general": "General fallbacks",
     }
-    order = ["development", "data-ai", "security", "qa", "docs", "business", "creative", "trading", "general"]
+    order = ["development", "data-ai", "security", "qa", "docs", "business", "creative",
+             "trading", "local", "general"]
     ordered = [c for c in order if c in by_category] + [c for c in by_category if c not in order]
 
     out: list[str] = []
@@ -997,7 +1036,8 @@ def render_roles_md(roles: list[dict[str, Any]]) -> str:
     by_category: dict[str, list[dict[str, Any]]] = {}
     for role in roles:
         by_category.setdefault(role["category"], []).append(role)
-    order = ["development", "data-ai", "security", "qa", "docs", "business", "creative", "trading", "general"]
+    order = ["development", "data-ai", "security", "qa", "docs", "business", "creative",
+             "trading", "local", "general"]
     ordered = [c for c in order if c in by_category] + [c for c in by_category if c not in order]
 
     out = [

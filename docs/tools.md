@@ -20,6 +20,10 @@ and a `y/N` prompt before anything touches disk, network or git history.
 | `gh` | write | arbitrary `gh` CLI command |
 | `gh_merge_pr` | **danger** | merge / squash / rebase / close a PR |
 | `remember` | write | append a dated note to `.nexus/memory/<role>.md` |
+| `memory` | write | long-term `MEMORY.md` / `USER.md` entries (add / remove / list) |
+| `skill_view` | read | load a `SKILL.md` in full (no name = list the library) |
+| `skill_manage` | write | create / patch / delete a skill (agentskills.io format) |
+| `recall` | read | full-text search over your own past sessions |
 | `ask_agent` | read | consult another role (one question, one answer, no tools, no recursion) |
 | `finish` | read | end the run with a summary + follow-ups |
 

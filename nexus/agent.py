@@ -15,8 +15,11 @@ from pathlib import Path
 from typing import Any
 
 from .config import NexusConfig, Pipeline, load_config
+from .learning import LearningLoop, nudge_interval, skills_index_for
+from .memory import MemoryStore, env_flag
 from .providers import ProviderRegistry, build_providers
 from .router import RouteDecision, Router
+from .sessions import SessionStore
 from .tools import (
     READ_ONLY_TOOLS,
     ApprovalCallback,
@@ -106,6 +109,8 @@ class RunResult:
     duration_s: float = 0.0
     messages: list[Message] = field(default_factory=list)
     ok: bool = True
+    learned: dict[str, Any] = field(default_factory=dict)
+    session_id: str = ""
 
 
 class NexusAgent:
@@ -155,6 +160,15 @@ class NexusAgent:
         self.session_usage = Usage()
         self.active_role: Role = self.config.role(self.config.default_role_name())
         self.plan_mode = False
+
+        # learning surfaces (Hermes-style): skills, long-term memory, recall
+        settings = self.config.settings
+        self.skills_enabled = bool(getattr(settings, "skills_enabled", True))
+        self.memory_store = MemoryStore(enabled=env_flag("NEXUS_MEMORY", bool(settings.memory_enabled)))
+        self.sessions = SessionStore()
+        self.learning = LearningLoop(self)
+        self._turns_since_nudge = 0
+        self.pending_skill: str | None = None
 
     # ------------------------------------------------------------------ #
     # helpers
@@ -227,6 +241,8 @@ class NexusAgent:
             max_read_chars=self.config.settings.max_read_chars,
             command_timeout=self.config.settings.command_timeout,
             ask_agent_depth=depth,
+            memory_store=self.memory_store,
+            sessions=self.sessions,
         )
 
     def tools_for(self, role: Role, *, read_only: bool = False, depth: int = 0):
@@ -255,6 +271,7 @@ class NexusAgent:
         max_turns: int | None = None,
         history: Sequence[Message] | None = None,
         extra_system: str = "",
+        learn: bool = True,
     ) -> RunResult:
         started = time.time()
         decision: RouteDecision
@@ -287,6 +304,34 @@ class NexusAgent:
         ctx, registry, specs = self.tools_for(active_role, read_only=read_only)
         memory_text = self.memory.read(active_role.name)
         tools_hint = "\n".join(f"- {s.name}: {s.description.splitlines()[0]}" for s in specs) or "(none)"
+
+        extras: list[str] = []
+        skills_section, selected_skills = "", []
+        if self.skills_enabled:
+            skills_section, selected_skills = skills_index_for(self, task)
+            if self.pending_skill:
+                pinned = next((s for s in selected_skills if s.name == self.pending_skill), None)
+                from . import skills as skilllib
+
+                pinned = pinned or skilllib.get(self.pending_skill, self.ws)
+                if pinned is not None:
+                    pinned.record_use()
+                    skills_section = (
+                        f"# Active skill: {pinned.name}\n{pinned.body}\n\n"
+                        "Follow this procedure unless the task contradicts it.\n\n" + skills_section
+                    )
+                self.pending_skill = None
+            if skills_section:
+                extras.append(skills_section)
+        global_memory = self.memory_store.prompt_sections()
+        if global_memory:
+            extras.append(global_memory)
+        interval = nudge_interval(self.config.settings)
+        if interval and self._turns_since_nudge >= interval:
+            extras.append(self.learning.nudge())
+            self._turns_since_nudge = 0
+        if extra_system:
+            extras.append(extra_system)
         system = render_system_prompt(
             role=active_role,
             agent_label=f"{agent_cfg.name} / {agent_cfg.model}",
@@ -294,7 +339,7 @@ class NexusAgent:
             memory_text=memory_text,
             tools_hint=tools_hint,
             plan_mode=read_only or self.plan_mode,
-            extra=extra_system,
+            extra="\n\n".join(extras),
         )
 
         messages: list[Message] = list(history or [])
@@ -323,6 +368,15 @@ class NexusAgent:
                 provider=agent_cfg.provider,
                 pending_tools=len(specs),
             )
+            streamed_parts: list[str] = []
+            use_stream = bool(self.config.settings.stream and getattr(agent_cfg, "stream", True))
+
+            def _on_text(piece: str, _role=active_role.name, _sink=streamed_parts) -> None:
+                if not piece:
+                    return
+                _sink.append(piece)
+                self.event(EventType.TEXT_DELTA, text=piece, role=_role)
+
             try:
                 provider, completion = self.providers.call_with_fallback(
                     agent_cfg.name,
@@ -333,10 +387,11 @@ class NexusAgent:
                     temperature=active_role.temperature,
                     model=active_role.model,
                     on_event=self.emit,
+                    on_text=_on_text if use_stream else None,
                 )
             except Exception as exc:  # noqa: BLE001
                 self.event(EventType.ERROR, message=str(exc))
-                return RunResult(
+                failed = RunResult(
                     text=final_text,
                     role=active_role.name,
                     agent=agent_cfg.name,
@@ -352,6 +407,7 @@ class NexusAgent:
                     messages=messages,
                     ok=False,
                 )
+                return self._after_run(failed, task, learn=False)
 
             usage.add(Usage(completion.input_tokens, completion.output_tokens, 1))
             self.session_usage.add(Usage(completion.input_tokens, completion.output_tokens, 1))
@@ -366,9 +422,15 @@ class NexusAgent:
             )
             agent_cfg = self.config.agents.get(provider.name, agent_cfg)
 
-            if completion.text:
-                final_text = completion.text
-                self.event(EventType.TEXT, text=completion.text, role=active_role.name)
+            if completion.text or streamed_parts:
+                if completion.text:
+                    final_text = completion.text
+                self.event(
+                    EventType.TEXT,
+                    text=completion.text,
+                    role=active_role.name,
+                    streamed=bool(streamed_parts),
+                )
 
             assistant_blocks = list(completion.content)
             if not assistant_blocks:
@@ -413,7 +475,7 @@ class NexusAgent:
             stop_reason = f"max_turns ({limit}) reached"
             self.status(f"stopping: {stop_reason}")
 
-        return RunResult(
+        result = RunResult(
             text=final_text,
             role=active_role.name,
             agent=agent_cfg.name,
@@ -428,6 +490,39 @@ class NexusAgent:
             duration_s=time.time() - started,
             messages=messages,
         )
+        return self._after_run(result, task, learn=learn)
+
+    # ------------------------------------------------------------------ #
+    # learning loop + session history
+    # ------------------------------------------------------------------ #
+    def _after_run(self, result: RunResult, task: str, *, learn: bool = True) -> RunResult:
+        """Record the run, then learn from it (skills/memory) when it paid off."""
+        try:
+            result.session_id = self.sessions.record(result, task, workspace=self.ws)
+        except Exception as exc:  # noqa: BLE001 - history must never break a run
+            self.event(EventType.STATUS, message=f"session history skipped: {exc}")
+        if learn and self.learning.should_review(result):
+            try:
+                outcome = self.learning.review(result, task)
+                result.learned = outcome.to_dict()
+                if outcome.changed:
+                    self.status(f"learned: {outcome.summary()}")
+                for note in outcome.notes[:3]:
+                    self.event(EventType.STATUS, message=f"learning: {note}")
+            except Exception as exc:  # noqa: BLE001
+                self.event(EventType.STATUS, message=f"learning skipped: {exc}")
+        self._turns_since_nudge += 1
+        return result
+
+    def inject_skill(self, name: str) -> Any:
+        """Pin a skill to the next run (`/skill <name>`, `<skill-name> <task>`)."""
+        from . import skills as skilllib
+
+        skill = skilllib.get(name, self.ws)
+        if skill is None:
+            raise KeyError(name)
+        self.pending_skill = skill.name
+        return skill
 
     # ------------------------------------------------------------------ #
     def chat_turn(self, text: str, *, role: str | None = None, read_only: bool = False) -> RunResult:

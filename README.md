@@ -5,7 +5,7 @@
 **One CLI / VS Code agent, a whole team of specialists behind it.**
 
 You describe a task. Nexus routes it to the right *employee* — `frontend`, `backend`,
-`pentesting`, `docs`, `trading`, `osint`, 107 curated of them (959 with the imported
+`pentesting`, `docs`, `trading`, `osint`, 111 curated of them (963 with the imported
 packs in `roles.d/`) — and that role runs on the model that fits it best:
 **Gemini** for real code edits, **DeepSeek** for cheap bulk work, **OpenRouter** for hosted
 open / uncensored models used in authorized offensive-security research. Then it uses tools
@@ -75,7 +75,7 @@ python -m venv .venv && . .venv/bin/activate
 pip install -e .
 
 nexus doctor                                   # what's reachable, what's missing
-nexus roles                                    # meet the team (959 roles)
+nexus roles                                    # meet the team (963 roles)
 nexus roles --show pentesting                  # persona + keywords + agent
 nexus addagent --list                          # the imported packs in roles.d/
 nexus task 'add pagination to the users api' --demo --yes
@@ -96,13 +96,52 @@ nexus chat                    # REPL with /commands
 nexus task 'add cursor pagination to /api/users and cover it with tests'
 ```
 
+### One command is the whole interface
+
+Once installed, **typing `nexus` and pressing Enter opens the agent** — banner, live status,
+prompt, streaming answers, everything. No subcommand, no flags, no `nexus chat` to remember:
+
+```bash
+nexus                      # → the agent (this is all you need)
+nexus --demo               # same, offline and scripted (no key needed)
+nexus gui                  # the same agent in the browser dashboard
+```
+
+Inside the REPL, `/help` lists everything (`/gui` starts the dashboard, `/local` checks Ollama,
+`/keys` sets a key, `/roles` shows the team). Type a task in plain English and Nexus routes it.
+
 `nexus keys set` prompts (input is hidden), stores the key with `chmod 600`, and never writes
 anything into the repository. Prefer environment variables? `export GEMINI_API_KEY=...` works too
 and always wins over the store. A pre-existing `.env` file is still read if present, but nothing
 requires one.
 
 Only one provider key? Fine: agents whose provider has no key fall back along
-`gemini ⇄ deepseek ⇄ openrouter`, so a single key runs the whole roster. `NEXUS_NO_PROMPT=1`
+`gemini ⇄ deepseek ⇄ openrouter`, so a single key runs the whole roster.
+### Fast & free by default
+
+Every default path is picked for latency first, price second:
+
+| Job | Agent | Model | Cost |
+| --- | --- | --- | --- |
+| Real code edits (frontend/backend/…) | `gemini` | `gemini-3.8-flash` | free tier |
+| Routing / classification | `gemini-flash` | `gemini-3.5-flash-lite` | free tier |
+| Bulk work (docs, QA, business, trading) | `deepseek` | `deepseek-flash` | ~$0.15/M in |
+| Hosted open models | `openrouter` | `openrouter/free` (free-models router) | **$0** |
+| Lowest-latency hosted | `openrouter-fast` | `nvidia/nemotron-3.5-lightning:free` | **$0** |
+| Hermes without a GPU | `hermes-free` | `nousresearch/hermes-3-llama-3.1-405b:free` | **$0** |
+| Local Hermes (no key at all) | `hermes` | `hermes3:8b` via Ollama | **$0**, offline |
+
+Three things make it feel fast, not just cheap:
+
+* **Streaming is on** (`settings.stream: true`, `NEXUS_STREAM=0` to disable). Tokens hit the
+  terminal — and the GUI — while the model is still writing, instead of after the full answer.
+  The spinner shows the live elapsed time per turn.
+* **One connection per provider** (httpx keep-alive), a 0.6 s retry backoff, and the keyword
+  router first: most tasks never make a classifier call at all.
+* **Cheap classifier, fast fallbacks.** `router_agent: gemini-flash` and a `fallback:` edge on
+  every agent mean a rate-limited free tier degrades to the next fast endpoint instead of failing.
+
+ `NEXUS_NO_PROMPT=1`
 (or `--no-key-prompt`) disables the first-run key prompt for CI/scripts.
 
 ### Local models (optional): Ollama, Hermes, uncensored
@@ -115,14 +154,21 @@ The API providers are the default, but the **local lanes still ship** and need *
 | `hermes-big` | `${HERMES_BIG_MODEL:-hermes3:70b}` | same, if you have the VRAM |
 | `ollama` | `${OLLAMA_MODEL:-llama3.1:8b}` | generic local chat / offline fallback |
 | `ollama-uncensored` | `${OLLAMA_UNCENSORED_MODEL:-dolphin-mixtral:latest}` | uncensored, `tool_mode: text` |
+| `hermes-free` | `${HERMES_FREE_MODEL:-nousresearch/hermes-3-llama-3.1-405b:free}` | **hosted** Hermes, $0, no Ollama needed |
+
+Four curated roles point at these lanes out of the box — `local-worker` (hermes),
+`local-heavy` (hermes-big), `uncensored-local` (ollama-uncensored) and `local-chat` (ollama) —
+so they show up in `nexus roles`, the GUI and the router; no manual `/agent` switch required.
 
 ```bash
 ollama serve                  # once, in the background
 ollama pull hermes3:8b
 ollama pull dolphin-mixtral
 
+nexus local                   # what Ollama has, what is missing, the exact pull commands
+nexus local --pull hermes3:8b # let Nexus pull it for you
 nexus doctor                  # ? agent:hermes  (optional: offline is a warning, not a failure)
-nexus agents                  # shows the local lanes + their fallbacks
+nexus agents                  # shows the local lanes, whether they are running, and their fallbacks
 
 # per session / per role
 nexus chat                    # then:  /agent hermes    (or /role qa before)
@@ -134,9 +180,9 @@ NEXUS_PREFER_LOCAL=1 nexus task 'refactor the parser'
 
 Two rules keep this safe:
 
-1. **A dead local server never breaks a run.** `hermes → deepseek`, `hermes-big → deepseek-pro`,
-   `ollama-uncensored → openrouter-uncensored`, `ollama → gemini`. You see
-   `⚠ agent hermes failed … ⇢ falling back to agent 'deepseek'` and the work continues.
+1. **A dead local server never breaks a run.** `hermes → hermes-free` (hosted, $0) `→ deepseek`,
+   `hermes-big → hermes-free`, `ollama-uncensored → openrouter-uncensored`, `ollama → gemini`.
+   You see `⚠ agent hermes failed … ⇢ falling back to agent 'hermes-free'` and the work continues.
 2. **Local agents are `optional: true`.** `nexus doctor` marks them `?` (not `✗`), so an offline
    laptop still reports "all good" as long as one API key is configured.
 
@@ -178,10 +224,17 @@ export GEMINI_MODEL=gemini-3.6-flash
 | `nexus keys test [provider]` | live check that the key + endpoint work |
 | `nexus keys remove <provider>` | delete a stored key |
 | `nexus models [agent]` | list the model ids the provider serves |
+| `nexus local [--pull MODEL]` | Ollama status: Hermes, uncensored and local models, and pull them |
 | `nexus prompt <role>` | print the exact system prompt a role gets |
 | `nexus doctor [--json]` | keys, endpoints, models, `gh`, repo state |
 | `nexus serve [--demo] [--yes]` | local HTTP+SSE server for the sidebar/panel |
 | `nexus gui` (alias `nexus panel`) | open the live GUI dashboard — watch routing, thinking and every tool call |
+| `nexus skills [list\|show\|import\|curate]` | the agent's skills: procedural memory it wrote itself |
+| `nexus learn "<what>" \| <file> \| <dir> \| <url>` | turn work or documentation into a reusable skill |
+| `nexus recall [query]` | full-text search over your own past runs |
+| `nexus memory [add\|remove\|import]` | long-term `MEMORY.md` + `USER.md` |
+| `nexus hermes [status\|install\|sync\|run]` | bridge to `NousResearch/hermes-agent` |
+| `nexus update` | update Nexus itself (`git pull` + reinstall) |
 | `nexus init` | drop `.nexus/roles.yaml` + `.vscode/` into any project (no `.env`) |
 | `nexus task ... --json` | machine-readable result (CI friendly) |
 
@@ -192,7 +245,9 @@ export GEMINI_MODEL=gemini-3.6-flash
 /ask <q>  /plan <task>  /task <task>  /pipeline <name> <task>
 /roles [needle]  /addagent <github-url>  /agents  /tools  /system [role]
 /keys [set <provider>]  /models [agent]
-/memory [role]  /remember <text>
+/memory [role]  /remember <text>  /memory global
+/skills  /skill <name> [task]  /<skill-name> [task]  /learn [what]  /curate  /recall [query]
+/local [--pull]  /gui [port]
 /doctor  /stats  /compact  /clear  /new  /save [file]  /exit
 ```
 
@@ -200,9 +255,9 @@ Everything that does not start with `/` is a chat turn.
 
 ---
 
-## The team (Phase 3 — 107 curated roles, 959 with imports)
+## The team (Phase 3 — 111 curated roles, 963 with imports)
 
-The curated core is 107 hand-written specialists:
+The curated core is 111 hand-written specialists:
 
 | Category | Count | Examples | Default agent |
 | --- | --- | --- | --- |
@@ -217,7 +272,7 @@ The curated core is 107 hand-written specialists:
 | general | 2 | general (fallback), assistant | *default agent* |
 
 On top of that, `roles.d/` ships **852 agents imported from five public repos**
-(see [`/addagent`](#grow-the-team-addagent)), for **959 specialists** total:
+(see [`/addagent`](#grow-the-team-addagent)), for **963 specialists** total:
 
 | Pack | Roles | From |
 | --- | --- | --- |
@@ -227,7 +282,7 @@ On top of that, `roles.d/` ships **852 agents imported from five public repos**
 | `superpowers` | 15 | [obra/superpowers](https://github.com/obra/superpowers) — dev-methodology skills |
 | `rea` | 5 | [morluto/rea](https://github.com/morluto/rea) — reverse-engineering skills |
 
-`nexus roles` prints the live table; `nexus roles -s <needle>` searches all 959.
+`nexus roles` prints the live table; `nexus roles -s <needle>` searches all 963.
 Full list of the curated core with personas: [`docs/roles.md`](docs/roles.md).
 
 ### Grow the team: `/addagent`
@@ -260,7 +315,8 @@ Details: [`docs/addagent.md`](docs/addagent.md).
 | Deep reasoning / hard debugging | `deepseek-pro` (`deepseek-v4-pro`) | strong reasoning at a low price |
 | Routing classifier | `gemini-flash` (`gemini-3.5-flash-lite`) | high-volume, low-stakes, cents |
 | General / unclassified | `gemini` | safe default |
-| Free / offline lane (opt-in) | `hermes`, `hermes-big`, `ollama` | local Ollama, no key, `NEXUS_PREFER_LOCAL=1` or `/agent hermes` |
+| Free hosted open models | `openrouter` (`openrouter/free`), `openrouter-fast` (nemotron lightning) | $0 per token; the free-models router picks a live `:free` model |
+| Free / offline lane (opt-in) | `hermes`, `hermes-big`, `ollama` | local Ollama, no key, `NEXUS_PREFER_LOCAL=1` or `/agent hermes`; `hermes-free` is the same model hosted, also $0 |
 | Local uncensored lane (opt-in) | `ollama-uncensored` (`dolphin-mixtral`, `tool_mode: text`) | same roles as `openrouter-uncensored`, but on your own box |
 
 Every agent has a `fallback:` edge (`gemini → deepseek → openrouter → gemini`), so a missing key
@@ -322,7 +378,7 @@ Task: <user's task text>
 ```
 
 The candidate list is **narrowed to the ≤40 most relevant roles** (by keyword/name/title overlap)
-before the call, so even a 959-role roster costs a single cheap classifier call rather than one
+before the call, so even a 963-role roster costs a single cheap classifier call rather than one
 per 40-role chunk; a tie among ≤8 roles is classified among exactly those. Output is
 sanitized (lowercase, `a-z0-9-` only, code fences and prose stripped) and validated against the
 full registry; anything unknown falls back to `general`. The classifier runs on `gemini-flash`
@@ -386,6 +442,9 @@ nexus gui                 # http://127.0.0.1:8787/dashboard  (opens your browser
 nexus gui --demo          # same deck, scripted run, no keys and no model calls
 nexus gui --host 0.0.0.0 --token "$(openssl rand -hex 16)"   # reach it from another machine
 ```
+
+Already inside the REPL? Type `/gui` — the server starts in a background thread, the URL is printed,
+and your terminal session keeps running. Answers stream into the deck token by token.
 
 `nexus panel` is the same command; `/panel` is the compact page the VS Code webview embeds, so
 terminal, browser and sidebar all render the identical event stream.
@@ -462,15 +521,61 @@ you can write to it with `/remember` in the REPL.
 
 ---
 
+## Learning: it grows with you (Hermes loop)
+
+Nexus keeps what it learns in three layers and loads them again next time:
+
+| Layer | Where | What |
+| --- | --- | --- |
+| **Skills** (procedural) | `~/.config/nexus/skills/`, `<project>/.nexus/skills/`, bundled `skills/` | portable `SKILL.md` files: steps, commands, pitfalls, verification |
+| **Memory** (declarative) | `~/.config/nexus/memories/MEMORY.md` + `USER.md` | facts, decisions, gotchas, your stable preferences |
+| **Sessions** (episodic) | `~/.config/nexus/sessions.db` (SQLite FTS5) | every run's task, summary and transcript — searchable |
+
+```bash
+nexus skills                  # what the agent has learned so far
+nexus skills import           # import Nous Research's hermes-agent skill library (200+)
+nexus learn "how we ship a release in this repo"
+nexus recall flaky test       # search your own past runs
+nexus memory                  # MEMORY.md + USER.md
+nexus hermes                  # status of the Hermes bridge
+nexus update                  # update Nexus itself
+```
+
+Inside the REPL: `/skills`, `/skill <name> [task]`, `/<skill-name> [task]`,
+`/learn`, `/curate`, `/recall`, `/memory global`.
+
+How the loop works:
+
+* **Before** a run, matching skills (name + ≤60-char description) and your memory
+  enter the system prompt; the full body is loaded on demand (`skill_view`) or
+  when you pin a skill.
+* **After** a non-trivial run (≥4 tool calls) a cheap model reviews the task, the
+  tool trail and the result and may write **one skill**, **one patch** and up to
+  three memory entries. It cannot touch code or your keys.
+* Skills follow the [agentskills.io](https://agentskills.io) / Hermes format, so
+  they are portable in both directions; imported skills are never overwritten.
+* The curator archives stale skills — **nothing is deleted**.
+* Turn it off with `NEXUS_LEARNING=0`; tune `learning_agent`, `learning_min_tools`,
+  `skill_nudge_interval`, `skills_enabled` in the `settings:` block.
+* Four starter skills ship with Nexus (`skills/nexus/`): add a role, add an
+  agent, verify before commit, release & self-update.
+
+Full guide: [`docs/learning.md`](docs/learning.md). The GUI has a
+**LEARNING BRAIN** card (skills, memory, recall) fed by `/api/brain`,
+`/api/skills` and `/api/recall`.
+
+---
+
 ## Project layout
 
 ```
 Nexus-Agent/
 ├── agents.yaml              # which model lives where (gemini/deepseek/openrouter + optional local Ollama lanes)
-├── roles.yaml               # 107 curated roles → persona + keywords + agent  (generated)
+├── roles.yaml               # 111 curated roles → persona + keywords + agent  (generated)
 ├── roles.d/                 # 852 imported roles (5 packs) - `nexus addagent` writes here
 ├── pipelines.yaml           # multi-role handoff pipelines
 ├── pyproject.toml           # `pip install -e .` → `nexus`
+├── skills/                  # bundled SKILL.md skills (agentskills.io / Hermes format)
 ├── .vscode/                 # tasks.json, launch.json, settings.json, extensions.json
 ├── .github/
 │   ├── PULL_REQUEST_TEMPLATE.md   # auto-filled by gh_create_pr
@@ -483,13 +588,18 @@ Nexus-Agent/
 │   ├── importers.py         # `addagent`: fetch a GitHub repo → discover agents → roles.d pack
 │   ├── providers.py         # Gemini/DeepSeek/OpenRouter (OpenAI dialect) + fallback chain
 │   ├── keys.py              # `nexus keys`: ~/.config/nexus/keys.json, no .env needed
-│   ├── tools.py             # files, shell, git, GitHub, memory, ask_agent, approval gate
+│   ├── tools.py             # files, shell, git, GitHub, memory, skills, recall, ask_agent, approval gate
+│   ├── skills.py            # SKILL.md discovery/authoring/import/curator (Hermes-compatible)
+│   ├── memory.py            # MEMORY.md + USER.md with hard character caps
+│   ├── sessions.py          # session store + FTS5 recall
+│   ├── learning.py          # the self-improvement loop (/learn, nudges, review, apply)
+│   ├── hermes.py            # bridge to NousResearch/hermes-agent + `nexus update`
 │   ├── config.py            # agents/roles/roles.d/pipelines/settings loading + layering
 │   ├── server.py            # HTTP + SSE server for the sidebar/panel
 │   ├── demo.py              # scripted offline run
 │   ├── env.py               # optional legacy .env loading (never required)
 │   ├── types.py             # roles, messages, completions, events
-│   └── panel/               # dashboard.html/css/js (the GUI deck) + panel.html (VS Code webview)
+│   └── panel/               # dashboard.html/css/js (the GUI deck + LEARNING BRAIN) + panel.html
 ├── vscode-extension/        # Phase 5 sidebar (TypeScript, no runtime deps)
 ├── tests/                   # 324 offline tests
 └── docs/                    # architecture, configuration, tools, pipelines, vscode, security, roles, roadmap, addagent
@@ -523,14 +633,17 @@ Behaviour knobs (`settings:` block) and every `NEXUS_*` override are documented 
 | --- | --- | --- |
 | 1 — Core engine (providers, tools, loop, approval gate) | ✅ | `nexus/providers.py`, `nexus/tools.py`, `nexus/agent.py` |
 | 2 — Auto role-routing (keywords + LLM fallback) | ✅ | `nexus/router.py`, `roles.yaml` |
-| 3 — 100+ roles | ✅ **107 curated + 852 imported = 959** | `roles.yaml`, `roles.d/`, `scripts/build_roles.py` |
+| 3 — 100+ roles | ✅ **111 curated + 852 imported = 963** | `roles.yaml`, `roles.d/`, `scripts/build_roles.py` |
 | 3b — Import agents from any GitHub repo | ✅ **`/addagent`** | `nexus/importers.py`, `roles.d/*.yaml`, [`docs/addagent.md`](docs/addagent.md) |
 | 4 — GitHub workflow polish (branch, commit, PR template) | ✅ | `git_prepare`, `gh_create_pr`, `.github/PULL_REQUEST_TEMPLATE.md` |
 | 5 — VS Code integration | ✅ tasks/launch **and** sidebar extension + web panel | `.vscode/`, `vscode-extension/`, `nexus/server.py`, `nexus/panel/` |
 | 6 — Multi-agent collaboration | ✅ `ask_agent` + **pipeline mode** | `pipelines.yaml`, `NexusAgent.run_pipeline` |
 | 7 — Per-role memory | ✅ | `.nexus/memory/<role>.md`, `remember` tool |
 | 8 — Model health & fallback | ✅ `fallback:` chain + `nexus doctor` | `agents.yaml`, `ProviderRegistry.call_with_fallback`, `cmd_doctor` |
-| Next — streaming tokens, MCP tools, sessions/resume, per-repo role learning | ⏳ | [`docs/roadmap.md`](docs/roadmap.md), [`docs/architecture.md`](docs/architecture.md#whats-next) |
+| Streaming tokens (CLI + GUI live deltas) | ✅ | `nexus/providers.py`, `nexus/ui.py`, `nexus/panel/*` |
+| 9 — Self-learning (skills, memory, `/learn`, curator, recall) | ✅ | `nexus/skills.py`, `nexus/memory.py`, `nexus/sessions.py`, `nexus/learning.py`, [`docs/learning.md`](docs/learning.md) |
+| 10 — Hermes bridge + self-update | ✅ | `nexus/hermes.py`, `nexus skills import`, `nexus update` |
+| Next — MCP tools, session resume, gateway platforms | ⏳ | [`docs/roadmap.md`](docs/roadmap.md), [`docs/architecture.md`](docs/architecture.md#whats-next) |
 
 ---
 
@@ -538,7 +651,7 @@ Behaviour knobs (`settings:` block) and every `NEXUS_*` override are documented 
 
 ```bash
 pip install -e ".[dev]"
-python -m pytest -q                     # 292 tests, all offline (scripted providers)
+python -m pytest -q                     # 409 tests, all offline (scripted providers)
 python scripts/build_roles.py --check   # validate the role data
 python scripts/build_roles.py --stats   # counts by category / agent
 ruff check nexus tests

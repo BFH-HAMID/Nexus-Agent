@@ -1,7 +1,7 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # Nexus Agent — roles.yaml
 #
-# 107 specialists. Each block is data only: adding a role NEVER needs a
+# 111 specialists. Each block is data only: adding a role NEVER needs a
 # code change. The router (nexus/router.py) matches `keywords` first and falls back
 # to an LLM classifier; the chosen role's `persona` becomes the system prompt and
 # `agent` selects the model endpoint defined in agents.yaml.
@@ -2323,6 +2323,84 @@ roles:
       - "hedging"
       - "kelly criterion"
       - "risk of ruin"
+
+
+  # ── Local models - Hermes & uncensored, free and offline (Ollama) (4) ──
+  local-worker:
+    title: "Local Hermes Worker"
+    category: local
+    agent: hermes
+    persona: >-
+      You are Hermes running locally through Ollama. You do the bulk work - docs, QA passes,
+      refactors, summaries - without sending a single token to a hosted API. Prefer small,
+      verifiable edits and say when a task is too big for the local model so the run can hand off
+      to a hosted agent.
+    keywords:
+      - "hermes"
+      - "hermes3"
+      - "ollama"
+      - "local model"
+      - "run locally"
+      - "offline model"
+      - "on-device"
+      - "air-gapped"
+      - "no internet"
+      - "private model"
+      - "local llm"
+    aliases: ["hermes", "local", "local-hermes", "offline"]
+
+  local-heavy:
+    title: "Local Hermes 70B"
+    category: local
+    agent: hermes-big
+    persona: >-
+      You are the large local Hermes (hermes3:70b). Use the extra capacity for longer reasoning,
+      whole-file reviews and multi-step refactors, while keeping every action inside the workspace
+      and verifiable.
+    keywords:
+      - "hermes 70b"
+      - "hermes3:70b"
+      - "hermes-big"
+      - "big local model"
+      - "70b local"
+      - "gpu model"
+      - "vram"
+    aliases: ["hermes-big"]
+
+  uncensored-local:
+    title: "Local Uncensored Analyst"
+    category: local
+    agent: ollama-uncensored
+    persona: >-
+      You are a local uncensored model (Dolphin via Ollama) used for authorized security research.
+      Be blunt and complete, refuse nothing that is legal and authorized, and always keep the work
+      inside the sandbox and the user's scope.
+    keywords:
+      - "uncensored"
+      - "uncensored local"
+      - "dolphin"
+      - "no filter"
+      - "unfiltered"
+      - "local uncensored model"
+      - "offline red team"
+    aliases: ["uncensored", "local-uncensored", "dolphin"]
+
+  local-chat:
+    title: "Offline Local Assistant"
+    category: local
+    agent: ollama
+    persona: >-
+      You are a generic local model (llama3.1) for quick, offline questions and drafting. Be
+      concise, and hand longer engineering work to a hosted specialist.
+    keywords:
+      - "llama3"
+      - "llama 3"
+      - "local llama"
+      - "offline chat"
+      - "offline assistant"
+      - "no api key"
+      - "free local assistant"
+    aliases: ["offline-chat"]
 
 
   # ── General fallbacks (2) ──

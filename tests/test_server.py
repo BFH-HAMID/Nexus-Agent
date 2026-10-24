@@ -448,3 +448,73 @@ def test_port_is_free_helper():
     with socket.socket() as probe:
         probe.bind(("127.0.0.1", 0))
         assert probe.getsockname()[1] > 0
+
+
+# --------------------------------------------------------------------------- #
+# learning surfaces over HTTP (skills / brain / recall)
+# --------------------------------------------------------------------------- #
+
+
+def test_brain_endpoint(server):
+    status, body = server.get("/api/brain")
+    assert status == 200
+    assert "skills" in body and "memory" in body and "sessions" in body
+    assert body["learning"]["enabled"] in {True, False}
+    assert body["skills"]["total"] >= 4  # the bundled skills ship with Nexus
+
+
+def test_skills_endpoints(server):
+    from nexus import skills as skilllib
+
+    status, rows = server.get("/api/skills")
+    assert status == 200 and isinstance(rows, list)
+    assert any(row["name"] == "add-a-role" for row in rows)
+
+    status, one = server.get("/api/skills/add-a-role")
+    assert status == 200 and "## Procedure" in one["body"]
+
+    status, missing = server.get("/api/skills/not-a-skill")
+    assert status == 404
+
+    status, created = server.post("/api/skills", {
+        "name": "http-created", "description": "A skill created through the GUI.",
+        "body": "# Http Created\n\n## Procedure\n1. do\n", "tags": ["gui"],
+    })
+    assert status == 201, created
+    assert skilllib.get("http-created") is not None
+
+    status, duplicate = server.post("/api/skills", {"name": "http-created", "description": "again"})
+    assert status == 400
+
+
+def test_recall_endpoint(server):
+    from nexus.agent import RunResult
+    from nexus.sessions import SessionStore
+    from nexus.types import Message, TextBlock
+
+    SessionStore().record(
+        RunResult(text="fixed the flaky test", role="qa", agent="fake", method="keyword", turns=2,
+                  tool_calls=2, summary="retried the suite",
+                  messages=[Message(role="user", content=[TextBlock(text="flaky test")])]),
+        "fix the flaky test",
+    )
+    status, rows = server.get("/api/recall?q=flaky")
+    assert status == 200 and rows
+    assert rows[0]["role"] == "qa"
+
+    status, latest = server.post("/api/recall", {"query": "", "limit": 5})
+    assert status == 200 and latest
+
+
+def test_stats_include_the_brain(server):
+    status, body = server.get("/api/stats")
+    assert status == 200
+    assert body["brain"]["skills"] >= 4
+    assert "learning" in body["brain"]
+
+
+def test_dashboard_ships_the_learning_panel(server):
+    status, body = server.get("/dashboard")
+    assert status == 200
+    assert "LEARNING BRAIN" in body
+    assert 'id="brainSkills"' in body

@@ -72,7 +72,7 @@ PROVIDERS: dict[str, ProviderSpec] = {
         env=("OPENROUTER_API_KEY",),
         base_url="https://openrouter.ai/api/v1",
         console_url="https://openrouter.ai/keys",
-        default_model="openrouter/auto",
+        default_model="openrouter/free",
     ),
 }
 

@@ -1,6 +1,6 @@
 # `/addagent` — import agents from any GitHub repo
 
-Nexus ships **107 curated roles**. `/addagent` lets you grow that team from any
+Nexus ships **111 curated roles**. `/addagent` lets you grow that team from any
 public GitHub repo of agent/skill definitions — no code changes, ever. Point it
 at a URL and it fetches the repo, discovers the agents inside, converts each one
 into a Nexus role (persona + keywords + model mapping), and writes a drop-in
@@ -136,7 +136,7 @@ the command in its file header):
 | `superpowers` | 15 | obra's development-methodology skills (brainstorming, TDD, systematic debugging, writing plans…) |
 | `rea` | 5 | reverse-engineering skills (native binaries, apps, CI audits) → uncensored local model |
 
-Together with the 107 core roles that is **959 specialists**. `nexus roles`
+Together with the 111 core roles that is **963 specialists**. `nexus roles`
 lists them by category; `nexus roles -s <needle>` searches.
 
 ## Limits & notes

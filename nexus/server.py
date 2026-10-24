@@ -16,6 +16,11 @@ POST /api/cancel/<task_id>       stop a run
 GET  /api/tasks                  run history
 GET  /api/stats                  dashboard snapshot: agents, keys, telemetry
 GET  /api/memory/<role>          per-role memory notes
+GET  /api/brain                  skills + long-term memory + past sessions
+GET  /api/skills                 the learned skills library
+GET  /api/skills/<name>          one SKILL.md in full
+GET  /api/recall?q=              search past sessions (FTS5)
+POST /api/skills                 {name, description, body, tags} -> create a skill
 GET  /dashboard                  the full GUI dashboard (this is `nexus gui`)
 GET  /panel                      compact panel (also embedded by the VS Code extension)
 
@@ -176,8 +181,85 @@ class ServerState:
             },
             "sessions": {"total": len(sessions), "running": running, "done": done, "error": failed},
             "tokens": {"in": tokens_in, "out": tokens_out},
+            "brain": self.brain_summary(),
             "auth_required": bool(self.token),
         }
+
+    def brain_summary(self) -> dict[str, Any]:
+        """Cheap counts for the dashboard header (no transcript reads)."""
+        try:
+            from . import skills as skilllib
+            from .memory import MemoryStore, env_flag
+            from .sessions import SessionStore
+
+            memory = MemoryStore(enabled=env_flag("NEXUS_MEMORY", bool(self.config.settings.memory_enabled)))
+            stats = SessionStore().stats()
+            return {
+                "skills": len(skilllib.discover(self.workspace)),
+                "memory_entries": len(memory.memory.entries),
+                "user_entries": len(memory.user.entries),
+                "sessions": stats["sessions"],
+                "learning": bool(getattr(self.config.settings, "learning", True)),
+            }
+        except Exception:  # noqa: BLE001 - never break /api/stats
+            return {"skills": 0, "memory_entries": 0, "user_entries": 0, "sessions": 0, "learning": False}
+
+    # -- learning surfaces ------------------------------------------------ #
+    def skills(self) -> list[dict[str, Any]]:
+        from . import skills as skilllib
+
+        rows = []
+        for skill in skilllib.discover(self.workspace):
+            data = skill.to_dict()
+            data["uses"] = int(skill.usage().get("uses", 0))
+            data["last_used"] = skill.usage().get("last_used")
+            rows.append(data)
+        return rows
+
+    def brain(self) -> dict[str, Any]:
+        from .memory import MemoryStore, env_flag
+        from .sessions import SessionStore
+
+        store = self.config.settings
+        memory = MemoryStore(enabled=env_flag("NEXUS_MEMORY", bool(store.memory_enabled)))
+        sessions = SessionStore()
+        library = self.skills()
+        return {
+            "skills": {"total": len(library), "recent": library[:12],
+                        "categories": sorted({s.get("category") or "general" for s in library})},
+            "memory": {"enabled": memory.enabled, "memory": memory.memory.to_dict(),
+                        "user": memory.user.to_dict()},
+            "sessions": {**sessions.stats(), "recent": sessions.recent(8)},
+            "learning": {
+                "enabled": bool(getattr(store, "learning", True)),
+                "agent": getattr(store, "learning_agent", "") or store.router_agent,
+                "min_tools": int(getattr(store, "learning_min_tools", 4) or 0),
+                "nudge_interval": int(getattr(store, "skill_nudge_interval", 8) or 0),
+            },
+        }
+
+    def recall(self, query: str, limit: int = 8) -> list[dict[str, Any]]:
+        from .sessions import SessionStore
+
+        store = SessionStore()
+        return store.search(query, limit=limit) if query else store.recent(limit)
+
+    def create_skill(self, payload: dict[str, Any]) -> dict[str, Any]:
+        from . import skills as skilllib
+
+        name = str(payload.get("name") or "").strip().lower()
+        if not name:
+            raise ValueError("name is required")
+        path = skilllib.create_skill(
+            name=name,
+            description=str(payload.get("description") or ""),
+            body=str(payload.get("body") or ""),
+            tags=payload.get("tags") or [],
+            category=str(payload.get("category") or "learned"),
+            workspace=self.workspace,
+            overwrite=bool(payload.get("overwrite")),
+        )
+        return {"ok": True, "path": str(path), "name": name}
 
     def memory(self, role: str) -> dict[str, Any]:
         from .tools import RoleMemory
@@ -446,6 +528,27 @@ def make_handler(state: ServerState):
                                         "log": session.log[-200:]})
             if path == "/api/stats":
                 return self._send_json(state.stats())
+            if path == "/api/skills":
+                return self._send_json(state.skills())
+            if path.startswith("/api/skills/"):
+                from . import skills as skilllib
+
+                name = unquote(path.rsplit("/", 1)[-1])
+                skill = skilllib.get(name, state.workspace)
+                if skill is None:
+                    return self._send_json({"error": f"unknown skill: {name}"}, 404)
+                return self._send_json({**skill.to_dict(), "body": skill.body})
+            if path == "/api/brain":
+                try:
+                    return self._send_json(state.brain())
+                except Exception as exc:  # noqa: BLE001
+                    return self._send_json({"error": f"brain unavailable: {exc}"}, 400)
+            if path == "/api/recall":
+                query = (parse_qs(parsed.query).get("q") or [""])[0]
+                try:
+                    return self._send_json(state.recall(query))
+                except Exception as exc:  # noqa: BLE001
+                    return self._send_json({"error": f"recall unavailable: {exc}"}, 400)
             if path.startswith("/api/memory/"):
                 role = unquote(path.rsplit("/", 1)[-1])
                 if role not in state.config.roles:
@@ -497,6 +600,18 @@ def make_handler(state: ServerState):
                                        auto_yes=bool(payload.get("auto_yes")))
                 state.start(session)
                 return self._send_json({"task_id": session.task_id, "status": session.status}, 202)
+
+            if path == "/api/skills":
+                try:
+                    return self._send_json(state.create_skill(payload), 201)
+                except (ValueError, FileExistsError, OSError) as exc:
+                    return self._send_json({"error": str(exc)}, 400)
+            if path == "/api/recall":
+                query = str(payload.get("query") or "")
+                try:
+                    return self._send_json(state.recall(query, int(payload.get("limit") or 8)))
+                except Exception as exc:  # noqa: BLE001
+                    return self._send_json({"error": f"recall unavailable: {exc}"}, 400)
 
             if path.startswith("/api/approve/"):
                 session = state.get(path.rsplit("/", 1)[-1])

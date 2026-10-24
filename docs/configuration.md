@@ -21,7 +21,7 @@ Every file is loaded in layers and deep-merged, **later wins**:
 | 4 | `<project>/.nexus/*.yaml` + `<project>/.nexus/roles.d/*.yaml` | project-local specialists + imports |
 | 5 | `<project>/agents.yaml`, `roles.yaml`, … | project root overrides |
 
-So a repo can add a `repo-historian` role in `.nexus/roles.yaml` without touching the 107
+So a repo can add a `repo-historian` role in `.nexus/roles.yaml` without touching the 111
 bundled ones, and your `~/.config/nexus/agents.yaml` can repoint `deepseek` at a different model
 (or a self-hosted OpenAI-compatible box) for every project at once.
 
@@ -102,8 +102,9 @@ agents:
 
 | Agent | Model | `tool_mode` | Falls back to |
 | --- | --- | --- | --- |
-| `hermes` | `${HERMES_MODEL:-hermes3:8b}` | `native` | `deepseek` |
-| `hermes-big` | `${HERMES_BIG_MODEL:-hermes3:70b}` | `native` | `deepseek-pro` |
+| `hermes` | `${HERMES_MODEL:-hermes3:8b}` | `native` | `hermes-free` (hosted, $0) |
+| `hermes-big` | `${HERMES_BIG_MODEL:-hermes3:70b}` | `native` | `hermes-free` |
+| `hermes-free` | `${HERMES_FREE_MODEL:-nousresearch/hermes-3-llama-3.1-405b:free}` | `native` | `openrouter` |
 | `ollama` | `${OLLAMA_MODEL:-llama3.1:8b}` | `native` | `gemini` |
 | `ollama-uncensored` | `${OLLAMA_UNCENSORED_MODEL:-dolphin-mixtral:latest}` | `text` | `openrouter-uncensored` |
 
@@ -113,7 +114,12 @@ They are ordinary agents — no special code path:
   `None`, so `nexus keys`/the first-run wizard never ask for one;
 * **`optional: true`**: an unreachable endpoint is reported as `?` in `nexus doctor` (and as a
   warning in `nexus agents`) instead of a failure;
-* **fallbacks point at a hosted twin**, so switching a role to `hermes` never loses the safety net.
+* **fallbacks point at a hosted twin**, so switching a role to `hermes` never loses the safety net
+  (`hermes` → `hermes-free` → `deepseek`, all free or near-free);
+
+Four curated roles target these lanes directly: `local-worker`, `local-heavy`,
+`uncensored-local` and `local-chat`. `nexus local` reports what Ollama has and
+`nexus local --pull hermes3:8b` pulls a model for you.
 
 Point a role at one with `agent: hermes` in `roles.yaml`, `/agent hermes` in the REPL, or flip the
 whole roster:
@@ -152,6 +158,20 @@ Text mode also rescues native models that *leak* tool calls into prose (a common
 bug): if the response contains a JSON tool object and no structured `tool_calls`, Nexus parses it
 and keeps the loop going.
 
+### Streaming
+
+`Provider.complete(..., on_text=…)` streams for every OpenAI-compatible provider
+(Gemini, DeepSeek, OpenRouter, Ollama): the adapter sends `stream: true`, parses the
+SSE chunks, and hands each text delta to the caller while accumulating tool-call
+fragments. The agent re-emits those slices as `EventType.TEXT_DELTA`, which the CLI
+renders live and the server forwards to the browser over its existing SSE stream.
+
+* one stream per turn; if the request fails **before** the first token the adapter
+  retries, and then falls back to the next agent — once text is on screen it never
+  prints a second, different answer;
+* `settings.stream: false` (or `NEXUS_STREAM=0`) restores the non-streaming call;
+* per-agent opt-out: `stream: false` in an `agents.yaml` entry.
+
 ### `fallback`
 
 `ProviderRegistry.call_with_fallback` walks the chain on any `ProviderError`, emits an
@@ -165,7 +185,7 @@ instantly (`agent 'gemini' has no API key - run \`nexus keys set gemini\``), the
 takes over.
 
 The optional local lanes hook into the same chain from the other side
-(`hermes → deepseek`, `hermes-big → deepseek-pro`, `ollama → gemini`,
+(`hermes → hermes-free`, `hermes-big → hermes-free`, `ollama → gemini`,
 `ollama-uncensored → openrouter-uncensored`), so an Ollama server that is not running only costs
 one refused connection before the hosted agent takes over. Health for those agents uses a 10 s
 timeout, so `nexus doctor` never hangs on a dead box.
@@ -179,7 +199,9 @@ timeout, so `nexus doctor` never hangs on a dead box.
 | `gemini-flash` | `${GEMINI_FAST_MODEL:-gemini-3.5-flash-lite}` | the routing classifier |
 | `deepseek` | `${DEEPSEEK_MODEL:-deepseek-flash}` | cheap bulk work, tool calling |
 | `deepseek-pro` | `${DEEPSEEK_PRO_MODEL:-deepseek-v4-pro}` | hard reasoning |
-| `openrouter` | `${OPENROUTER_MODEL:-openrouter/auto}` | any hosted open model |
+| `openrouter` | `${OPENROUTER_MODEL:-openrouter/free}` | free-models router ($0, any live `:free` model) |
+| `openrouter-fast` | `${OPENROUTER_FAST_MODEL:-nvidia/nemotron-3.5-lightning:free}` | lowest latency, $0 |
+| `hermes-free` | `${HERMES_FREE_MODEL:-nousresearch/hermes-3-llama-3.1-405b:free}` | Hermes without a GPU, $0 |
 | `openrouter-uncensored` | `${OPENROUTER_UNCENSORED_MODEL:-cognitivecomputations/dolphin-mistral-24b-venice-edition}` | uncensored, text-mode tools |
 
 Model ids move fast: `nexus models <agent>` lists what the provider actually serves right now,
@@ -198,9 +220,9 @@ python scripts/build_roles.py           # write roles.yaml (+ --docs for the doc
 
 CI fails if `roles.yaml` or `docs/roles.md` drift from the generator.
 
-The generated `roles.yaml` holds the **107 curated** roles. Imported agents are kept separate, in
+The generated `roles.yaml` holds the **111 curated** roles. Imported agents are kept separate, in
 `roles.d/*.yaml` packs written by [`nexus addagent`](addagent.md), so regenerating the core never
-touches them. Both merge into one registry at load time (959 roles in this repo).
+touches them. Both merge into one registry at load time (963 roles in this repo).
 
 ### Role schema
 
@@ -231,6 +253,12 @@ roles.
 | `router_min_score` | `1.0` | `NEXUS_ROUTER_MIN_SCORE` | keyword score needed to skip the LLM |
 | `router_llm_fallback` | `true` | `NEXUS_ROUTER_LLM` | classify with a model when no keyword hits |
 | `router_agent` | `gemini-flash` | `NEXUS_ROUTER_AGENT` | which agent runs the classifier |
+| `stream` | `true` | `NEXUS_STREAM` | stream tokens (CLI deltas + SSE to the GUI) instead of waiting for the full reply |
+| `learning` | `true` | `NEXUS_LEARNING` | after a non-trivial run, review it and save skills/memory |
+| `learning_agent` | `""` (→ `router_agent`) | `NEXUS_LEARNING_AGENT` | the cheap model that writes what was learned |
+| `learning_min_tools` | `4` | `NEXUS_LEARNING_MIN_TOOLS` | runs with fewer tool calls are not reviewed |
+| `skill_nudge_interval` | `8` | `NEXUS_SKILL_NUDGE` | turns between "save what you learned" reminders (0 = off) |
+| `skills_enabled` | `true` | `NEXUS_SKILLS` | inject the skills index into the system prompt |
 | `prefer_local` | `false` | `NEXUS_PREFER_LOCAL` | point roles + classifier at the local Ollama lanes |
 | `max_turns` | `24` | `NEXUS_MAX_TURNS` | hard stop for the tool loop |
 | `auto_yes` | `false` | `NEXUS_YES` | never prompt (danger calls still blocked) |
@@ -259,7 +287,8 @@ your shell profile:
 GEMINI_API_KEY         DEEPSEEK_API_KEY             OPENROUTER_API_KEY
 GEMINI_MODEL           GEMINI_BIG_MODEL             GEMINI_FAST_MODEL
 DEEPSEEK_MODEL         DEEPSEEK_PRO_MODEL
-OPENROUTER_MODEL       OPENROUTER_UNCENSORED_MODEL
+OPENROUTER_MODEL       OPENROUTER_FAST_MODEL        OPENROUTER_UNCENSORED_MODEL
+HERMES_FREE_MODEL      NEXUS_STREAM
 OLLAMA_HOST            HERMES_MODEL                 HERMES_BIG_MODEL
 OLLAMA_MODEL           OLLAMA_UNCENSORED_MODEL      NEXUS_PREFER_LOCAL
 GITHUB_TOKEN / GH_TOKEN
@@ -267,6 +296,8 @@ NEXUS_KEYS_FILE        NEXUS_HOME                   NEXUS_WORKSPACE
 NEXUS_DEFAULT_AGENT    NEXUS_AUTO_ROUTE             NEXUS_ROUTER_AGENT
 NEXUS_ROUTER_LLM       NEXUS_ROUTER_MIN_SCORE       NEXUS_MAX_TURNS
 NEXUS_YES              NEXUS_ALLOW_DANGEROUS        NEXUS_MEMORY
+NEXUS_LEARNING         NEXUS_LEARNING_AGENT         NEXUS_LEARNING_MIN_TOOLS
+NEXUS_SKILLS           NEXUS_SKILL_NUDGE            NEXUS_HERMES_CHECKOUT
 NEXUS_AUTO_BRANCH      NEXUS_COMMAND_TIMEOUT        NEXUS_SERVE_TOKEN
 NEXUS_SERVE_PORT       NEXUS_DEMO                   NEXUS_NO_PROMPT
 NO_COLOR / NEXUS_NO_COLOR

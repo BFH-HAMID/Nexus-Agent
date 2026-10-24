@@ -70,7 +70,7 @@ LOCAL_HOSTS = ("localhost", "127.0.0.1", "0.0.0.0", "::1", "host.docker.internal
 # --------------------------------------------------------------------------- #
 
 
-def _retry(fn, *, attempts: int = 3, base_delay: float = 1.2):
+def _retry(fn, *, attempts: int = 3, base_delay: float = 0.6):
     """Retry transient failures with a small linear backoff."""
     last: Exception | None = None
     for i in range(attempts):
@@ -184,6 +184,10 @@ def _status_and_body(response: Any) -> tuple[int, str]:
     return int(status), str(body)
 
 
+def _stream_model(value: Any) -> str:
+    return str(value or "")
+
+
 # --------------------------------------------------------------------------- #
 # Anthropic
 # --------------------------------------------------------------------------- #
@@ -244,6 +248,7 @@ class AnthropicProvider(Provider):
         max_tokens: int | None = None,
         temperature: float | None = None,
         model: str | None = None,
+        on_text: Any = None,
     ) -> Completion:
         use_model = model or self.model
         native_tools = bool(tools) and self.supports_tools and self.tool_mode == "native"
@@ -271,7 +276,10 @@ class AnthropicProvider(Provider):
             payload.setdefault(key, value)
 
         data = _retry(lambda: self._post(payload))
-        return self._from_api(data, use_model)
+        completion = self._from_api(data, use_model)
+        if on_text is not None and completion.text:
+            on_text(completion.text)
+        return completion
 
     def _post(self, payload: dict[str, Any]) -> dict[str, Any]:
         url = f"{self.base_url}/v1/messages"
@@ -490,6 +498,7 @@ class OpenAICompatProvider(Provider):
         max_tokens: int | None = None,
         temperature: float | None = None,
         model: str | None = None,
+        on_text: Any = None,
     ) -> Completion:
         self._require_key()
         native_tools = bool(tools) and self.supports_tools and self.tool_mode == "native"
@@ -513,8 +522,157 @@ class OpenAICompatProvider(Provider):
         for key, value in (self.cfg.extra or {}).items():
             payload.setdefault(key, value)
 
+        # Streaming is what makes the agent feel instant: the first tokens reach
+        # the CLI/GUI while the model is still writing. Any failure before the
+        # first token falls back to the plain (non-streaming) request.
+        if on_text is not None and self.cfg.stream and hasattr(self._http, "stream"):
+            try:
+                return self._stream(payload, payload["model"], on_text)
+            except ProviderError as exc:
+                if getattr(exc, "partial", False) or not exc.retryable:
+                    raise
+                on_text("")   # no visible text yet - safe to retry without streaming
+
         data = _retry(lambda: self._post(payload))
         return self._from_api(data, payload["model"])
+
+    # -- streaming --------------------------------------------------------- #
+    def _stream(self, payload: dict[str, Any], model: str, on_text: Any) -> Completion:
+        """POST with ``stream: true`` and hand each text delta to ``on_text``."""
+        body = dict(payload, stream=True)
+        if self.family in {"deepseek", "openai"}:
+            # ask for the final usage frame where the API documents it
+            body.setdefault("stream_options", {"include_usage": True})
+
+        emitted = False
+
+        def deliver(piece: str) -> None:
+            nonlocal emitted
+            if piece:
+                emitted = True
+                on_text(piece)
+
+        attempts = 2
+        last: ProviderError | None = None
+        for attempt in range(attempts):
+            try:
+                return self._stream_once(body, model, deliver)
+            except ProviderError as exc:
+                last = exc
+                # text already on screen: a retry would duplicate it
+                if emitted or not exc.retryable or attempt == attempts - 1:
+                    exc.partial = bool(emitted)   # type: ignore[attr-defined]
+                    raise
+                time.sleep(0.4 * (attempt + 1))
+        raise last or ProviderError(f"{self.name}: streaming failed")
+
+    def _stream_once(self, payload: dict[str, Any], model: str, on_text: Any) -> Completion:
+        text_parts: list[str] = []
+        slots: dict[int, dict[str, Any]] = {}
+        usage: dict[str, Any] = {}
+        finish = ""
+        try:
+            with self._http.stream("POST", self.chat_url, json=payload, headers=self._headers()) as response:
+                status = int(getattr(response, "status_code", 200) or 200)
+                if status >= 400:
+                    body = ""
+                    try:
+                        body = response.read().decode("utf-8", "replace")
+                    except Exception:  # noqa: BLE001
+                        pass
+                    raise self._error_for_status(status, body)
+                for raw in response.iter_lines():
+                    line = raw.decode("utf-8", "replace") if isinstance(raw, (bytes, bytearray)) else str(raw)
+                    line = line.strip()
+                    if not line or line.startswith(":"):
+                        continue
+                    if not line.startswith("data:"):
+                        continue
+                    data = line[5:].strip()
+                    if not data or data == "[DONE]":
+                        if data == "[DONE]":
+                            break
+                        continue
+                    try:
+                        chunk = json.loads(data)
+                    except json.JSONDecodeError:
+                        continue
+                    if chunk.get("error"):
+                        raise ProviderError(
+                            f"{self.name}: {truncate(json.dumps(chunk['error']), 600)}", retryable=False
+                        )
+                    if chunk.get("usage"):
+                        usage = chunk["usage"]
+                    for choice in chunk.get("choices") or []:
+                        delta = choice.get("delta") or {}
+                        piece = delta.get("content")
+                        if isinstance(piece, list):
+                            piece = "".join(p.get("text", "") for p in piece if isinstance(p, dict))
+                        if isinstance(piece, str) and piece:
+                            text_parts.append(piece)
+                            on_text(piece)
+                        for call in delta.get("tool_calls") or []:
+                            index = int(call.get("index") or 0)
+                            slot = slots.setdefault(index, {"id": "", "name": "", "arguments": ""})
+                            if call.get("id"):
+                                slot["id"] = call["id"]
+                            fn = call.get("function") or {}
+                            if fn.get("name"):
+                                slot["name"] = fn["name"]
+                            if fn.get("arguments"):
+                                slot["arguments"] += fn["arguments"]
+                        if choice.get("finish_reason"):
+                            finish = str(choice["finish_reason"])
+        except ProviderError:
+            raise
+        except Exception as exc:  # noqa: BLE001 - network reset mid-stream and friends
+            raise ProviderError(f"{self.name}: stream failed ({exc.__class__.__name__}: {exc})",
+                                retryable=True) from exc
+
+        text = "".join(text_parts)
+        content: list[Any] = []
+        if text.strip():
+            content.append(TextBlock(text=text))
+        for index in sorted(slots):
+            slot = slots[index]
+            if not slot["name"]:
+                continue
+            raw_args = slot["arguments"] or "{}"
+            try:
+                args = json.loads(raw_args)
+            except json.JSONDecodeError:
+                args = {"_raw": raw_args}
+            if not isinstance(args, dict):
+                args = {"value": args}
+            content.append(ToolCall(id=slot["id"] or f"call_{index}", name=slot["name"], input=args))
+
+        completion = Completion(
+            content=content,
+            stop_reason="tool_use" if any(isinstance(c, ToolCall) for c in content) else (finish or "end_turn"),
+            model=str(_stream_model(payload.get("model"))),
+            input_tokens=int(usage.get("prompt_tokens") or usage.get("input_tokens") or 0),
+            output_tokens=int(usage.get("completion_tokens") or usage.get("output_tokens") or 0),
+            raw={"streamed": True},
+        )
+        # recover tool calls that a text-mode model leaked into the prose
+        if not completion.tool_calls and text:
+            call, remaining = parse_tool_call_from_text(text)
+            if call is not None:
+                completion.content = ([TextBlock(text=remaining)] if remaining.strip() else []) + [call]
+                completion.stop_reason = "tool_use"
+        return completion
+
+    def _error_for_status(self, status: int, body: str) -> ProviderError:
+        hint = ""
+        if status in {401, 403}:
+            hint = f" - check the API key: {self.cfg.missing_key_hint()}"
+        elif status == 404 and self.is_local:
+            hint = f" (pull the model: `ollama pull {self.model}`)"
+        return ProviderError(
+            f"{self.name} HTTP {status}: {truncate(body, 1000)}{hint}",
+            retryable=status in TRANSIENT_STATUS_CODES,
+            status=status,
+        )
 
     def _post(self, payload: dict[str, Any]) -> dict[str, Any]:
         try:
@@ -527,19 +685,14 @@ class OpenAICompatProvider(Provider):
             ) from exc
         status, body = _status_and_body(response)
         if status >= 400:
-            hint = ""
-            if status in {401, 403}:
-                hint = f" - check the API key: {self.cfg.missing_key_hint()}"
-            elif status == 404:
-                if "does not exist" in body or "not found" in body.lower():
-                    hint = f" (pull the model: `ollama pull {self.model}`)" if self.is_local else (
-                        f" - is '{self.model}' a valid model id? try `nexus models {self.name}`"
-                    )
-            raise ProviderError(
-                f"{self.name} HTTP {status}: {truncate(body, 1000)}{hint}",
-                retryable=status in TRANSIENT_STATUS_CODES,
-                status=status,
-            )
+            error = self._error_for_status(status, body)
+            if status == 404 and not self.is_local:
+                error = ProviderError(
+                    f"{self.name} HTTP 404: {truncate(body, 1000)} - is '{self.model}' a valid "
+                    f"model id? try `nexus models {self.name}`",
+                    retryable=False, status=status,
+                )
+            raise error
         if hasattr(response, "json"):
             return response.json()
         return json.loads(response)  # pragma: no cover
@@ -687,6 +840,25 @@ class OpenAICompatProvider(Provider):
 # --------------------------------------------------------------------------- #
 
 
+_ACCEPTS_STREAM: dict[type, bool] = {}
+
+
+def _accepts_on_text(provider: Any) -> bool:
+    """True when ``provider.complete`` takes an ``on_text`` callback."""
+    cls = type(provider)
+    cached = _ACCEPTS_STREAM.get(cls)
+    if cached is not None:
+        return cached
+    import inspect
+
+    try:
+        accepts = "on_text" in inspect.signature(provider.complete).parameters
+    except (TypeError, ValueError):  # pragma: no cover - builtins
+        accepts = False
+    _ACCEPTS_STREAM[cls] = accepts
+    return accepts
+
+
 class ProviderRegistry:
     """Builds and caches providers, and walks the ``fallback`` chain."""
 
@@ -733,8 +905,14 @@ class ProviderRegistry:
         temperature: float | None = None,
         model: str | None = None,
         on_event: Any = None,
+        on_text: Any = None,
     ) -> tuple[Provider, Completion]:
-        """Try ``name``; on failure walk its ``fallback`` chain."""
+        """Try ``name``; on failure walk its ``fallback`` chain.
+
+        ``on_text`` (optional) receives streamed text slices. Once text has been
+        streamed to the caller we never fall back to another provider, because
+        that would print a second, different answer on top of the first one.
+        """
         from .types import Event, EventType
 
         tried: list[str] = []
@@ -743,20 +921,31 @@ class ProviderRegistry:
         while current and current not in tried:
             tried.append(current)
             provider = self.get(current)
+            emitted: list[str] = []
+
+            def relay(piece: str, _sink=emitted) -> None:
+                if piece:
+                    _sink.append(piece)
+                    if on_text is not None:
+                        on_text(piece)
+
+            kwargs: dict[str, Any] = {
+                "max_tokens": max_tokens,
+                "temperature": temperature,
+                "model": model if current == name else None,
+            }
+            if on_text is not None and _accepts_on_text(provider):
+                kwargs["on_text"] = relay
             try:
-                completion = provider.complete(
-                    system,
-                    messages,
-                    tools,
-                    max_tokens=max_tokens,
-                    temperature=temperature,
-                    model=model if current == name else None,
-                )
+                completion = provider.complete(system, messages, tools, **kwargs)
                 return provider, completion
             except ProviderError as exc:
                 last_error = exc
                 if on_event is not None:
                     on_event(Event(EventType.AGENT, {"level": "warn", "agent": current, "error": str(exc)}))
+                if emitted:
+                    # partial answer already on screen - do not double-print
+                    raise ProviderError(str(exc), retryable=False, status=exc.status) from exc
                 current = provider.fallback
                 if current and on_event is not None:
                     on_event(
