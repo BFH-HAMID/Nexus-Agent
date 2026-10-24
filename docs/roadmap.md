@@ -54,6 +54,8 @@ importer.
 * Sidebar extension (`vscode-extension/`): activity-bar webview with live role/agent, an event
   log, and native **Approve / Approve & remember / Deny** — no terminal `y/N`.
 * Built-in browser panel (`nexus panel`) sharing the same server and UI.
+* GUI dashboard (`nexus gui` → `/dashboard`): live process timeline, cognition map, router prediction,
+  token/telemetry meters, security audit log, in-page approvals, per-role memory.
 
 ## Phase 6 — Multi-agent collaboration ✅
 

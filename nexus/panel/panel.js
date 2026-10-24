@@ -126,6 +126,11 @@
       ev("tool_call", data.tool, data.preview || "");
     } else if (t === "tool_result") {
       ev("tool_result", data.is_error ? "✗ error" : "✓ ok", (data.preview || "").slice(0, 600));
+    } else if (t === "think") {
+      ev("status", "think", "◉ thinking · " + (data.agent || "") + " " + (data.model || "") +
+        (data.turn ? " · turn " + data.turn + "/" + data.max_turns : ""));
+    } else if (t === "usage") {
+      /* live token meters - nothing to print in the compact panel */
     } else if (t === "status") {
       ev("status", "status", data.message || "");
     } else if (t === "memory") {
@@ -190,16 +195,17 @@
     if (!task) { ev("error", "error", "write a task first"); return; }
     const pipeline = $("pipeline").value;
     const body = {
-      task: pipeline ? "/pipeline " + pipeline + " " + task : task,
+      task: task,
       role: $("role").value || null,
       read_only: $("readonly").checked,
+      pipeline: pipeline || null,
     };
     $("log").innerHTML = "";
     $("summary").classList.add("hidden");
     $("run").disabled = true;
     $("cancel").disabled = false;
     setStatus("starting", true);
-    ev("status", "task", body.task);
+    ev("status", "task", (body.pipeline ? "pipeline " + body.pipeline + " :: " : "") + body.task);
     api("/api/task", { method: "POST", body: JSON.stringify(body) }).then(({ ok, body: res }) => {
       if (!ok || !res.task_id) {
         ev("error", "error", (res && res.error) || "could not start the task");

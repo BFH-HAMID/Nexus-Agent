@@ -10,7 +10,8 @@ agents    list configured model agents
 pipeline  run a multi-role handoff pipeline
 doctor    health check: keys, endpoints, models, tools, repo
 serve     local HTTP + SSE server for the VS Code sidebar
-panel     open the built-in browser panel
+gui       open the GUI dashboard (same as `panel`)
+panel     open the GUI dashboard in a browser
 keys      set / list / test API keys (no .env file needed)
 models    list the model ids a provider actually offers
 init      write .nexus / .vscode scaffolding into a project
@@ -99,6 +100,13 @@ def emit_console(event: Event) -> None:
                 + (f" ({d.get('note')})" if d.get("note") else "")
             )
         )
+    elif t is EventType.THINK:
+        turn = d.get("turn")
+        total = d.get("max_turns")
+        print(COLORS.dim(
+            f"◉ thinking [{d.get('agent')}/{d.get('model')}]"
+            + (f"  turn {turn}/{total}" if turn else "")
+        ))
     elif t is EventType.AGENT:
         level = d.get("level", "info")
         color = COLORS.yellow if level == "warn" else COLORS.blue
@@ -1198,14 +1206,18 @@ def cmd_serve(args: argparse.Namespace) -> int:
 
 
 def cmd_panel(args: argparse.Namespace) -> int:
-    """Serve the built-in web panel (same UI the VS Code sidebar loads)."""
+    """Serve the GUI dashboard (`nexus gui` / `nexus panel`)."""
     from .server import serve
 
     workspace = Path(args.workspace).resolve() if args.workspace else Path.cwd().resolve()
-    print(COLORS.dim(f"panel: http://{args.host}:{args.port}/panel  (workspace {workspace})"))
+    host = "127.0.0.1" if args.host == "0.0.0.0" else args.host
+    print(COLORS.bold(f"dashboard: http://{host}:{args.port}/dashboard") + COLORS.dim(f"  (workspace {workspace})"))
+    if args.host == "0.0.0.0":
+        print(COLORS.dim("  bound to 0.0.0.0 so a remote browser can reach it - "
+                         "set --token/NEXUS_SERVE_TOKEN before exposing the port"))
     return serve(host=args.host, port=args.port, workspace=workspace, token=args.token,
                  auto_yes=args.yes, quiet=args.quiet, demo=getattr(args, "demo", False),
-                 open_panel=True)
+                 open_panel=getattr(args, "open", True))
 
 
 def cmd_init(args: argparse.Namespace) -> int:
@@ -1307,6 +1319,7 @@ def build_parser() -> argparse.ArgumentParser:
             "  nexus pipeline ship-feature 'add a rate limiter to the public API'\n"
             "  nexus roles --search security\n"
             "  nexus doctor\n"
+            "  nexus gui                    # live GUI dashboard (localhost:8787)\n"
         ),
     )
     parser.add_argument("--version", action="store_true", help="print version and exit")
@@ -1385,15 +1398,21 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--demo", action="store_true", help="scripted runs (no API key needed)")
     p.set_defaults(func=cmd_serve)
 
-    p = sub.add_parser("panel", help="serve the built-in browser panel")
-    p.add_argument("--workspace", "-C")
-    p.add_argument("--host", default="127.0.0.1")
-    p.add_argument("--port", type=int, default=8787)
-    p.add_argument("--token", default=os.environ.get("NEXUS_SERVE_TOKEN", ""))
-    p.add_argument("--yes", "-y", action="store_true")
-    p.add_argument("--quiet", action="store_true")
-    p.add_argument("--demo", action="store_true", help="scripted runs (no API key needed)")
-    p.set_defaults(func=cmd_panel)
+    for sub_name, sub_help in (
+        ("panel", "serve + open the GUI dashboard"),
+        ("gui", "serve + open the GUI dashboard (alias of panel)"),
+    ):
+        p = sub.add_parser(sub_name, help=sub_help)
+        p.add_argument("--workspace", "-C")
+        p.add_argument("--host", default="127.0.0.1")
+        p.add_argument("--port", type=int, default=8787)
+        p.add_argument("--token", default=os.environ.get("NEXUS_SERVE_TOKEN", ""))
+        p.add_argument("--yes", "-y", action="store_true")
+        p.add_argument("--quiet", action="store_true")
+        p.add_argument("--demo", action="store_true", help="scripted runs (no API key needed)")
+        p.add_argument("--no-open", dest="open", action="store_false",
+                       help="serve only - do not launch a browser")
+        p.set_defaults(func=cmd_panel, open=True)
 
     p = sub.add_parser("keys", help="set / list / test API keys (no .env file needed)")
     p.add_argument("action", nargs="?", default="list",

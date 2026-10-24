@@ -51,6 +51,14 @@ class FakeAgent:
                          tool_calls=1, summary="wrote x.py", changed_files=["x.py"],
                          stopped_reason="finish", duration_s=0.01, ok=True)
 
+    def run_pipeline(self, name: str, task: str) -> list[RunResult]:
+        self.emit(Event(EventType.STATUS, {"message": f"pipeline '{name}' -> {task}"}))
+        return [
+            RunResult(text="step done", role=step, agent="gemini", turns=1, tool_calls=0,
+                      summary=f"{step} finished", stopped_reason="finish", duration_s=0.01, ok=True)
+            for step in ("backend", "qa")
+        ]
+
 
 @pytest.fixture()
 def server(repo: Path, monkeypatch):
@@ -129,6 +137,11 @@ class SimpleServer:
                 return value
             time.sleep(interval)
         raise AssertionError("condition not met within timeout")
+
+
+class NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
 
 
 def _maybe_json(body: str):
@@ -323,6 +336,93 @@ def test_auto_yes_server_never_blocks(repo: Path, monkeypatch):
         httpd.shutdown()
         httpd.server_close()
         thread.join(timeout=5)
+
+
+def test_stats_endpoint_describes_the_deck(server):
+    status, stats = server.get("/api/stats")
+    assert status == 200
+    assert stats["version"]
+    assert Path(stats["workspace"]).is_dir()
+    assert stats["roles"] >= 100
+    assert isinstance(stats["categories"], dict) and "development" in stats["categories"]
+    assert stats["default_agent"] == "gemini"
+    assert stats["agents"]["gemini"]["provider"] == "gemini"
+    assert stats["agents"]["hermes"]["optional"] is True
+    assert stats["agents"]["gemini"]["fallback"] == "hermes" or stats["agents"]["gemini"]["fallback"]
+    assert set(stats["keys"]) == {"gemini", "deepseek", "openrouter"}
+    assert "configured" in stats["keys"]["gemini"]
+    assert "ship-feature" in stats["pipelines"]
+    assert stats["settings"]["auto_route"] in (True, False)
+    assert stats["sessions"]["total"] >= 0
+    assert set(stats["tokens"]) == {"in", "out"}
+    assert stats["auth_required"] is False
+
+
+def test_dashboard_is_served_with_its_assets(server):
+    status, html = server.get("/dashboard")
+    assert status == 200
+    assert "Nexus Agent" in html and "/dashboard/dashboard.js" in html
+    for asset, needle in (("/dashboard/dashboard.css", "--neon"),
+                          ("/dashboard/dashboard.js", "EventSource")):
+        status, body = server.get(asset)
+        assert status == 200, asset
+        assert needle in body
+    # /gui is an alias of the same deck, and / redirects to it
+    assert server.get("/gui")[0] == 200
+    opener = urllib.request.build_opener(NoRedirect)
+    with pytest.raises(urllib.error.HTTPError) as excinfo:
+        opener.open(server.base + "/", timeout=10)
+    assert excinfo.value.code == 302
+    assert excinfo.value.headers["Location"] == "/dashboard"
+
+
+def test_dashboard_assets_never_need_a_token(repo: Path, monkeypatch):
+    monkeypatch.setattr(server_module, "NexusAgent", lambda *a, **k: FakeAgent())
+    state = ServerState(repo, token="s3cret", auto_yes=False, quiet=True)
+    httpd = ThreadingHTTPServer(("127.0.0.1", 0), make_handler(state))
+    httpd.daemon_threads = True
+    thread = threading.Thread(target=httpd.serve_forever, kwargs={"poll_interval": 0.05}, daemon=True)
+    thread.start()
+    host, port = httpd.server_address[:2]
+    helper = SimpleServer(f"http://{host}:{port}", state, [])
+    try:
+        assert helper.get("/dashboard")[0] == 200
+        assert helper.get("/dashboard/dashboard.css")[0] == 200
+        assert helper.get("/dashboard/dashboard.js")[0] == 200
+        assert helper.get("/api/stats")[0] == 401
+    finally:
+        httpd.shutdown()
+        httpd.server_close()
+        thread.join(timeout=5)
+
+
+def test_memory_endpoint_returns_role_notes(server):
+    status, body = server.get("/api/memory/backend")
+    assert status == 200
+    assert body["role"] == "backend"
+    assert body["path"].endswith(".md")
+    assert body["enabled"] in (True, False)
+    assert isinstance(body["text"], str)
+    assert server.get("/api/memory/does-not-exist")[0] == 404
+
+
+def test_pipeline_post_is_validated(server):
+    status, body = server.post("/api/task", {"task": "ship it", "pipeline": "nope"})
+    assert status == 400
+    assert "nope" in json.dumps(body)
+
+
+def test_pipeline_post_runs_every_step(server):
+    status, body = server.post("/api/task", {"task": "ship it", "pipeline": "ship-feature"})
+    assert status == 202 and body["task_id"]
+    events = server.sse(body["task_id"])
+    done = [e for e in events if e["type"] == "done"][-1]
+    steps = done["result"]["steps"]
+    assert [s["role"] for s in steps] == ["backend", "qa"]
+    assert all(s["agent"] == "gemini" for s in steps)
+    snapshot = server.wait_for(lambda: server.state.get(body["task_id"]).snapshot())
+    assert snapshot["pipeline"] == "ship-feature"
+    assert done["result"]["pipeline"] == "ship-feature"
 
 
 def test_port_is_free_helper():

@@ -181,7 +181,7 @@ export GEMINI_MODEL=gemini-3.6-flash
 | `nexus prompt <role>` | print the exact system prompt a role gets |
 | `nexus doctor [--json]` | keys, endpoints, models, `gh`, repo state |
 | `nexus serve [--demo] [--yes]` | local HTTP+SSE server for the sidebar/panel |
-| `nexus panel` | `serve` + open the built-in browser panel |
+| `nexus gui` (alias `nexus panel`) | open the live GUI dashboard — watch routing, thinking and every tool call |
 | `nexus init` | drop `.nexus/roles.yaml` + `.vscode/` into any project (no `.env`) |
 | `nexus task ... --json` | machine-readable result (CI friendly) |
 
@@ -376,6 +376,41 @@ API with `GITHUB_TOKEN`. Labels and reviewers are optional arguments.
 
 ---
 
+## GUI dashboard (the deck)
+
+The CLI and the GUI are the same agent, the same server, the same run — the dashboard just makes the
+process *visible* while it happens:
+
+```bash
+nexus gui                 # http://127.0.0.1:8787/dashboard  (opens your browser)
+nexus gui --demo          # same deck, scripted run, no keys and no model calls
+nexus gui --host 0.0.0.0 --token "$(openssl rand -hex 16)"   # reach it from another machine
+```
+
+`nexus panel` is the same command; `/panel` is the compact page the VS Code webview embeds, so
+terminal, browser and sidebar all render the identical event stream.
+
+**What you see while a task runs**
+
+| Panel | What it shows |
+| --- | --- |
+| **Live process** (centre) | the run as a timeline: `route → role/agent`, `◉ thinking turn n/N`, `✎ tool_call` with the exact command or file, `✓ result` with duration, assistant text, memory writes, approvals, final summary |
+| **Phase banner** | the current phase in words — routing, thinking, running a tool, waiting for your approval, done |
+| **Cognition map** | every configured agent as a node around the Nexus core, with fallback edges; the active node pulses, a packet travels the edge while it works. Click a node for model, endpoint, key state, fallback and tool mode |
+| **Orchestration** | the roster with live per-agent status dots (thinking / tool / error), so you can see who handed off to whom |
+| **Router prediction** | which role won the task and why (keyword, LLM router, manual or pipeline) plus the matched keywords |
+| **Telemetry** | turn counter vs `max_turns`, tool calls, input/output tokens (per call and cumulative), elapsed time, events/min, latency sparklines |
+| **Security audit** | read/write/danger tool calls, denied approvals, errors, and a rolling audit log |
+| **Approvals** | the pending dangerous call rendered with its arguments and **Approve / Approve & remember / Deny** |
+| **Memory** | the live contents of `.nexus/memory/<role>.md` for whichever role is running |
+| **Keys / local-first** | which provider keys are configured (masked, source only) and whether routing is local-first |
+
+Everything is driven by the `/api/*` routes above, so the browser needs no build step, no npm and no
+third-party assets: it is one HTML file, one CSS file and one vanilla JS file served by the same
+stdlib server, and it degrades to a static, readable page when `prefers-reduced-motion` is set.
+
+---
+
 ## VS Code (Phase 5)
 
 **Works today, zero setup** — `.vscode/tasks.json` and `.vscode/launch.json` are in the repo:
@@ -446,9 +481,9 @@ Nexus-Agent/
 │   ├── demo.py              # scripted offline run
 │   ├── env.py               # optional legacy .env loading (never required)
 │   ├── types.py             # roles, messages, completions, events
-│   └── panel/               # the web UI the sidebar embeds
+│   └── panel/               # dashboard.html/css/js (the GUI deck) + panel.html (VS Code webview)
 ├── vscode-extension/        # Phase 5 sidebar (TypeScript, no runtime deps)
-├── tests/                   # 292 offline tests
+├── tests/                   # 324 offline tests
 └── docs/                    # architecture, configuration, tools, pipelines, vscode, security, roles, roadmap, addagent
 ```
 

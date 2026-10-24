@@ -311,6 +311,18 @@ class NexusAgent:
         while turn < limit:
             turn += 1
             self._maybe_compact(messages)
+            # let the GUI/CLI show "who is thinking right now"
+            self.event(
+                EventType.THINK,
+                phase="thinking",
+                turn=turn,
+                max_turns=limit,
+                role=active_role.name,
+                agent=agent_cfg.name,
+                model=agent_cfg.model,
+                provider=agent_cfg.provider,
+                pending_tools=len(specs),
+            )
             try:
                 provider, completion = self.providers.call_with_fallback(
                     agent_cfg.name,
@@ -343,6 +355,15 @@ class NexusAgent:
 
             usage.add(Usage(completion.input_tokens, completion.output_tokens, 1))
             self.session_usage.add(Usage(completion.input_tokens, completion.output_tokens, 1))
+            self.event(
+                EventType.USAGE,
+                input_tokens=usage.input_tokens,
+                output_tokens=usage.output_tokens,
+                call_input_tokens=completion.input_tokens,
+                call_output_tokens=completion.output_tokens,
+                calls=usage.calls,
+                model=completion.model or agent_cfg.model,
+            )
             agent_cfg = self.config.agents.get(provider.name, agent_cfg)
 
             if completion.text:

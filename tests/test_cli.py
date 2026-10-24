@@ -498,3 +498,27 @@ def test_dotenv_loading(tmp_path, monkeypatch):
     assert os.environ["ANTHROPIC_API_KEY"] == "sk-ant-test"
     assert os.environ["GITHUB_TOKEN"] == "ghp_x"
     assert "EMPTY" not in os.environ
+
+
+def test_gui_command_is_an_alias_of_panel(repo, monkeypatch, capsys):
+    """`nexus gui` and `nexus panel` must reach the same server (the dashboard is /dashboard)."""
+    import nexus.server as server_module
+    from nexus.cli import main
+
+    calls: list[dict] = []
+
+    def fake_serve(**kwargs):
+        calls.append(kwargs)
+        return 0
+
+    monkeypatch.setattr(server_module, "serve", fake_serve)
+    monkeypatch.chdir(repo)
+    assert main(["gui", "--no-open", "--port", "8799", "--host", "0.0.0.0"]) == 0
+    assert main(["panel", "--no-open", "--port", "8799", "--host", "0.0.0.0"]) == 0
+    assert len(calls) == 2
+    assert calls[0]["port"] == 8799 and calls[1]["port"] == 8799
+    assert calls[0]["host"] == calls[1]["host"] == "0.0.0.0"
+    assert calls[0]["open_panel"] is False
+    out = capsys.readouterr().out + capsys.readouterr().err
+    assert "/dashboard" in out
+    assert "0.0.0.0" in out  # warns about the exposed bind

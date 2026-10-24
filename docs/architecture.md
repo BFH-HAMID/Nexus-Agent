@@ -23,7 +23,7 @@ the HTTP/SSE server the VS Code sidebar embeds.
 | `nexus/agent.py` | the loop, sessions, compaction, pipelines | `NexusAgent`, `RunResult`, `render_system_prompt()` |
 | `nexus/cli.py` | argparse UI, REPL, `/commands`, `doctor` | `main()`, `emit_console()`, `interactive_approval()` |
 | `nexus/server.py` | stdlib HTTP + SSE for sidebar/panel | `ServerState`, `Session`, `serve()` |
-| `nexus/panel/` | the web UI (also embedded by the extension) | `panel.html`, `panel.js` |
+| `nexus/panel/` | the web UIs: the GUI deck and the compact extension panel | `dashboard.html/.css/.js`, `panel.html`, `panel.js` |
 | `nexus/demo.py` | scripted offline run | `DemoRunner`, `patch_agent_for_demo()` |
 | `nexus/keys.py` | API key store (`~/.config/nexus/keys.json`), env resolution | `save_key()`, `get_key()`, `key_source()` |
 | `nexus/env.py` | *optional* legacy `.env` loading (with or without python-dotenv) | `load_dotenv_files()` |
@@ -48,6 +48,8 @@ Everything the UI shows is an `Event`. Producers never print directly.
 | `status` | informational line | `message` |
 | `role` | routing decision | `role`, `agent`, `method`, `score`, `hits`, `note` |
 | `agent` | provider chosen / failed / fell back | `agent`, `model`, `provider`, `tool_mode`, or `error` / `message` |
+| `think` | a new turn starts — the UI's "who is thinking" signal | `phase`, `turn`, `max_turns`, `role`, `agent`, `model`, `provider`, `pending_tools` |
+| `usage` | after every model call | `input_tokens`, `output_tokens` (cumulative), `call_input_tokens`, `call_output_tokens`, `calls`, `model` |
 | `text` | the model wrote prose | `text`, `role` |
 | `tool_call` | a tool is about to run | `tool`, `args`, `preview`, `risk` |
 | `tool_result` | a tool returned | `tool`, `is_error`, `preview`, `chars` |
@@ -56,8 +58,10 @@ Everything the UI shows is an `Event`. Producers never print directly.
 | `error` | unrecoverable for this run | `message` |
 | `done` | run finished | `status`, `result` |
 
-The CLI maps these to coloured lines; the server serializes them as SSE `data:` frames; the panel
-renders them as a log plus the approval box. Adding a UI means adding a handler — nothing else.
+The CLI maps these to coloured lines; the server serializes them as SSE `data:` frames; the dashboard
+(`/dashboard`) renders the full process — routing, `think` turns, tool calls with their payloads,
+results and approvals — while the compact panel (`/panel`) renders a log plus the approval box.
+Adding a UI means adding a handler — nothing else.
 
 ## Routing internals
 

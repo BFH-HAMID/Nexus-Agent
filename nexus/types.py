@@ -276,6 +276,8 @@ class EventType(str, Enum):
     STATUS = "status"            # info line
     ROLE = "role"                # routing decision
     AGENT = "agent"              # provider switch / fallback
+    THINK = "think"              # a model call is in flight (per turn)
+    USAGE = "usage"              # token counter update (live meters)
     TEXT = "text"                # assistant prose
     TOOL_CALL = "tool_call"
     TOOL_RESULT = "tool_result"

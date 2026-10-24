@@ -95,3 +95,24 @@ def test_demo_cli_end_to_end(repo, capsys):
     assert payload["ok"] is True
     assert payload["role"] == "backend"
     assert (repo / DEMO_NOTE_PATH).is_file()
+
+
+def test_demo_stream_carries_think_and_usage_events(repo):
+    """The GUI's phase banner and token meters need think/usage even without a model."""
+    seen: list = []
+    agent = NexusAgent(load_config(repo), workspace=repo, emit=seen.append, auto_yes=True)
+    patch_agent_for_demo(agent)
+    result = agent.run("add pagination to the users api", role="backend")
+
+    think = [e for e in seen if e.type.value == "think"]
+    usage = [e for e in seen if e.type.value == "usage"]
+    assert think, "no think events emitted in demo mode"
+    assert usage, "no usage events emitted in demo mode"
+    assert think[0].data["turn"] == 1
+    assert think[0].data["role"] == "backend"
+    assert think[0].data["agent"] == result.agent
+    assert think[0].data["max_turns"] >= len(think)
+    assert [e.data["turn"] for e in think] == list(range(1, len(think) + 1))
+    assert usage[-1].data["input_tokens"] > 0
+    assert usage[-1].data["calls"] >= 1
+    assert usage[-1].data["model"]
