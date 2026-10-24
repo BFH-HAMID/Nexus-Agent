@@ -2099,6 +2099,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     except KeyboardInterrupt:
         print(COLORS.yellow("\ninterrupted"))
         return 130
+    except BrokenPipeError:
+        # `nexus roles | head` must not print a traceback
+        try:
+            sys.stdout.close()
+        except OSError:
+            pass
+        return 0
     except ConfigError as exc:
         print(COLORS.red(f"config error: {exc}"), file=sys.stderr)
         return 2

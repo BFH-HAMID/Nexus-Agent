@@ -560,7 +560,7 @@ How the loop works:
 * Four starter skills ship with Nexus (`skills/nexus/`): add a role, add an
   agent, verify before commit, release & self-update.
 
-Full guide: [`docs/learning.md`](docs/learning.md). The GUI has a
+Full guide: [`docs/learning.md`](docs/learning.md) · বাংলায়: [`docs/bangla.md`](docs/bangla.md). The GUI has a
 **LEARNING BRAIN** card (skills, memory, recall) fed by `/api/brain`,
 `/api/skills` and `/api/recall`.
 
