@@ -460,9 +460,21 @@ class OpenAICompatProvider(Provider):
             headers.setdefault("X-Title", "Nexus Agent")
         return headers
 
+    def _get(self, url: str) -> Any:
+        """GET with a short timeout - health checks must never hang on a dead box."""
+        timeout = min(float(self.cfg.timeout or 10.0), 10.0)
+        try:
+            return self._http.get(url, headers=self._headers(), timeout=timeout)
+        except TypeError:  # injected transports / very old clients: no timeout kwarg
+            return self._http.get(url, headers=self._headers())
+
     def _require_key(self) -> None:
-        """Fail fast (and locally) when a hosted provider has no key."""
-        if self.api_key or self.is_local:
+        """Fail fast (and locally) when a hosted provider has no key.
+
+        Keyless endpoints are allowed when they are loopback (`ollama serve`) or
+        when the agent is marked `optional: true` (a self-hosted box on the LAN).
+        """
+        if self.api_key or self.is_local or self.cfg.optional:
             return
         raise ProviderError(
             f"agent '{self.name}' ({self.cfg.provider}) has no API key - {self.cfg.missing_key_hint()}",
@@ -628,13 +640,15 @@ class OpenAICompatProvider(Provider):
 
     # -- introspection ----------------------------------------------------- #
     def health(self) -> tuple[bool, str]:
-        if not self.api_key and not self.is_local:
+        if not self.api_key and not self.is_local and not self.cfg.optional:
             return False, f"no API key - {self.cfg.missing_key_hint()}"
         try:
-            response = self._http.get(self.models_url, headers=self._headers())
+            response = self._get(self.models_url)
         except Exception as exc:
-            where = self.base_url if not self.is_local else self.base_url
-            return False, f"unreachable at {where} ({exc.__class__.__name__})"
+            if self.is_local:
+                return False, (f"no local server at {self.base_url} ({exc.__class__.__name__}) "
+                               "- start it with `ollama serve`")
+            return False, f"unreachable at {self.base_url} ({exc.__class__.__name__})"
         status, body = _status_and_body(response)
         if status in {401, 403}:
             return False, f"HTTP {status} - the API key was rejected ({self.cfg.missing_key_hint()})"
@@ -649,7 +663,7 @@ class OpenAICompatProvider(Provider):
 
     def list_models(self) -> list[str]:
         try:
-            response = self._http.get(self.models_url, headers=self._headers())
+            response = self._get(self.models_url)
             status, _ = _status_and_body(response)
             if status != 200:
                 return []

@@ -519,6 +519,7 @@ def cmd_chat(args: argparse.Namespace) -> int:
         COLORS.dim(
             f"default agent: {agent.config.default_agent} | roles: {len(agent.config.roles)} | "
             f"auto-route: {'on' if agent.auto_route else 'off'} | approval: {agent.gate.mode}"
+            + (" | local-first" if agent.config.settings.prefer_local else "")
         )
     )
     print(COLORS.dim("type /help for commands, /exit to quit\n"))
@@ -873,14 +874,17 @@ def cmd_agents(args: argparse.Namespace) -> int:
         print(f"    provider : {cfg.provider}")
         print(f"    model    : {cfg.model}")
         print(f"    base_url : {cfg.effective_base_url or '(sdk default)'}")
-        if cfg.resolved_api_key:
-            source = cfg.key_source or ("inline" if cfg.api_key else "?")
-            print(f"    api key  : ✓ {keyring.mask(cfg.resolved_api_key)}  ({source})")
-        elif cfg.key_family:
-            print(f"    api key  : ✗ missing - {cfg.missing_key_hint()}")
+        if cfg.key_family:
+            if cfg.resolved_api_key:
+                source = cfg.key_source or ("inline" if cfg.api_key else "?")
+                print(f"    api key  : ✓ {keyring.mask(cfg.resolved_api_key)}  ({source})")
+            else:
+                print(f"    api key  : ✗ missing - {cfg.missing_key_hint()}")
         else:
-            print("    api key  : (not needed)")
+            print("    api key  : (not needed - keyless local/self-hosted endpoint)")
         print(f"    tools    : {cfg.tool_mode}{' (supports_tools=false)' if not cfg.supports_tools else ''}")
+        if cfg.optional:
+            print("    optional : yes - offline is fine, roles fall back to a hosted agent")
         print(f"    fallback : {cfg.fallback or '-'}")
         print(f"    roles    : {len(roles)} ({', '.join(roles[:6])}{'…' if len(roles) > 6 else ''})")
     return 0
@@ -910,7 +914,12 @@ def cmd_models(args: argparse.Namespace) -> int:
         print(json.dumps({"agent": cfg.name, "current": cfg.model, "models": models}, indent=2))
         return 0
     if not models:
-        print(COLORS.yellow(f"no models listed by {cfg.effective_base_url}"))
+        if cfg.optional:
+            print(COLORS.yellow(f"no models listed by {cfg.effective_base_url}"))
+            print(COLORS.dim(f"  optional endpoint - start it (`ollama serve`) and pull one: "
+                             f"`ollama pull {cfg.model}`"))
+        else:
+            print(COLORS.yellow(f"no models listed by {cfg.effective_base_url}"))
         return 1
     print(COLORS.bold(f"{cfg.name} ({cfg.provider}) - {len(models)} models, current: {cfg.model}"))
     for name in models:
@@ -1124,11 +1133,16 @@ def cmd_doctor(args: argparse.Namespace) -> int:
             if cfg.key_family and not cfg.resolved_api_key:
                 hint = ""   # the health detail already says how to set the key
             elif (cfg.effective_base_url or "").startswith(("http://localhost", "http://127.0.0.1")):
-                hint = f"start the local server and pull the model: `ollama pull {cfg.model}`"
+                hint = f"optional local endpoint - start it and pull the model: `ollama pull {cfg.model}`"
             else:
                 hint = (f"endpoint {cfg.effective_base_url} unreachable - check the URL, "
                         f"the key ({cfg.key_env_names[0] if cfg.key_env_names else 'inline'}) and your network")
-        add(f"agent:{name}", ok, f"{cfg.provider} {cfg.model} - {detail}", hint)
+        if not ok and cfg.optional:
+            # local/extra endpoints are allowed to be offline: warn, do not fail
+            add(f"agent:{name}", None, f"{cfg.provider} {cfg.model} - {detail}",
+                hint or "optional agent - Nexus falls back to the hosted ones when it is down")
+        else:
+            add(f"agent:{name}", ok, f"{cfg.provider} {cfg.model} - {detail}", hint)
 
     token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
     add("github token", bool(token), "GITHUB_TOKEN set" if token else "GITHUB_TOKEN not set",

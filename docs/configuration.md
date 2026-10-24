@@ -76,6 +76,7 @@ agents:
     supports_tools: true
     tool_mode: native          # native | text | none
     fallback: deepseek         # try this agent when the call fails / no key
+    optional: false            # true = may be offline (local models, extra boxes)
     description: …
     # any other key is passed through to the API request as-is (e.g. top_p, reasoning)
 
@@ -86,13 +87,47 @@ agents:
     tool_mode: text            # JSON tool contract in the prompt, parsed back
     fallback: openrouter
 
-  # self-hosted / local models still work through the same adapter
-  local:
+  # local models through Ollama: no API key, `optional` = allowed to be offline
+  hermes:
     provider: openai-compatible
-    model: llama3.1:8b
+    model: ${HERMES_MODEL:-hermes3:8b}
     base_url: ${OLLAMA_HOST:-http://localhost:11434}/v1
     api_key: ollama            # the OpenAI shim requires a key; Ollama ignores it
+    tool_mode: native          # hermes3 has a real tool template
+    fallback: deepseek         # Ollama down? finish the run on the API
+    optional: true
 ```
+
+### Local lanes (`hermes`, `hermes-big`, `ollama`, `ollama-uncensored`)
+
+| Agent | Model | `tool_mode` | Falls back to |
+| --- | --- | --- | --- |
+| `hermes` | `${HERMES_MODEL:-hermes3:8b}` | `native` | `deepseek` |
+| `hermes-big` | `${HERMES_BIG_MODEL:-hermes3:70b}` | `native` | `deepseek-pro` |
+| `ollama` | `${OLLAMA_MODEL:-llama3.1:8b}` | `native` | `gemini` |
+| `ollama-uncensored` | `${OLLAMA_UNCENSORED_MODEL:-dolphin-mixtral:latest}` | `text` | `openrouter-uncensored` |
+
+They are ordinary agents — no special code path:
+
+* **no key needed**: `api_key: ollama` is a placeholder the shim ignores, and `key_family` is
+  `None`, so `nexus keys`/the first-run wizard never ask for one;
+* **`optional: true`**: an unreachable endpoint is reported as `?` in `nexus doctor` (and as a
+  warning in `nexus agents`) instead of a failure;
+* **fallbacks point at a hosted twin**, so switching a role to `hermes` never loses the safety net.
+
+Point a role at one with `agent: hermes` in `roles.yaml`, `/agent hermes` in the REPL, or flip the
+whole roster:
+
+```yaml
+settings:
+  prefer_local: true        # NEXUS_PREFER_LOCAL=1
+```
+
+`prefer_local` remaps roles (and `router_agent`) at load time:
+`gemini → hermes`, `gemini-big → hermes-big`, `gemini-flash → ollama`, `deepseek → hermes`,
+`deepseek-pro → hermes-big`, `openrouter → ollama`, `openrouter-uncensored → ollama-uncensored`.
+Because each local agent falls back to its hosted twin, `NEXUS_PREFER_LOCAL=1` with no Ollama
+running is simply "use the API" — just with one failed call first.
 
 Built-in base URLs (override with `base_url:` at any time):
 
@@ -128,6 +163,12 @@ The shipped chains are deliberately cross-provider — `gemini → deepseek → 
 so **one configured key is enough** to run the whole roster. A missing key fails locally and
 instantly (`agent 'gemini' has no API key - run \`nexus keys set gemini\``), then the fallback
 takes over.
+
+The optional local lanes hook into the same chain from the other side
+(`hermes → deepseek`, `hermes-big → deepseek-pro`, `ollama → gemini`,
+`ollama-uncensored → openrouter-uncensored`), so an Ollama server that is not running only costs
+one refused connection before the hosted agent takes over. Health for those agents uses a 10 s
+timeout, so `nexus doctor` never hangs on a dead box.
 
 ### Model IDs used by default
 
@@ -190,6 +231,7 @@ roles.
 | `router_min_score` | `1.0` | `NEXUS_ROUTER_MIN_SCORE` | keyword score needed to skip the LLM |
 | `router_llm_fallback` | `true` | `NEXUS_ROUTER_LLM` | classify with a model when no keyword hits |
 | `router_agent` | `gemini-flash` | `NEXUS_ROUTER_AGENT` | which agent runs the classifier |
+| `prefer_local` | `false` | `NEXUS_PREFER_LOCAL` | point roles + classifier at the local Ollama lanes |
 | `max_turns` | `24` | `NEXUS_MAX_TURNS` | hard stop for the tool loop |
 | `auto_yes` | `false` | `NEXUS_YES` | never prompt (danger calls still blocked) |
 | `allow_dangerous` | `false` | `NEXUS_ALLOW_DANGEROUS` | deny-listed commands become "ask" |
@@ -218,6 +260,8 @@ GEMINI_API_KEY         DEEPSEEK_API_KEY             OPENROUTER_API_KEY
 GEMINI_MODEL           GEMINI_BIG_MODEL             GEMINI_FAST_MODEL
 DEEPSEEK_MODEL         DEEPSEEK_PRO_MODEL
 OPENROUTER_MODEL       OPENROUTER_UNCENSORED_MODEL
+OLLAMA_HOST            HERMES_MODEL                 HERMES_BIG_MODEL
+OLLAMA_MODEL           OLLAMA_UNCENSORED_MODEL      NEXUS_PREFER_LOCAL
 GITHUB_TOKEN / GH_TOKEN
 NEXUS_KEYS_FILE        NEXUS_HOME                   NEXUS_WORKSPACE
 NEXUS_DEFAULT_AGENT    NEXUS_AUTO_ROUTE             NEXUS_ROUTER_AGENT

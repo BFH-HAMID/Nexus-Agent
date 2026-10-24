@@ -192,6 +192,7 @@ class AgentConfig:
     supports_tools: bool = True
     tool_mode: str = "native"            # native | text | none
     fallback: str | None = None
+    optional: bool = False               # local/extra endpoint: down = warning, not failure
     label: str = ""
     description: str = ""
     extra: dict[str, Any] = field(default_factory=dict)
@@ -280,7 +281,7 @@ def parse_agents(data: dict[str, Any]) -> dict[str, AgentConfig]:
         known = {
             "provider", "model", "base_url", "api_key_env", "api_key", "max_tokens",
             "temperature", "timeout", "supports_tools", "tool_mode", "fallback",
-            "label", "description",
+            "optional", "label", "description",
         }
         extra = {k: v for k, v in cfg.items() if k not in known}
         agents[str(name)] = AgentConfig(
@@ -296,6 +297,7 @@ def parse_agents(data: dict[str, Any]) -> dict[str, AgentConfig]:
             supports_tools=bool(cfg.get("supports_tools", True)),
             tool_mode=str(cfg.get("tool_mode", "native")),
             fallback=cfg.get("fallback"),
+            optional=bool(cfg.get("optional", False)),
             label=str(cfg.get("label", "")),
             description=str(cfg.get("description", "")),
             extra=extra,
@@ -464,6 +466,7 @@ class Settings:
     memory_enabled: bool = True
     memory_dir: str = ".nexus/memory"
     memory_max_chars: int = 4_000
+    prefer_local: bool = False          # try local agents before the hosted ones
     branch_prefix: str = "feat"
     auto_branch: bool = True
     auto_commit_message: bool = True
@@ -499,6 +502,7 @@ class Settings:
         self.auto_yes = _bool("NEXUS_YES", self.auto_yes)
         self.allow_dangerous = _bool("NEXUS_ALLOW_DANGEROUS", self.allow_dangerous)
         self.memory_enabled = _bool("NEXUS_MEMORY", self.memory_enabled)
+        self.prefer_local = _bool("NEXUS_PREFER_LOCAL", self.prefer_local)
         self.auto_branch = _bool("NEXUS_AUTO_BRANCH", self.auto_branch)
         for name, attr in (
             ("NEXUS_MAX_TURNS", "max_turns"),
@@ -531,6 +535,7 @@ class NexusConfig:
     pipelines: dict[str, Pipeline] = field(default_factory=dict)
     sources: dict[str, list[Path]] = field(default_factory=dict)
     raw: dict[str, Any] = field(default_factory=dict)
+    local_agents: list[str] = field(default_factory=list)   # set when prefer_local is on
 
     # -- lookups ----------------------------------------------------------- #
     def agent(self, name: str | None) -> AgentConfig:
@@ -568,6 +573,10 @@ class NexusConfig:
                 families.append(family)
         return families
 
+    def optional_agents(self) -> list[AgentConfig]:
+        """Agents that are allowed to be offline (local models, extra boxes)."""
+        return [cfg for cfg in self.agents.values() if cfg.optional]
+
     def agents_missing_keys(self) -> list[AgentConfig]:
         """Agents that will fail before a fallback takes over."""
         missing: list[AgentConfig] = []
@@ -576,6 +585,35 @@ class NexusConfig:
             if cfg.key_family and not cfg.resolved_api_key:
                 missing.append(cfg)
         return missing
+
+
+# When `prefer_local: true` (or NEXUS_PREFER_LOCAL=1) every role is pointed at
+# the local agent of the same tier. Local agents declare `fallback:` back to the
+# hosted agent, so a stopped Ollama server degrades instead of failing.
+LOCAL_EQUIVALENTS: dict[str, str] = {
+    "gemini": "hermes",
+    "gemini-big": "hermes-big",
+    "gemini-flash": "ollama",
+    "deepseek": "hermes",
+    "deepseek-pro": "hermes-big",
+    "openrouter": "ollama",
+    "openrouter-uncensored": "ollama-uncensored",
+}
+
+
+def apply_prefer_local(config: NexusConfig) -> list[str]:
+    """Repoint roles (and the router) at local agents. Returns the agent names used."""
+    used: list[str] = []
+    for role in config.roles.roles.values():
+        target = LOCAL_EQUIVALENTS.get(role.agent)
+        if target and target in config.agents:
+            role.agent = target
+            if target not in used:
+                used.append(target)
+    router = LOCAL_EQUIVALENTS.get(config.settings.router_agent)
+    if router and router in config.agents:
+        config.settings.router_agent = router
+    return used
 
 
 def load_config(workspace: Path | str | None = None, *, load_pipelines: bool = True) -> NexusConfig:
@@ -623,7 +661,7 @@ def load_config(workspace: Path | str | None = None, *, load_pipelines: bool = T
         if not role.agent:
             role.agent = default_agent
 
-    return NexusConfig(
+    config = NexusConfig(
         agents=agents,
         roles=registry,
         settings=settings,
@@ -636,3 +674,6 @@ def load_config(workspace: Path | str | None = None, *, load_pipelines: bool = T
         },
         raw=agent_data,
     )
+    if settings.prefer_local:
+        config.local_agents = apply_prefer_local(config)
+    return config

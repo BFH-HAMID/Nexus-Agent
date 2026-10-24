@@ -105,6 +105,46 @@ Only one provider key? Fine: agents whose provider has no key fall back along
 `gemini ⇄ deepseek ⇄ openrouter`, so a single key runs the whole roster. `NEXUS_NO_PROMPT=1`
 (or `--no-key-prompt`) disables the first-run key prompt for CI/scripts.
 
+### Local models (optional): Ollama, Hermes, uncensored
+
+The API providers are the default, but the **local lanes still ship** and need **no key at all**:
+
+| Agent | Model (env override) | Use |
+| --- | --- | --- |
+| `hermes` | `${HERMES_MODEL:-hermes3:8b}` | free worker for docs / QA / business (native tools) |
+| `hermes-big` | `${HERMES_BIG_MODEL:-hermes3:70b}` | same, if you have the VRAM |
+| `ollama` | `${OLLAMA_MODEL:-llama3.1:8b}` | generic local chat / offline fallback |
+| `ollama-uncensored` | `${OLLAMA_UNCENSORED_MODEL:-dolphin-mixtral:latest}` | uncensored, `tool_mode: text` |
+
+```bash
+ollama serve                  # once, in the background
+ollama pull hermes3:8b
+ollama pull dolphin-mixtral
+
+nexus doctor                  # ? agent:hermes  (optional: offline is a warning, not a failure)
+nexus agents                  # shows the local lanes + their fallbacks
+
+# per session / per role
+nexus chat                    # then:  /agent hermes    (or /role qa before)
+nexus task 'write the changelog' --role docs      # docs -> deepseek; force local with /agent
+
+# whole roster local-first (every role -> its local equivalent, router included)
+NEXUS_PREFER_LOCAL=1 nexus task 'refactor the parser'
+```
+
+Two rules keep this safe:
+
+1. **A dead local server never breaks a run.** `hermes → deepseek`, `hermes-big → deepseek-pro`,
+   `ollama-uncensored → openrouter-uncensored`, `ollama → gemini`. You see
+   `⚠ agent hermes failed … ⇢ falling back to agent 'deepseek'` and the work continues.
+2. **Local agents are `optional: true`.** `nexus doctor` marks them `?` (not `✗`), so an offline
+   laptop still reports "all good" as long as one API key is configured.
+
+`prefer_local: true` in `agents.yaml` (or `NEXUS_PREFER_LOCAL=1`) maps the tiers like this:
+`gemini → hermes`, `gemini-big → hermes-big`, `gemini-flash → ollama`, `deepseek → hermes`,
+`deepseek-pro → hermes-big`, `openrouter → ollama`, `openrouter-uncensored → ollama-uncensored`.
+Set it back to `false` and the roster is hosted again — same roles, same fallbacks.
+
 Need a model list or a different model id?
 
 ```bash
@@ -220,6 +260,8 @@ Details: [`docs/addagent.md`](docs/addagent.md).
 | Deep reasoning / hard debugging | `deepseek-pro` (`deepseek-v4-pro`) | strong reasoning at a low price |
 | Routing classifier | `gemini-flash` (`gemini-3.5-flash-lite`) | high-volume, low-stakes, cents |
 | General / unclassified | `gemini` | safe default |
+| Free / offline lane (opt-in) | `hermes`, `hermes-big`, `ollama` | local Ollama, no key, `NEXUS_PREFER_LOCAL=1` or `/agent hermes` |
+| Local uncensored lane (opt-in) | `ollama-uncensored` (`dolphin-mixtral`, `tool_mode: text`) | same roles as `openrouter-uncensored`, but on your own box |
 
 Every agent has a `fallback:` edge (`gemini → deepseek → openrouter → gemini`), so a missing key
 or a provider outage never stops the run — you just see `⇢ falling back to agent 'deepseek'` and
@@ -381,7 +423,7 @@ you can write to it with `/remember` in the REPL.
 
 ```
 Nexus-Agent/
-├── agents.yaml              # which model lives where (gemini, deepseek, openrouter + fallbacks)
+├── agents.yaml              # which model lives where (gemini/deepseek/openrouter + optional local Ollama lanes)
 ├── roles.yaml               # 107 curated roles → persona + keywords + agent  (generated)
 ├── roles.d/                 # 852 imported roles (5 packs) - `nexus addagent` writes here
 ├── pipelines.yaml           # multi-role handoff pipelines

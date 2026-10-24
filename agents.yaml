@@ -102,14 +102,80 @@ agents:
     fallback: openrouter
     description: Uncensored model for authorized offensive-security / OSINT work.
 
+  # ── Local models through Ollama (optional, free, offline) ─────────────────
+  # These need NO API key: a keyless localhost endpoint is allowed by design.
+  # If `ollama serve` is not running they fail fast and fall back to the hosted
+  # agents above, so leaving them enabled costs nothing.
+  #
+  #   ollama pull hermes3:8b        # tool-capable worker   -> agent: hermes
+  #   ollama pull hermes3:70b       # bigger worker         -> agent: hermes-big
+  #   ollama pull dolphin-mixtral   # uncensored, no tool template -> tool_mode: text
+  #   ollama pull llama3.1:8b       # generic local         -> agent: ollama
+  #
+  # Use them per role (`/agent hermes` in the REPL, or `agent: hermes` in
+  # roles.yaml) or flip the whole roster to local-first with NEXUS_PREFER_LOCAL=1.
+
+  hermes:                             # local bulk worker: docs, QA, business
+    provider: openai-compatible
+    model: ${HERMES_MODEL:-hermes3:8b}
+    base_url: ${OLLAMA_HOST:-http://localhost:11434}/v1
+    api_key: ollama                   # Ollama ignores it; the OpenAI shim wants one
+    max_tokens: 4096
+    temperature: 0.4
+    timeout: 300
+    supports_tools: true
+    tool_mode: native                 # hermes3 has a real tool template
+    fallback: deepseek                # Ollama down? continue on the API
+    optional: true
+    description: Free local worker (hermes3) for bulk work; falls back to DeepSeek.
+
+  hermes-big:
+    provider: openai-compatible
+    model: ${HERMES_BIG_MODEL:-hermes3:70b}
+    base_url: ${OLLAMA_HOST:-http://localhost:11434}/v1
+    api_key: ollama
+    max_tokens: 8192
+    timeout: 600
+    supports_tools: true
+    tool_mode: native
+    fallback: deepseek-pro
+    optional: true
+    description: Bigger local Hermes when you have the VRAM.
+
+  ollama-uncensored:                  # local uncensored model, text-mode tools
+    provider: openai-compatible
+    model: ${OLLAMA_UNCENSORED_MODEL:-dolphin-mixtral:latest}
+    base_url: ${OLLAMA_HOST:-http://localhost:11434}/v1
+    api_key: ollama
+    max_tokens: 4096
+    temperature: 0.7
+    timeout: 420
+    supports_tools: true
+    tool_mode: text                   # dolphin has NO tool template -> JSON contract
+    fallback: openrouter-uncensored   # no local model? use the hosted uncensored one
+    optional: true
+    description: Local uncensored model for authorized offensive-security / OSINT work.
+
+  ollama:
+    provider: openai-compatible
+    model: ${OLLAMA_MODEL:-llama3.1:8b}
+    base_url: ${OLLAMA_HOST:-http://localhost:11434}/v1
+    api_key: ollama
+    max_tokens: 4096
+    timeout: 300
+    supports_tools: true
+    tool_mode: native
+    fallback: gemini
+    optional: true
+    description: Generic local model - offline drafting, quick questions.
+
   # ── Anything else OpenAI-compatible (vLLM, llama.cpp, LM Studio, ...) ─────
-  # local:
+  # box:
   #   provider: openai-compatible
-  #   model: llama3.1:8b
-  #   base_url: http://localhost:11434/v1
-  #   api_key: ollama                 # ignored by Ollama, required by the shim
-  #   supports_tools: true
-  #   tool_mode: native
+  #   model: qwen2.5-coder:32b
+  #   base_url: http://gpu-box:8000/v1
+  #   api_key: ${LOCAL_API_KEY:-local}
+  #   optional: true                  # unreachable is a warning, not a failure
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Behaviour knobs (all overridable with NEXUS_* environment variables)
@@ -119,6 +185,7 @@ settings:
   router_min_score: 1.0         # keyword score needed to skip the LLM classifier
   router_llm_fallback: true     # ask a model when no keyword matched
   router_agent: gemini-flash    # which agent runs the classifier (empty = default)
+  prefer_local: false           # true = try the matching local agent first, then the API
   max_turns: 24                 # hard stop for the tool loop
   auto_yes: false               # true = never ask (dangerous calls still blocked)
   allow_dangerous: false        # true = deny-listed commands become "ask" instead of "refuse"

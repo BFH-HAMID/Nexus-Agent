@@ -285,12 +285,14 @@ def test_cli_keys_set_then_list_then_remove(isolated_store, capsys):
     assert code == 0 and keyring.stored_key("gemini") == ""
 
 
-def test_cli_keys_set_session_only_does_not_write(isolated_store, monkeypatch, capsys):
-    code, out = run_cli(["keys", "set", "deepseek", "--key", "sk-session-1234567890", "--session"], capsys)
-    assert code == 0
-    assert not isolated_store.exists()
-    assert os.environ["DEEPSEEK_API_KEY"] == "sk-session-1234567890"
-    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+def test_cli_keys_set_session_only_does_not_write(isolated_store, capsys):
+    try:
+        code, out = run_cli(["keys", "set", "deepseek", "--key", "sk-session-1234567890", "--session"], capsys)
+        assert code == 0
+        assert not isolated_store.exists()
+        assert os.environ["DEEPSEEK_API_KEY"] == "sk-session-1234567890"
+    finally:
+        os.environ.pop("DEEPSEEK_API_KEY", None)
 
 
 def test_cli_keys_test_without_a_key_tells_you_what_to_do(capsys):

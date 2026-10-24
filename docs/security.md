@@ -38,8 +38,10 @@ What that routing **is**:
 
 * a way to get direct, technical answers about standard methodology on **your own** targets;
 * isolated: it is a separate agent and API key from your coding model, so a security run never
-  changes the default model, and you can point it at a self-hosted endpoint
-  (`provider: openai-compatible` + your own `base_url`) to keep engagement details on your box;
+  changes the default model — and if you run the *local* twin, `ollama-uncensored`
+  (Ollama + `dolphin-mixtral`, `tool_mode: text`), your engagement details never leave the
+  machine at all. Switch per role (`agent: ollama-uncensored` in `roles.yaml`, or `/agent
+  ollama-uncensored` in the REPL) or flip every tier with `NEXUS_PREFER_LOCAL=1`;
 * still gated by every Nexus safety layer — the deny list, the approval gate, the path guard.
 
 What it **is not**:
