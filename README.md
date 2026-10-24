@@ -390,6 +390,12 @@ nexus gui --host 0.0.0.0 --token "$(openssl rand -hex 16)"   # reach it from ano
 `nexus panel` is the same command; `/panel` is the compact page the VS Code webview embeds, so
 terminal, browser and sidebar all render the identical event stream.
 
+Alongside it, `/console` serves [`nexus/panel/index.html`](nexus/panel/index.html) — the cinematic
+**NEXUS AGENT** console mock-up: one self-contained file (inline HTML/CSS/JS, no libraries, no CDN, no
+images), with a 1,024-node holographic cortex, binary matrix, telemetry, a working `status` / `help` /
+`clear` / `exit` prompt — and **simulated data only**. It never calls the API; use `/dashboard` for a
+real run.
+
 **What you see while a task runs**
 
 | Panel | What it shows |

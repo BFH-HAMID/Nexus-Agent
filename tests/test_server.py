@@ -376,6 +376,19 @@ def test_dashboard_is_served_with_its_assets(server):
     assert excinfo.value.headers["Location"] == "/dashboard"
 
 
+def test_simulation_console_is_served_and_self_contained(server):
+    status, html = server.get("/console")
+    assert status == 200
+    assert "NEXUS AGENT" in html
+    assert "SIMULATION · NOT A LIVE BACKEND" in html
+    # one file: no external libraries, no CDNs, no images
+    for forbidden in ("http://", "https://", "<link", "@import", "src="):
+        assert forbidden not in html, forbidden
+    assert "<script>" in html and "<style>" in html
+    # the /console/ asset form is served from the panel dir
+    assert server.get("/console/index.html")[0] == 200
+
+
 def test_dashboard_assets_never_need_a_token(repo: Path, monkeypatch):
     monkeypatch.setattr(server_module, "NexusAgent", lambda *a, **k: FakeAgent())
     state = ServerState(repo, token="s3cret", auto_yes=False, quiet=True)

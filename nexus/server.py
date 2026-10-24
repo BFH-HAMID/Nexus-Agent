@@ -387,8 +387,8 @@ def make_handler(state: ServerState):
             before it knows the token (the token lives in the page's query string)."""
             return (
                 path == "/"
-                or path in {"/dashboard", "/gui", "/panel"}
-                or path.startswith(("/dashboard/", "/gui/", "/panel/"))
+                or path in {"/dashboard", "/gui", "/panel", "/console"}
+                or path.startswith(("/dashboard/", "/gui/", "/panel/", "/console/"))
             )
 
         def do_GET(self) -> None:  # noqa: N802
@@ -462,6 +462,12 @@ def make_handler(state: ServerState):
                 return self._static_asset(path[len("/dashboard/") :])
             if path.startswith("/gui/"):
                 return self._static_asset(path[len("/gui/") :])
+
+            # -- the cinematic simulation console (single self-contained file) -- #
+            if path in {"/console", "/console/"}:
+                return self._static("index.html", STATIC_TYPES[".html"])
+            if path.startswith("/console/"):
+                return self._static_asset(path[len("/console/") :])
 
             # -- the compact panel (VS Code webview) --------------------- #
             if path in {"/panel", "/panel/"}:
@@ -599,6 +605,7 @@ def serve(*, host: str = "127.0.0.1", port: int = 8787, workspace: Path | None =
         )
     print(f"nexus server {__version__} on http://{host}:{port}  (workspace {ws})")
     print(f"  dashboard  http://{host}:{port}/dashboard   <- the GUI")
+    print(f"  console    http://{host}:{port}/console     <- simulation-only CLI look")
     print(f"  panel      http://{host}:{port}/panel       (compact / VS Code)")
     print(f"  health     http://{host}:{port}/health")
     print(f"  roles      {len(state.config.roles)} | agents {sorted(state.config.agents)}")

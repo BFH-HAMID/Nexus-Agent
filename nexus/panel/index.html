@@ -1,0 +1,1351 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="color-scheme" content="dark" />
+<title>NEXUS AGENT — simulation console</title>
+<meta name="description" content="A self-contained, cinematic simulation of the NEXUS AGENT console. Visual only: no backend, no model calls, no network." />
+<style>
+/* ─────────────────────────────────────────────────────────────────────────
+   NEXUS AGENT · simulation console
+   One file. No libraries, no CDNs, no images, no network.
+   Everything below is a visual simulation — see .disclaimer and `help`.
+   ───────────────────────────────────────────────────────────────────────── */
+:root{
+  --bg:#03070a;
+  --green:#00ffa3;
+  --green-soft:rgba(0,255,163,.72);
+  --cyan:#22e3ff;
+  --amber:#ffb020;
+  --red:#ff4d63;
+  --fg:#d5f7ec;
+  --fg-dim:#8fb8ae;
+  --dim:#4f7a72;
+  --line:rgba(0,255,163,.16);
+  --line-2:rgba(34,227,255,.14);
+  --card:rgba(5,18,20,.55);
+  --mono:ui-monospace,"SF Mono","Cascadia Mono","JetBrains Mono",Menlo,Consolas,"Liberation Mono",monospace;
+}
+
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+html{background:#05090b}
+body{
+  min-height:100svh;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:clamp(10px,1.4vw,18px);
+  padding:clamp(10px,2vw,34px);
+  font-family:var(--mono);
+  color:var(--fg);
+  background:
+    radial-gradient(1100px 620px at 50% 38%, #071519 0%, #040a0d 46%, #020506 100%),
+    #020506;
+  overflow-x:hidden;
+}
+button{font:inherit;color:inherit}
+
+/* ── metallic monitor ─────────────────────────────────────────────────── */
+.monitor{
+  position:relative;
+  width:min(1580px,100%);
+  border-radius:clamp(14px,1.5vw,26px);
+  padding:clamp(7px,.9vw,15px);
+  background:
+    linear-gradient(155deg,#39454c 0%,#1b252b 14%,#0c1215 38%,#080d10 62%,#1f2a30 84%,#3b474e 100%);
+  box-shadow:
+    0 1px 0 rgba(255,255,255,.14) inset,
+    0 -1px 0 rgba(0,0,0,.7) inset,
+    0 0 0 1px rgba(0,255,163,.10),
+    0 34px 90px -20px rgba(0,0,0,.95),
+    0 0 120px -30px rgba(0,255,163,.18);
+}
+.monitor::after{ /* faint top sheen */
+  content:"";position:absolute;inset:1px 6% auto 6%;height:38%;pointer-events:none;
+  background:linear-gradient(180deg,rgba(255,255,255,.07),transparent 70%);
+  border-radius:24px 24px 0 0;opacity:.6;
+}
+.screw{
+  position:absolute;width:clamp(7px,.7vw,11px);height:clamp(7px,.7vw,11px);
+  border-radius:50%;
+  background:radial-gradient(circle at 34% 30%,#7b8b92,#2a353a 62%,#111a1e);
+  box-shadow:0 0 0 1px rgba(0,0,0,.6),0 1px 1px rgba(255,255,255,.10);
+  z-index:4;
+}
+.screw.tl{left:.9%;top:4%} .screw.tr{right:.9%;top:4%}
+.screw.bl{left:.9%;bottom:4%} .screw.br{right:.9%;bottom:4%}
+
+/* ── the screen ───────────────────────────────────────────────────────── */
+.screen{
+  position:relative;
+  aspect-ratio:16/9;
+  min-height:min(560px,72svh);
+  border-radius:clamp(8px,1vw,14px);
+  overflow:hidden;
+  display:flex;flex-direction:column;
+  background:
+    radial-gradient(ellipse 62% 58% at 50% 42%, rgba(0,60,52,.42) 0%, rgba(2,10,12,.2) 52%, rgba(1,4,6,.9) 100%),
+    linear-gradient(180deg,#050d11,#020608 62%,#04090b);
+  box-shadow:
+    0 0 0 1px rgba(0,0,0,.85),
+    0 0 34px rgba(0,255,163,.06) inset,
+    0 0 90px rgba(0,0,0,.7) inset;
+  font-size:clamp(9.5px,.86vw,13px);
+  isolation:isolate;
+}
+.fx{position:absolute;inset:0;pointer-events:none;z-index:3}
+.fx.scanlines{
+  background:repeating-linear-gradient(180deg,rgba(0,0,0,.24) 0 1px,transparent 1px 3px);
+  opacity:.5;mix-blend-mode:multiply;
+}
+.fx.vignette{
+  background:radial-gradient(ellipse 78% 70% at 50% 46%,transparent 52%,rgba(0,0,0,.55) 100%);
+}
+.fx.glass{
+  background:linear-gradient(118deg,rgba(255,255,255,.055) 0%,transparent 26%,transparent 72%,rgba(255,255,255,.028) 100%);
+}
+.fx.flicker{animation:flicker 7.3s steps(1,end) infinite;opacity:0}
+@keyframes flicker{
+  0%,96%,100%{opacity:0}
+  97%{opacity:.05;background:rgba(34,227,255,.5)}
+  98%{opacity:0}
+  98.6%{opacity:.03;background:rgba(0,255,163,.4)}
+}
+
+/* ── top bar ──────────────────────────────────────────────────────────── */
+.topbar{
+  position:relative;z-index:2;
+  display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);
+  align-items:center;gap:clamp(6px,1vw,18px);
+  padding:clamp(8px,1.1vw,18px) clamp(10px,1.4vw,24px);
+  border-bottom:1px solid var(--line);
+  background:linear-gradient(180deg,rgba(0,255,163,.05),transparent);
+}
+.brand{display:flex;align-items:center;gap:clamp(6px,.8vw,13px);min-width:0}
+.hex{
+  width:clamp(26px,2.9vw,44px);height:auto;flex:0 0 auto;
+  filter:drop-shadow(0 0 8px rgba(0,255,163,.55));
+}
+.hex polygon{fill:rgba(0,255,163,.06);stroke:var(--green);stroke-width:2}
+.hex .n-path{fill:none;stroke:var(--green);stroke-width:3.4;stroke-linecap:square;stroke-linejoin:miter}
+.brand-txt{display:flex;flex-direction:column;gap:2px;min-width:0}
+.wordmark{
+  position:relative;display:inline-block;
+  font-size:clamp(15px,1.85vw,29px);
+  font-weight:700;letter-spacing:.24em;
+  color:#eafff7;line-height:1;
+  text-shadow:0 0 14px rgba(0,255,163,.55),0 0 40px rgba(0,255,163,.25);
+  white-space:nowrap;
+}
+.wordmark::before,.wordmark::after{
+  content:attr(data-text);position:absolute;inset:0;
+  opacity:0;pointer-events:none;
+}
+.wordmark::before{color:var(--cyan);transform:translate(-2px,0)}
+.wordmark::after{color:var(--red);transform:translate(2px,0)}
+.wordmark.glitch::before{opacity:.85;animation:glitchA .19s steps(2,end) 2}
+.wordmark.glitch::after{opacity:.7;animation:glitchB .19s steps(2,end) 2}
+@keyframes glitchA{
+  0%{clip-path:inset(12% 0 62% 0);transform:translate(-3px,-1px)}
+  50%{clip-path:inset(58% 0 22% 0);transform:translate(3px,1px)}
+  100%{clip-path:inset(0 0 0 0);transform:translate(-1px,0)}
+}
+@keyframes glitchB{
+  0%{clip-path:inset(66% 0 8% 0);transform:translate(3px,1px)}
+  50%{clip-path:inset(18% 0 58% 0);transform:translate(-2px,-1px)}
+  100%{clip-path:inset(0 0 0 0);transform:translate(1px,0)}
+}
+.label{
+  font-size:clamp(7px,.68vw,10px);letter-spacing:.3em;color:var(--cyan);
+  text-transform:uppercase;opacity:.9;white-space:nowrap;
+}
+.label .sep{color:var(--dim);margin:0 .4em}
+
+.headline{display:flex;flex-direction:column;align-items:center;gap:3px;text-align:center}
+.hl-a{
+  display:flex;align-items:center;gap:.55em;
+  font-size:clamp(8px,.8vw,12px);letter-spacing:.2em;color:var(--fg);
+}
+.hl-a .dot{
+  width:.62em;height:.62em;border-radius:50%;background:var(--green);
+  box-shadow:0 0 8px var(--green);animation:breathe 1.6s ease-in-out infinite;
+}
+.hl-b{font-size:clamp(8px,.78vw,11.5px);letter-spacing:.16em;color:var(--cyan)}
+.hl-b b{color:var(--green);font-weight:600}
+.sim-chip{
+  margin-top:2px;padding:2px .7em;border:1px solid rgba(255,176,32,.4);border-radius:999px;
+  font-size:clamp(6.5px,.62vw,9px);letter-spacing:.24em;color:#ffce7a;
+  background:rgba(255,176,32,.08);white-space:nowrap;
+}
+.hud-meta{display:flex;align-items:center;justify-content:flex-end;gap:clamp(8px,1.2vw,20px)}
+.hud-meta>div{display:flex;flex-direction:column;gap:2px;align-items:flex-end}
+.hud-meta span{font-size:clamp(6.5px,.6vw,9px);letter-spacing:.22em;color:var(--dim)}
+.hud-meta b{font-size:clamp(9px,.82vw,12.5px);letter-spacing:.12em;color:var(--fg)}
+.ctrl-row{flex-direction:row!important;gap:6px!important}
+.ctrl-row button{
+  padding:.42em .8em;border-radius:4px;cursor:pointer;
+  border:1px solid rgba(0,255,163,.35);background:rgba(0,255,163,.07);
+  color:var(--green);font-size:clamp(7px,.66vw,10px);letter-spacing:.18em;
+  transition:background .16s,border-color .16s,color .16s,transform .12s;
+}
+.ctrl-row button:hover{background:rgba(0,255,163,.18);border-color:var(--green);transform:translateY(-1px)}
+.ctrl-row button:active{transform:translateY(0)}
+.ctrl-row button:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
+.ctrl-row button.paused{color:var(--amber);border-color:rgba(255,176,32,.5);background:rgba(255,176,32,.1)}
+
+/* ── deck ─────────────────────────────────────────────────────────────── */
+.deck{
+  position:relative;z-index:2;
+  flex:1 1 auto;min-height:0;
+  display:grid;
+  grid-template-columns:minmax(150px,.95fr) minmax(0,2.5fr) minmax(150px,.95fr);
+  gap:clamp(6px,.9vw,16px);
+  padding:clamp(7px,.9vw,16px) clamp(9px,1.3vw,22px);
+}
+.col{display:flex;flex-direction:column;gap:clamp(5px,.7vw,11px);min-height:0}
+.card{
+  position:relative;
+  border:1px solid var(--line);border-radius:6px;
+  background:var(--card);
+  padding:clamp(5px,.62vw,11px);
+  display:flex;flex-direction:column;gap:clamp(3px,.35vw,6px);
+  min-height:0;
+  backdrop-filter:blur(2px);
+}
+.card::before,.card::after{ /* corner ticks */
+  content:"";position:absolute;width:8px;height:8px;border:1px solid rgba(0,255,163,.55);
+}
+.card::before{left:-1px;top:-1px;border-right:0;border-bottom:0}
+.card::after{right:-1px;bottom:-1px;border-left:0;border-top:0}
+.card h2{
+  margin:0 0 2px;font-size:clamp(6.8px,.64vw,9.5px);font-weight:500;
+  letter-spacing:.26em;color:var(--cyan);text-transform:uppercase;
+  display:flex;align-items:baseline;gap:.6em;
+}
+.card h2 em{
+  font-style:normal;color:var(--dim);letter-spacing:.12em;font-size:.9em;
+  text-transform:lowercase;
+}
+
+/* telemetry */
+.stat{display:flex;align-items:baseline;justify-content:space-between;gap:.5em;padding:.24em 0}
+.stat span{font-size:clamp(6.5px,.62vw,9.5px);letter-spacing:.16em;color:var(--fg-dim)}
+.stat b{
+  font-size:clamp(9.5px,1.05vw,16px);color:var(--green);letter-spacing:.04em;font-weight:600;
+  text-shadow:0 0 10px rgba(0,255,163,.4);font-variant-numeric:tabular-nums;
+}
+.stat b small{font-size:.58em;color:var(--dim);margin-left:.25em;letter-spacing:.08em}
+.meter{height:3px;border-radius:2px;background:rgba(0,255,163,.12);overflow:hidden;margin-top:2px}
+.meter i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--green),var(--cyan));
+  box-shadow:0 0 10px var(--green);transition:width .3s linear}
+
+/* matrix */
+.matrix-card{flex:1 1 auto;min-height:0;overflow:hidden}
+.matrix{
+  margin:0;flex:1 1 auto;min-height:0;overflow:hidden;
+  font-size:clamp(6.5px,.6vw,9px);line-height:1.5;letter-spacing:.14em;
+  color:var(--green-soft);opacity:.72;
+  white-space:pre;
+  -webkit-mask-image:linear-gradient(180deg,transparent,#000 12%,#000 88%,transparent);
+  mask-image:linear-gradient(180deg,transparent,#000 12%,#000 88%,transparent);
+}
+.matrix b{color:#eafff7;font-weight:400}
+
+/* ── brain stage ──────────────────────────────────────────────────────── */
+.brain-wrap{
+  position:relative;min-height:0;min-width:0;
+  display:flex;flex-direction:column;
+  border-radius:8px;
+  border:1px solid rgba(0,255,163,.10);
+  background:
+    radial-gradient(ellipse 58% 52% at 50% 46%,rgba(0,255,163,.055),transparent 70%),
+    repeating-linear-gradient(0deg,rgba(0,255,163,.035) 0 1px,transparent 1px 34px),
+    repeating-linear-gradient(90deg,rgba(34,227,255,.03) 0 1px,transparent 1px 34px);
+  overflow:hidden;
+}
+#brain{position:absolute;inset:0;display:block;width:100%;height:100%}
+.brain-stage{position:relative;flex:1 1 auto;min-height:0;min-width:0}
+.labels{position:absolute;inset:0;pointer-events:none}
+.agent-label{
+  position:absolute;transform:translate(-50%,-50%);
+  display:flex;align-items:center;gap:.4em;
+  padding:1px .45em;border-radius:2px;
+  font-size:clamp(6px,.55vw,8.5px);letter-spacing:.2em;color:var(--cyan);
+  background:rgba(4,18,20,.72);border:1px solid rgba(34,227,255,.22);
+  white-space:nowrap;
+  box-shadow:0 0 14px rgba(34,227,255,.12);
+}
+.agent-label::before{content:"";width:4px;height:4px;border-radius:50%;background:var(--green);box-shadow:0 0 6px var(--green)}
+.agent-label.hot{color:#eafff7;border-color:rgba(0,255,163,.5)}
+.brain-caption{
+  display:flex;align-items:center;justify-content:space-between;gap:1em;
+  padding:0 clamp(6px,.8vw,14px) 2px;
+  font-size:clamp(6.5px,.6vw,9px);letter-spacing:.22em;color:var(--dim);
+}
+.brain-caption span:first-child{color:var(--cyan);opacity:.85}
+.progress{
+  display:flex;align-items:center;gap:clamp(6px,.8vw,14px);
+  padding:clamp(4px,.5vw,9px) clamp(6px,.8vw,14px) clamp(6px,.7vw,12px);
+}
+.pbar{
+  position:relative;flex:1 1 auto;height:clamp(4px,.5vw,8px);border-radius:2px;
+  background:rgba(0,255,163,.10);border:1px solid rgba(0,255,163,.18);overflow:hidden;
+}
+.pbar i{
+  position:absolute;inset:0 auto 0 0;width:0;
+  background:linear-gradient(90deg,rgba(0,255,163,.85),var(--cyan));
+  box-shadow:0 0 14px var(--green);
+}
+.pbar i::after{
+  content:"";position:absolute;inset:0;
+  background:repeating-linear-gradient(115deg,rgba(255,255,255,.25) 0 5px,transparent 5px 11px);
+  animation:stripes 1.1s linear infinite;opacity:.5;
+}
+@keyframes stripes{to{transform:translateX(22px)}}
+.pmeta{display:flex;align-items:baseline;gap:.7em;white-space:nowrap}
+.pmeta span{font-size:clamp(6.5px,.6vw,9px);letter-spacing:.22em;color:var(--dim)}
+.pmeta b{font-size:clamp(9px,.9vw,13px);color:var(--green);text-shadow:0 0 12px rgba(0,255,163,.5)}
+
+/* ── agent sync + datastream ──────────────────────────────────────────── */
+.agent-card{border:1px solid rgba(0,255,163,.12);border-radius:4px;padding:clamp(3px,.4vw,7px);display:flex;flex-direction:column;gap:3px}
+.a-head{display:flex;align-items:baseline;justify-content:space-between;gap:.5em}
+.a-head b{font-size:clamp(7.5px,.72vw,11px);letter-spacing:.14em;color:var(--fg)}
+.a-state{font-size:clamp(6px,.56vw,8.5px);letter-spacing:.18em;color:var(--green)}
+.a-state.off{color:var(--amber)}
+.a-bar{height:3px;background:rgba(0,255,163,.12);border-radius:2px;overflow:hidden}
+.a-bar i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--green),var(--cyan));
+  box-shadow:0 0 8px var(--green);transition:width .35s linear}
+.a-meta{display:flex;justify-content:space-between;gap:.4em;font-size:clamp(6px,.56vw,8.5px);
+  letter-spacing:.12em;color:var(--dim)}
+.a-meta b{color:var(--fg-dim);font-weight:500}
+.a-stream{
+  font-size:clamp(5.8px,.54vw,8px);letter-spacing:.1em;color:rgba(34,227,255,.6);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.stream-card{flex:1 1 auto;min-height:0;overflow:hidden}
+.stream{
+  flex:1 1 auto;min-height:0;overflow:hidden;
+  display:flex;flex-direction:column;gap:1px;
+  font-size:clamp(6px,.56vw,8.5px);letter-spacing:.08em;color:rgba(0,255,163,.62);
+  -webkit-mask-image:linear-gradient(180deg,#000 60%,transparent);
+  mask-image:linear-gradient(180deg,#000 60%,transparent);
+}
+.stream div{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.stream div b{color:#eafff7;font-weight:400}
+.stream div .t{color:var(--dim)}
+
+/* ── console ──────────────────────────────────────────────────────────── */
+.console{
+  position:relative;z-index:2;
+  flex:0 0 auto;
+  display:flex;flex-direction:column;min-height:0;
+  height:clamp(150px,25%,280px);
+  margin:0 clamp(9px,1.3vw,22px) clamp(8px,1vw,16px);
+  border:1px solid var(--line);border-radius:6px;
+  background:linear-gradient(180deg,rgba(3,14,14,.9),rgba(2,8,9,.94));
+  box-shadow:0 0 40px rgba(0,255,163,.05) inset;
+  overflow:hidden;
+}
+.console-head{
+  display:flex;align-items:center;justify-content:space-between;gap:1em;
+  padding:.4em .8em;border-bottom:1px solid rgba(0,255,163,.12);
+  background:rgba(0,255,163,.045);
+  font-size:clamp(6.8px,.62vw,9.5px);letter-spacing:.24em;color:var(--cyan);
+  text-transform:uppercase;
+}
+.console-head .hint{color:var(--dim);letter-spacing:.16em}
+.console-head .hint b{color:var(--fg-dim)}
+.log{
+  flex:1 1 auto;min-height:0;overflow-y:auto;
+  padding:.55em .8em;
+  font-size:clamp(8px,.74vw,11.5px);line-height:1.6;
+  scrollbar-width:thin;scrollbar-color:rgba(0,255,163,.3) transparent;
+}
+.log::-webkit-scrollbar{width:6px}
+.log::-webkit-scrollbar-thumb{background:rgba(0,255,163,.3);border-radius:3px}
+.log p{margin:0;white-space:pre-wrap;word-break:break-word;animation:lineIn .18s ease-out}
+@keyframes lineIn{from{opacity:0;transform:translateX(-3px)}to{opacity:1;transform:none}}
+.log .ok{color:var(--green)}
+.log .info{color:var(--fg-dim)}
+.log .dim{color:var(--dim)}
+.log .warn{color:#ffce7a}
+.log .err{color:var(--red)}
+.log .cyan{color:var(--cyan)}
+.log .cmd{color:#eafff7}
+.log .cmd::before{content:"› ";color:var(--green)}
+.log p b{color:#eafff7;font-weight:600}
+.prompt{
+  display:flex;align-items:center;gap:.5em;
+  padding:.42em .8em .5em;border-top:1px solid rgba(0,255,163,.12);
+  background:rgba(0,255,163,.03);
+}
+.ps1{font-size:clamp(8px,.74vw,11.5px);letter-spacing:.06em;color:var(--green);white-space:nowrap;
+  text-shadow:0 0 10px rgba(0,255,163,.4)}
+#cmd{
+  flex:1 1 auto;min-width:0;
+  background:transparent;border:0;outline:0;color:#eafff7;
+  font:inherit;font-size:clamp(8px,.74vw,11.5px);letter-spacing:.05em;
+  caret-color:var(--green);
+}
+#cmd::placeholder{color:rgba(79,122,114,.85)}
+#cmd:disabled{color:var(--dim)}
+
+/* ── standby overlay ──────────────────────────────────────────────────── */
+.standby{
+  position:absolute;inset:0;z-index:6;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.8em;
+  text-align:center;padding:1.5em;
+  background:radial-gradient(ellipse at 50% 50%,rgba(2,10,12,.82),rgba(1,4,6,.96));
+  backdrop-filter:blur(3px);
+}
+.standby[hidden]{display:none}
+.standby .big{font-size:clamp(13px,1.5vw,22px);letter-spacing:.34em;color:var(--green);
+  text-shadow:0 0 24px rgba(0,255,163,.5)}
+.standby p{margin:0;font-size:clamp(7.5px,.7vw,11px);letter-spacing:.14em;color:var(--fg-dim);max-width:44ch;line-height:1.7}
+.standby button{
+  margin-top:.4em;padding:.6em 1.3em;border-radius:4px;cursor:pointer;
+  border:1px solid var(--green);background:rgba(0,255,163,.1);color:var(--green);
+  letter-spacing:.24em;font-size:clamp(7.5px,.7vw,10.5px);
+}
+.standby button:hover{background:rgba(0,255,163,.2)}
+
+/* ── footer disclaimer ────────────────────────────────────────────────── */
+.disclaimer{
+  margin:0;text-align:center;max-width:90ch;
+  font-size:clamp(8px,.72vw,11px);line-height:1.7;letter-spacing:.06em;
+  color:#6d918a;
+}
+.disclaimer b{color:#ffce7a;font-weight:500}
+.disclaimer code{color:#a8d9cd;background:rgba(0,255,163,.07);padding:0 .35em;border-radius:3px}
+
+@keyframes breathe{0%,100%{opacity:1}50%{opacity:.35}}
+
+/* ── responsive ───────────────────────────────────────────────────────── */
+@media (max-width:1120px){
+  .screen{font-size:11px}
+  .deck{grid-template-columns:minmax(130px,.9fr) minmax(0,2.2fr) minmax(130px,.9fr)}
+}
+@media (max-width:920px){
+  .screen{min-height:auto}
+  .topbar{grid-template-columns:1fr auto;gap:8px}
+  .headline{order:3;grid-column:1/-1;align-items:flex-start;text-align:left;flex-direction:row;flex-wrap:wrap;gap:.6em}
+  .hud-meta{gap:10px}
+  .deck{grid-template-columns:1fr 1fr;grid-auto-rows:minmax(0,1fr)}
+  .brain-wrap{grid-column:1/-1;order:-1;min-height:clamp(220px,42svh,340px)}
+  .col.telemetry{grid-column:1;grid-row:2}
+  .col.agents{grid-column:2;grid-row:2}
+  .console{height:clamp(160px,34svh,240px)}
+}
+@media (max-width:620px){
+  body{padding:6px;gap:8px}
+  .monitor{padding:5px;border-radius:12px}
+  .screen{aspect-ratio:auto;min-height:0;border-radius:8px;font-size:12px}
+  .deck{grid-template-columns:1fr;gap:8px;padding:8px}
+  .brain-wrap{min-height:clamp(230px,48svh,380px)}
+  .col.telemetry,.col.agents{grid-column:1;grid-row:auto}
+  .col.telemetry{flex-direction:row}
+  .col.telemetry .card{flex:1 1 0}
+  .matrix-card{display:none}
+  .console{height:clamp(180px,36svh,260px);margin:0 8px 8px}
+  .log{font-size:11px}
+  .brand-txt .label{letter-spacing:.16em}
+  .screw{display:none}
+}
+@media (max-width:420px){
+  .hl-a,.hl-b{font-size:8px}
+  .wordmark{letter-spacing:.16em}
+}
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important}
+  .fx.scanlines{opacity:.32}
+}
+</style>
+</head>
+<body>
+
+<div class="monitor">
+  <i class="screw tl"></i><i class="screw tr"></i><i class="screw bl"></i><i class="screw br"></i>
+
+  <div class="screen" id="screen">
+    <div class="fx scanlines"></div>
+    <div class="fx vignette"></div>
+    <div class="fx glass"></div>
+    <div class="fx flicker"></div>
+
+    <!-- ── top bar ─────────────────────────────────────────────────── -->
+    <header class="topbar">
+      <div class="brand">
+        <svg class="hex" viewBox="0 0 48 52" role="img" aria-label="Nexus hexagonal N mark">
+          <polygon points="24,2 44,13.5 44,38.5 24,50 4,38.5 4,13.5" />
+          <path class="n-path" d="M16.5 36.5 V16 L31.5 36.5 V16" />
+        </svg>
+        <div class="brand-txt">
+          <span class="wordmark" id="wordmark" data-text="NEXUS">NEXUS</span>
+          <span class="label">AGENT<span class="sep">/</span>simulation console</span>
+        </div>
+      </div>
+
+      <div class="headline">
+        <div class="hl-a"><span class="dot"></span>1000+ AI AGENTS ONLINE</div>
+        <div class="hl-b">[STATUS: <b id="statusMode">ACTIVE</b>]</div>
+        <div class="sim-chip">SIMULATION · NOT A LIVE BACKEND</div>
+      </div>
+
+      <div class="hud-meta">
+        <div><span>SESSION</span><b id="clock">00:00</b></div>
+        <div><span>RENDER</span><b id="fps">— fps</b></div>
+        <div class="ctrl-row">
+          <button id="pauseBtn" type="button" aria-pressed="false">PAUSE</button>
+          <button id="replayBtn" type="button">REPLAY</button>
+        </div>
+      </div>
+    </header>
+
+    <!-- ── deck ────────────────────────────────────────────────────── -->
+    <div class="deck">
+      <aside class="col telemetry">
+        <div class="card">
+          <h2>TELeMETRY <em>synthetic</em></h2>
+          <div class="stat"><span>AGENTS ONLINE</span><b>1,000+</b></div>
+          <div class="stat"><span>NEURAL NODES</span><b id="tNodes">1,024</b></div>
+          <div class="stat"><span>PATHWAY SPEED</span><b id="tSpeed">4,096<small>syn/s</small></b></div>
+          <div class="stat"><span>EFFICIENCY</span><b id="tEff">0<small>%</small></b></div>
+          <div class="stat"><span>SYNC</span><b id="tSync">0<small>%</small></b></div>
+          <div class="meter"><i id="syncBar"></i></div>
+        </div>
+        <div class="card matrix-card">
+          <h2>BINARY MATRIX</h2>
+          <pre class="matrix" id="matrix" aria-hidden="true"></pre>
+        </div>
+      </aside>
+
+      <section class="brain-wrap" id="brainWrap" aria-label="Simulated holographic cortex map">
+        <div class="brain-stage" id="brainStage">
+          <canvas id="brain"></canvas>
+          <div class="labels" id="labels"></div>
+        </div>
+        <div class="brain-caption">
+          <span>HOLOGRAPHIC CORTEX MAP</span>
+          <span id="nodeCount">1,024 NODES</span>
+        </div>
+        <div class="progress">
+          <div class="pbar"><i id="pfill"></i></div>
+          <div class="pmeta"><span>PROCESSING</span><b id="pct">0%</b></div>
+        </div>
+      </section>
+
+      <aside class="col agents">
+        <div class="card">
+          <h2>AGENT SYNC <em>simulated</em></h2>
+          <div class="agent-card" data-agent="AGENT_412">
+            <div class="a-head"><b>AGENT_412</b><span class="a-state" data-state>SYNCING</span></div>
+            <div class="a-bar"><i data-bar></i></div>
+            <div class="a-meta"><span>SYNC <b data-sync>0%</b></span><span>PROC <b data-proc>0%</b></span></div>
+            <div class="a-stream" data-line>—</div>
+          </div>
+          <div class="agent-card" data-agent="AGENT_876">
+            <div class="a-head"><b>AGENT_876</b><span class="a-state" data-state>SYNCING</span></div>
+            <div class="a-bar"><i data-bar></i></div>
+            <div class="a-meta"><span>SYNC <b data-sync>0%</b></span><span>PROC <b data-proc>0%</b></span></div>
+            <div class="a-stream" data-line>—</div>
+          </div>
+        </div>
+        <div class="card stream-card">
+          <h2>DATASTREAM</h2>
+          <div class="stream" id="datastream"></div>
+        </div>
+      </aside>
+    </div>
+
+    <!-- ── console ─────────────────────────────────────────────────── -->
+    <section class="console" aria-label="Simulated command console">
+      <div class="console-head">
+        <span>nexus sim console</span>
+        <span class="hint">type <b>help</b> · <b>status</b> · <b>clear</b> · <b>exit</b></span>
+      </div>
+      <div class="log" id="log" role="log" aria-live="polite" aria-label="console output"></div>
+      <form class="prompt" id="promptForm" autocomplete="off">
+        <label class="ps1" for="cmd">nexus@sim:~$</label>
+        <input id="cmd" name="cmd" type="text" autocomplete="off" autocapitalize="off"
+               spellcheck="false" placeholder="type a command or a question…" aria-label="command input" />
+      </form>
+    </section>
+
+    <div class="standby" id="standby" hidden>
+      <div class="big">SESSION ENDED</div>
+      <p>Console standby. This is a simulation — nothing was disconnected, because nothing was ever connected.</p>
+      <button id="standbyReplay" type="button">REPLAY SIMULATION</button>
+    </div>
+  </div>
+</div>
+
+<p class="disclaimer">
+  <b>Simulation only.</b> Every number, agent id and datastream on this screen is synthetic — generated in your
+  browser for this UI. There is no backend, no API key, no network request and no model call. For the real thing,
+  run <code>nexus gui</code> (live dashboard) or <code>nexus task "…"</code> (CLI) in this repo.
+</p>
+
+<script>
+(function () {
+  "use strict";
+
+  /* ── constants ─────────────────────────────────────────────────────── */
+  var NODE_COUNT = 1024;          // actually rendered, not decorative
+  var AGENT_IDS = ["AGENT_412", "AGENT_876", "AGENT_018", "AGENT_204", "AGENT_733"];
+  var MAX_PULSES = 30;
+  var MAX_RIPPLES = 26;
+  var REDUCED = window.matchMedia ? window.matchMedia("(prefers-reduced-motion: reduce)").matches : false;
+
+  /* ── tiny helpers ──────────────────────────────────────────────────── */
+  function $(id) { return document.getElementById(id); }
+  function pad(n, w) { return String(n).padStart(w || 2, "0"); }
+  function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
+  function mulberry32(a) {
+    return function () {
+      a |= 0; a = (a + 0x6D2B79F5) | 0;
+      var t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  function hex(n) { return n.toString(16).toUpperCase().padStart(2, "0"); }
+
+  /* ── state ─────────────────────────────────────────────────────────── */
+  var S = {
+    seed: 20261024,
+    paused: false,
+    exited: false,
+    booted: false,
+    rafId: 0,
+    lastFrame: 0,
+    fpsFrames: 0,
+    fpsLast: 0,
+    fps: 0,
+    elapsed: 0,
+    progress: 0,
+    brain: null,
+    pulses: [],
+    ripples: [],
+    labelsOn: [],
+    history: [],
+    histIdx: -1,
+    sawWarn: false
+  };
+
+  /* ── boot sequence ─────────────────────────────────────────────────── */
+  var logEl = $("log");
+  var cmdEl = $("cmd");
+
+  function line(text, cls) {
+    var p = document.createElement("p");
+    if (cls) p.className = cls;
+    p.textContent = text;
+    logEl.appendChild(p);
+    while (logEl.children.length > 400) logEl.removeChild(logEl.firstChild);
+    logEl.scrollTop = logEl.scrollHeight;
+    return p;
+  }
+  function rich(html, cls) {
+    var p = document.createElement("p");
+    if (cls) p.className = cls;
+    p.innerHTML = html;
+    logEl.appendChild(p);
+    while (logEl.children.length > 400) logEl.removeChild(logEl.firstChild);
+    logEl.scrollTop = logEl.scrollHeight;
+    return p;
+  }
+
+  function bootLog() {
+    logEl.innerHTML = "";
+    line("NEXUS AGENT · simulation console", "ok");
+    line("renderer canvas2d · " + NODE_COUNT + " neural nodes · " + (S.brain ? S.brain.edges.length : 0) + " pathways", "dim");
+    line("mode SIMULATION — synthetic telemetry, no model calls, no network", "warn");
+    line("", "dim");
+    line("Type `help` for commands, `status` for telemetry.", "info");
+    line("", "dim");
+  }
+
+  /* ── matrix ────────────────────────────────────────────────────────── */
+  var matrixEl = $("matrix");
+  var matrixRows = [];
+  var matrixTimer = 0;
+  var MATRIX_LINES = 26, MATRIX_COLS = 22;
+
+  function matrixRow() {
+    var rnd = Math.random;
+    var out = "";
+    for (var i = 0; i < MATRIX_COLS; i++) out += rnd() > 0.5 ? "1" : "0";
+    return out;
+  }
+  function pushMatrixRow() {
+    matrixRows.push(matrixRow());
+    if (matrixRows.length > MATRIX_LINES) matrixRows.shift();
+    matrixEl.textContent = matrixRows.map(function (row, i) {
+      return i === matrixRows.length - 1 ? row.replace(/^(.{4})(.*)$/, "$1 $2") : row;
+    }).join("\n");
+  }
+  function startMatrix() {
+    matrixRows = [];
+    matrixEl.textContent = "";
+    var shown = 0;
+    clearInterval(matrixTimer);
+    matrixTimer = setInterval(function () {
+      if (S.paused) return;
+      pushMatrixRow();
+      if (++shown >= MATRIX_LINES) {
+        clearInterval(matrixTimer);
+        matrixTimer = setInterval(function () { if (!S.paused) pushMatrixRow(); }, 260);
+      }
+    }, 90);
+  }
+
+  /* ── datastream ────────────────────────────────────────────────────── */
+  var streamEl = $("datastream");
+  var streamTimer = 0;
+  function token() {
+    var t = "";
+    for (var i = 0; i < 4; i++) t += hex(Math.floor(Math.random() * 256));
+    return t;
+  }
+  function pushStream() {
+    var row = document.createElement("div");
+    var who = AGENT_IDS[Math.floor(Math.random() * AGENT_IDS.length)];
+    row.innerHTML = '<span class="t">' + pad(Math.floor(Math.random() * 60)) + ":" +
+      pad(Math.floor(Math.random() * 60)) + '</span> <b>' + who + "</b> " + token() + " " +
+      token().slice(0, 4) + (Math.random() > 0.6 ? " ▸ ok" : "");
+    streamEl.appendChild(row);
+    while (streamEl.children.length > 16) streamEl.removeChild(streamEl.firstChild);
+  }
+  function startStream() {
+    streamEl.innerHTML = "";
+    for (var i = 0; i < 9; i++) pushStream();
+    clearInterval(streamTimer);
+    streamTimer = setInterval(function () { if (!S.paused && !S.exited) pushStream(); }, 520);
+  }
+
+  /* ── brain ─────────────────────────────────────────────────────────── */
+  var canvas = $("brain");
+  var ctx = canvas.getContext("2d");
+  var staticLayer = document.createElement("canvas");
+  var sctx = staticLayer.getContext("2d");
+  var DPR = Math.min(window.devicePixelRatio || 1, 2);
+
+  function silhouette(path, cx, cy, s) {
+    path.moveTo(cx, cy - 0.46 * s);
+    path.bezierCurveTo(cx - 0.16 * s, cy - 0.50 * s, cx - 0.35 * s, cy - 0.40 * s, cx - 0.41 * s, cy - 0.21 * s);
+    path.bezierCurveTo(cx - 0.46 * s, cy - 0.02 * s, cx - 0.43 * s, cy + 0.17 * s, cx - 0.31 * s, cy + 0.31 * s);
+    path.bezierCurveTo(cx - 0.22 * s, cy + 0.41 * s, cx - 0.09 * s, cy + 0.46 * s, cx, cy + 0.39 * s);
+    path.bezierCurveTo(cx + 0.09 * s, cy + 0.46 * s, cx + 0.22 * s, cy + 0.41 * s, cx + 0.31 * s, cy + 0.31 * s);
+    path.bezierCurveTo(cx + 0.43 * s, cy + 0.17 * s, cx + 0.46 * s, cy - 0.02 * s, cx + 0.41 * s, cy - 0.21 * s);
+    path.bezierCurveTo(cx + 0.35 * s, cy - 0.40 * s, cx + 0.16 * s, cy - 0.50 * s, cx, cy - 0.46 * s);
+    path.closePath();
+    return path;
+  }
+
+  function buildBrain(w, h) {
+    var rnd = mulberry32(S.seed);
+    var cx = w / 2;
+    var cy = h * 0.5;
+    var s = Math.min(w * 0.86, h * 1.02);
+    var outline = silhouette(new Path2D(), cx, cy, s);
+
+    // nodes: rejection-sampled inside the silhouette
+    var nodes = [];
+    var guard = 0;
+    while (nodes.length < NODE_COUNT && guard < NODE_COUNT * 400) {
+      guard++;
+      var x = cx + (rnd() - 0.5) * s;
+      var y = cy + (rnd() - 0.5) * s;
+      if (!ctx.isPointInPath(outline, x, y)) continue;
+      nodes.push({
+        x: x, y: y,
+        side: x < cx ? -1 : 1,
+        r: 0.7 + rnd() * 1.25,
+        phase: rnd() * Math.PI * 2,
+        speed: 0.6 + rnd() * 1.8,
+        heat: 0
+      });
+    }
+
+    // edges: k-nearest within a radius via a spatial grid
+    var cell = 26;
+    var grid = new Map();
+    nodes.forEach(function (n, i) {
+      var key = Math.floor(n.x / cell) + ":" + Math.floor(n.y / cell);
+      if (!grid.has(key)) grid.set(key, []);
+      grid.get(key).push(i);
+    });
+    var edges = [];
+    var seen = new Set();
+    for (var i = 0; i < nodes.length; i++) {
+      var n = nodes[i];
+      var gx = Math.floor(n.x / cell), gy = Math.floor(n.y / cell);
+      var cands = [];
+      for (var dx = -1; dx <= 1; dx++) {
+        for (var dy = -1; dy <= 1; dy++) {
+          var bucket = grid.get((gx + dx) + ":" + (gy + dy));
+          if (!bucket) continue;
+          for (var b = 0; b < bucket.length; b++) {
+            var j = bucket[b];
+            if (j === i) continue;
+            var m = nodes[j];
+            var d2 = (m.x - n.x) * (m.x - n.x) + (m.y - n.y) * (m.y - n.y);
+            if (d2 < 42 * 42) cands.push([d2, j]);
+          }
+        }
+      }
+      cands.sort(function (a, b) { return a[0] - b[0]; });
+      var made = 0;
+      for (var c = 0; c < cands.length && made < 2; c++) {
+        var other = cands[c][1];
+        var key2 = (i < other ? i + "-" + other : other + "-" + i);
+        if (seen.has(key2)) continue;
+        seen.add(key2);
+        edges.push([i, other]);
+        made++;
+      }
+    }
+
+    // cortical folds: wavy beziers clipped to the silhouette
+    var folds = [];
+    for (var f = 0; f < 22; f++) {
+      var fx = cx + (rnd() - 0.5) * s * 0.78;
+      var fy = cy + (rnd() - 0.5) * s * 0.84;
+      var a = (rnd() - 0.5) * Math.PI;
+      var len = s * (0.10 + rnd() * 0.17);
+      folds.push({
+        x: fx, y: fy, len: len, a: a,
+        bend: (rnd() - 0.5) * len * 0.9,
+        w: 0.6 + rnd() * 0.7
+      });
+    }
+
+    // agent label anchors: outer nodes on each side
+    var anchors = [];
+    for (var k = 0; k < AGENT_IDS.length; k++) {
+      var target = null, best = -1;
+      for (var t = 0; t < 220; t++) {
+        var cand = nodes[Math.floor(rnd() * nodes.length)];
+        var score = Math.abs(cand.x - cx) / (s * 0.5) + rnd() * 0.12;
+        if (score > best) { best = score; target = cand; }
+      }
+      if (target) anchors.push({ id: AGENT_IDS[k], node: target });
+    }
+
+    return {
+      w: w, h: h, cx: cx, cy: cy, s: s,
+      outline: outline, nodes: nodes, edges: edges, folds: folds, anchors: anchors, seed: S.seed
+    };
+  }
+
+  function drawStatic(brain) {
+    var w = brain.w, h = brain.h;
+    staticLayer.width = Math.round(w * DPR);
+    staticLayer.height = Math.round(h * DPR);
+    sctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    sctx.clearRect(0, 0, w, h);
+
+    // inner glow + fill
+    var g = sctx.createRadialGradient(brain.cx, brain.cy - brain.s * 0.06, brain.s * 0.05,
+      brain.cx, brain.cy, brain.s * 0.62);
+    g.addColorStop(0, "rgba(0,255,163,.13)");
+    g.addColorStop(0.55, "rgba(0,120,110,.07)");
+    g.addColorStop(1, "rgba(0,40,45,0)");
+    sctx.fillStyle = g;
+    sctx.fill(brain.outline);
+
+    // folds (clipped)
+    sctx.save();
+    sctx.clip(brain.outline);
+    sctx.lineWidth = 1;
+    brain.folds.forEach(function (f) {
+      sctx.beginPath();
+      sctx.moveTo(f.x, f.y);
+      var ex = f.x + Math.cos(f.a) * f.len;
+      var ey = f.y + Math.sin(f.a) * f.len;
+      var mx = (f.x + ex) / 2 - Math.sin(f.a) * f.bend;
+      var my = (f.y + ey) / 2 + Math.cos(f.a) * f.bend;
+      sctx.quadraticCurveTo(mx, my, ex, ey);
+      sctx.strokeStyle = "rgba(0,255,163," + (0.05 + f.w * 0.055).toFixed(3) + ")";
+      sctx.stroke();
+    });
+
+    // edges, batched per side
+    [-1, 1].forEach(function (side) {
+      sctx.beginPath();
+      brain.edges.forEach(function (e) {
+        var a = brain.nodes[e[0]], b = brain.nodes[e[1]];
+        if (a.side !== side) return;
+        sctx.moveTo(a.x, a.y);
+        sctx.lineTo(b.x, b.y);
+      });
+      sctx.strokeStyle = side < 0 ? "rgba(0,255,163,.15)" : "rgba(34,227,255,.14)";
+      sctx.lineWidth = 0.7;
+      sctx.stroke();
+    });
+
+    // node dots, batched
+    sctx.beginPath();
+    brain.nodes.forEach(function (n) {
+      sctx.moveTo(n.x + n.r, n.y);
+      sctx.arc(n.x, n.y, n.r, 0, Math.PI * 2);
+    });
+    sctx.fillStyle = "rgba(150,255,225,.5)";
+    sctx.fill();
+    sctx.restore();
+
+    // outline + fissure + halo
+    sctx.save();
+    sctx.strokeStyle = "rgba(0,255,163,.75)";
+    sctx.lineWidth = 1.2;
+    sctx.shadowColor = "rgba(0,255,163,.85)";
+    sctx.shadowBlur = 16;
+    sctx.stroke(brain.outline);
+    sctx.restore();
+
+    sctx.save();
+    sctx.beginPath();
+    sctx.moveTo(brain.cx, brain.cy - brain.s * 0.455);
+    sctx.bezierCurveTo(brain.cx - 3, brain.cy - brain.s * 0.2, brain.cx + 3, brain.cy + brain.s * 0.1,
+      brain.cx, brain.cy + brain.s * 0.38);
+    sctx.strokeStyle = "rgba(0,255,163,.28)";
+    sctx.lineWidth = 1;
+    sctx.setLineDash([4, 5]);
+    sctx.stroke();
+    sctx.restore();
+
+    // holographic rings
+    var rings = [
+      { rx: brain.s * 0.56, ry: brain.s * 0.20, y: brain.cy + brain.s * 0.47, a: 0.22 },
+      { rx: brain.s * 0.64, ry: brain.s * 0.23, y: brain.cy + brain.s * 0.47, a: 0.12 },
+      { rx: brain.s * 0.50, ry: brain.s * 0.18, y: brain.cy - brain.s * 0.50, a: 0.10 }
+    ];
+    sctx.save();
+    sctx.setLineDash([2, 7]);
+    rings.forEach(function (r) {
+      sctx.beginPath();
+      sctx.ellipse(brain.cx, r.y, r.rx, r.ry, 0, 0, Math.PI * 2);
+      sctx.strokeStyle = "rgba(34,227,255," + r.a + ")";
+      sctx.lineWidth = 1;
+      sctx.stroke();
+    });
+    sctx.restore();
+  }
+
+  function layoutLabels(brain) {
+    var box = $("labels");
+    box.innerHTML = "";
+    S.labelsOn = brain.anchors.map(function (anchor, i) {
+      var el = document.createElement("div");
+      el.className = "agent-label" + (i < 2 ? " hot" : "");
+      el.textContent = anchor.id;
+      var left = clamp((anchor.node.x / brain.w) * 100, 4, 96);
+      var top = clamp((anchor.node.y / brain.h) * 100 - 11, 6, 94);
+      el.style.left = left + "%";
+      el.style.top = top + "%";
+      box.appendChild(el);
+      return { el: el, node: anchor.node };
+    });
+  }
+
+  function spawnPulse() {
+    if (!S.brain || S.pulses.length >= MAX_PULSES) return;
+    var edges = S.brain.edges;
+    var e = edges[Math.floor(Math.random() * edges.length)];
+    if (!e) return;
+    var a = S.brain.nodes[e[0]], b = S.brain.nodes[e[1]];
+    S.pulses.push({
+      a: a, b: b, t: 0,
+      speed: 0.35 + Math.random() * 0.85,
+      cyan: a.side > 0,
+      w: 1.4 + Math.random() * 1.6
+    });
+  }
+
+  function drawFrame(now) {
+    if (!S.brain) return;
+    var brain = S.brain;
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    ctx.clearRect(0, 0, brain.w, brain.h);
+    ctx.drawImage(staticLayer, 0, 0, brain.w, brain.h);
+
+    var t = now / 1000;
+
+    // pulsing nodes (a subset keeps this cheap)
+    ctx.save();
+    for (var i = 0; i < brain.nodes.length; i += 3) {
+      var n = brain.nodes[i];
+      var a = 0.18 + 0.55 * (0.5 + 0.5 * Math.sin(t * n.speed + n.phase));
+      ctx.beginPath();
+      ctx.arc(n.x, n.y, n.r + 1.6, 0, Math.PI * 2);
+      ctx.fillStyle = n.side < 0 ? "rgba(0,255,163," + (a * 0.22).toFixed(3) + ")"
+        : "rgba(34,227,255," + (a * 0.22).toFixed(3) + ")";
+      ctx.fill();
+      if (a > 0.55) {
+        ctx.beginPath();
+        ctx.arc(n.x, n.y, n.r * 0.85, 0, Math.PI * 2);
+        ctx.fillStyle = n.side < 0 ? "rgba(220,255,244,.85)" : "rgba(200,246,255,.8)";
+        ctx.fill();
+      }
+    }
+    ctx.restore();
+
+    // captured nodes flash briefly
+    ctx.save();
+    brain.nodes.forEach(function (n) {
+      if (n.heat <= 0) return;
+      ctx.beginPath();
+      ctx.arc(n.x, n.y, 2.2 + n.heat * 4.5, 0, Math.PI * 2);
+      ctx.fillStyle = "rgba(0,255,163," + (n.heat * 0.5).toFixed(3) + ")";
+      ctx.fill();
+      n.heat = Math.max(0, n.heat - 0.03);
+    });
+    ctx.restore();
+
+    // ripples
+    ctx.save();
+    for (var r = S.ripples.length - 1; r >= 0; r--) {
+      var rp = S.ripples[r];
+      rp.r += rp.grow;
+      rp.life -= 0.022;
+      if (rp.life <= 0) { S.ripples.splice(r, 1); continue; }
+      ctx.beginPath();
+      ctx.arc(rp.x, rp.y, rp.r, 0, Math.PI * 2);
+      ctx.strokeStyle = (rp.cyan ? "rgba(34,227,255," : "rgba(0,255,163,") + rp.life.toFixed(3) + ")";
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    // travelling light pulses
+    ctx.save();
+    ctx.shadowBlur = 9;
+    for (var p = S.pulses.length - 1; p >= 0; p--) {
+      var pu = S.pulses[p];
+      pu.t += pu.speed * 0.022;
+      if (pu.t >= 1) {
+        var hit = pu.b;
+        hit.heat = 1;
+        S.ripples.push({ x: hit.x, y: hit.y, r: 1.5, grow: 0.55, life: 0.9, cyan: pu.cyan });
+        if (S.ripples.length > MAX_RIPPLES) S.ripples.shift();
+        S.pulses.splice(p, 1);
+        continue;
+      }
+      var px = pu.a.x + (pu.b.x - pu.a.x) * pu.t;
+      var py = pu.a.y + (pu.b.y - pu.a.y) * pu.t;
+      var col = pu.cyan ? "34,227,255" : "0,255,163";
+      ctx.shadowColor = "rgba(" + col + ",.9)";
+      ctx.beginPath();
+      ctx.arc(px, py, pu.w, 0, Math.PI * 2);
+      ctx.fillStyle = "rgba(230,255,250,.95)";
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(px, py, pu.w * 2.8, 0, Math.PI * 2);
+      ctx.fillStyle = "rgba(" + col + ",.20)";
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  /* ── loop ──────────────────────────────────────────────────────────── */
+  var spawnAccum = 0;
+
+  function tick(now) {
+    if (!S.paused && !S.exited) {
+      var dt = S.lastFrame ? Math.min(now - S.lastFrame, 60) : 16;
+      S.lastFrame = now;
+
+      if (Math.random() < 0.10) spawnPulse();
+      if (Math.random() < 0.03) spawnPulse();
+
+      drawFrame(now);
+
+      // fps
+      S.fpsFrames++;
+      if (!S.fpsLast) S.fpsLast = now;
+      if (now - S.fpsLast >= 700) {
+        S.fps = Math.round((S.fpsFrames * 1000) / (now - S.fpsLast));
+        S.fpsFrames = 0;
+        S.fpsLast = now;
+        $("fps").textContent = S.fps + " fps";
+      }
+
+      // progress fills once, then holds at 100
+      if (S.progress < 100) {
+        S.progress = Math.min(100, S.progress + dt * 0.032);
+        paintProgress();
+      }
+
+      // session clock
+      S.elapsed += dt / 1000;
+      paintClock();
+    }
+    S.rafId = requestAnimationFrame(tick);
+  }
+
+  function paintProgress() {
+    var p = S.progress;
+    $("pfill").style.width = p.toFixed(1) + "%";
+    $("pct").textContent = Math.round(p) + "%" + (p >= 100 ? " · COMPLETE" : "");
+    $("tSync").innerHTML = Math.round(p) + "<small>%</small>";
+    $("syncBar").style.width = p.toFixed(1) + "%";
+    $("tEff").innerHTML = (92 + p * 0.067).toFixed(1) + "<small>%</small>";
+  }
+
+  function paintClock() {
+    var total = Math.floor(S.elapsed);
+    $("clock").textContent = pad(Math.floor(total / 60)) + ":" + pad(total % 60);
+  }
+
+  /* ── telemetry + agent cards ───────────────────────────────────────── */
+  var speedBase = 4096;
+  setInterval(function () {
+    if (S.paused || S.exited) return;
+    var jitter = Math.round((Math.random() - 0.5) * 190);
+    $("tSpeed").innerHTML = (speedBase + jitter).toLocaleString("en-US") + "<small>syn/s</small>";
+    if (S.progress >= 100) {
+      $("statusMode").textContent = Math.random() > 0.55 ? "OPTIMIZING" : "ACTIVE";
+    }
+    // agent cards: sync completes, then processing stays at 100 for the demo
+    var cards = document.querySelectorAll(".agent-card");
+    Array.prototype.forEach.call(cards, function (card, idx) {
+      var target = clamp(S.progress - idx * 8, 0, 100);
+      card.querySelector("[data-bar]").style.width = target + "%";
+      card.querySelector("[data-sync]").textContent = Math.round(target) + "%";
+      card.querySelector("[data-proc]").textContent = Math.round(target) + "%";
+      var stateEl = card.querySelector("[data-state]");
+      var done = target >= 100;
+      stateEl.textContent = done ? "SYNCED" : "SYNCING";
+      stateEl.className = "a-state" + (done ? "" : " off");
+      card.querySelector("[data-line]").textContent = (done ? "100% processed · " : "syncing ") +
+        AGENT_IDS[idx] + " · " + token().slice(0, 4).toLowerCase();
+    });
+  }, 620);
+
+  /* ── pause / resume / replay ───────────────────────────────────────── */
+  var pauseBtn = $("pauseBtn");
+
+  function setPaused(next) {
+    S.paused = next;
+    pauseBtn.textContent = next ? "RESUME" : "PAUSE";
+    pauseBtn.classList.toggle("paused", next);
+    pauseBtn.setAttribute("aria-pressed", String(next));
+    if (next) line("simulation paused — rendering frozen", "warn");
+    else line("simulation resumed", "ok");
+  }
+  pauseBtn.addEventListener("click", function () { setPaused(!S.paused); });
+
+  function replay() {
+    S.seed = (Date.now() % 100000) + 7;
+    S.progress = 0;
+    S.elapsed = 0;
+    S.pulses = [];
+    S.ripples = [];
+    S.exited = false;
+    S.paused = false;
+    pauseBtn.textContent = "PAUSE";
+    pauseBtn.classList.remove("paused");
+    pauseBtn.setAttribute("aria-pressed", "false");
+    $("standby").hidden = true;
+    cmdEl.disabled = false;
+    $("statusMode").textContent = "ACTIVE";
+    paintProgress();
+    paintClock();
+    rebuildBrain();
+    startMatrix();
+    startStream();
+    bootLog();
+    cmdEl.focus();
+  }
+  $("replayBtn").addEventListener("click", replay);
+  $("standbyReplay").addEventListener("click", replay);
+
+  /* ── resize / rebuild ──────────────────────────────────────────────── */
+  var resizeTimer = 0;
+  function rebuildBrain() {
+    var stage = $("brainStage");
+    var w = Math.max(120, stage.clientWidth);
+    var h = Math.max(120, stage.clientHeight);
+    canvas.width = Math.round(w * DPR);
+    canvas.height = Math.round(h * DPR);
+    S.brain = buildBrain(w, h);
+    drawStatic(S.brain);
+    layoutLabels(S.brain);
+    $("nodeCount").textContent = S.brain.nodes.length.toLocaleString("en-US") +
+      " NODES · " + S.brain.edges.length.toLocaleString("en-US") + " PATHWAYS";
+    $("tNodes").textContent = S.brain.nodes.length.toLocaleString("en-US");
+    drawFrame(performance.now());
+  }
+  function onResize() {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(rebuildBrain, 140);
+  }
+  window.addEventListener("resize", onResize);
+  if (window.ResizeObserver) new ResizeObserver(onResize).observe($("brainStage"));
+
+  /* ── command console ───────────────────────────────────────────────── */
+  function statusReport() {
+    var nodes = S.brain ? S.brain.nodes.length : NODE_COUNT;
+    var edges = S.brain ? S.brain.edges.length : 0;
+    rich("SIMULATED STATUS <b>·</b> " + Math.round(S.progress) + "% processed", "ok");
+    line("  agents online .......... 1,000+  (display value, simulated)", "info");
+    line("  neural nodes rendered .. " + nodes.toLocaleString("en-US") + "  (drawn on canvas)", "info");
+    line("  pathways rendered ...... " + edges.toLocaleString("en-US"), "info");
+    line("  wave speed ............. " + (speedBase).toLocaleString("en-US") + " syn/s  (synthetic)", "info");
+    line("  efficiency ............. " + (92 + S.progress * 0.067).toFixed(1) + "%  (synthetic)", "info");
+    line("  sync ................... " + Math.round(S.progress) + "%", "info");
+    line("  session ............... " + $("clock").textContent + "  (real, since page load)", "info");
+    line("  render ................ " + (S.fps || "—") + " fps  (real, measured)", "info");
+    line("  state ................. " + (S.paused ? "PAUSED" : "RUNNING") + " · simulation", "dim");
+    line("  backend ............... none — no network, no model calls", "warn");
+    line("", "dim");
+  }
+
+  function helpReport() {
+    rich("COMMANDS <b>·</b> this console is a simulation", "ok");
+    line("  status          print the synthetic telemetry block", "info");
+    line("  help            this list", "info");
+    line("  clear           wipe the console output", "info");
+    line("  exit            end the session (REPLAY restarts it)", "info");
+    line("  pause / resume  freeze or resume the animation", "info");
+    line("  replay          re-seed the cortex and restart the boot sequence", "info");
+    line("  anything else   answered with a canned, clearly-marked demo reply", "info");
+    line("", "dim");
+    line("Note: no command here reaches a model. The real CLI is `nexus task \"…\"`;", "dim");
+    line("the live dashboard is `nexus gui`.", "dim");
+    line("", "dim");
+  }
+
+  var CANNED = [
+    { keys: ["brain", "cortex", "neural", "hemisphere"], text: "The cortex you see is generated geometry: 1,024 nodes sampled inside a bezier silhouette, linked to their two nearest neighbours, with light pulses travelling the resulting edges. Nothing is anatomically real, and nothing is loaded from a backend." },
+    { keys: ["agent", "agile", "team", "swarm"], text: "The agent labels (AGENT_412, AGENT_876 …) are decorative ids for this mock-up. The real roster in this repo is 11 configured models and 959 imported roles — run `nexus agents` or `nexus roles` in a terminal." },
+    { keys: ["sync", "latency", "token", "telemetry", "speed", "efficiency"], text: "Telemetry on this screen is synthetic and regenerated in the browser. Two values are honest by construction: the session clock (since page load) and the render rate (measured frames per second). Current render rate: " + (S.fps || "—") + " fps." },
+    { keys: ["model", "gemini", "deepseek", "openrouter", "ollama", "llm"], text: "No model is connected. This page makes zero network requests, and the sandbox you are looking at cannot call one. Real model routing lives in nexus/providers.py and needs a key from `nexus keys set`." },
+    { keys: ["hello", "hi", "hey", "salam", "assalam"], text: "Hello. You are talking to a scripted demo — the replies come from a fixed table in this file, not from a model." },
+    { keys: ["who", "what are you", "about", "nexus"], text: "NEXUS AGENT is a terminal-first autonomous coding agent in this repository. This page is a visual simulation of its console, built as a single self-contained HTML file to show the intended look without touching a backend." },
+    { keys: ["real", "fake", "true", "honest"], text: "Fair question: everything numeric here except the session clock and the measured fps is simulated, and the page says so in three places. The dashboard at `nexus gui` shows real events from a real run." }
+  ];
+
+  function answerFor(query) {
+    var q = " " + query.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim() + " ";
+    var best = null, bestLen = 0;
+    for (var i = 0; i < CANNED.length; i++) {
+      for (var k = 0; k < CANNED[i].keys.length; k++) {
+        var key = " " + CANNED[i].keys[k] + " ";
+        if (q.indexOf(key) !== -1 && CANNED[i].keys[k].length > bestLen) {
+          best = CANNED[i].text;
+          bestLen = CANNED[i].keys[k].length;
+        }
+      }
+    }
+    if (best) return best;
+    return "No scripted answer for that. This console only holds a small canned reply table — it is not wired to a model, so an unknown query gets an honest shrug rather than an invented answer. Try `status`, `help`, or ask about the brain, agents or telemetry.";
+  }
+
+  function runCommand(raw) {
+    var text = raw.trim();
+    if (!text) return;
+    S.history.push(text);
+    S.histIdx = S.history.length;
+    line(text, "cmd");
+
+    var head = text.toLowerCase().split(/\s+/)[0];
+    if (head === "help" || head === "?") return helpReport();
+    if (head === "status" || head === "stats") return statusReport();
+    if (head === "clear" || head === "cls") {
+      logEl.innerHTML = "";
+      line("console cleared · simulation still running", "dim");
+      return;
+    }
+    if (head === "exit" || head === "quit") {
+      line("shutting down simulated session…", "warn");
+      line("no connection to close — nothing was ever connected.", "dim");
+      S.exited = true;
+      cmdEl.disabled = true;
+      $("standby").hidden = false;
+      $("statusMode").textContent = "STANDBY";
+      return;
+    }
+    if (head === "pause" || head === "resume") {
+      setPaused(head === "pause" ? true : false);
+      return;
+    }
+    if (head === "replay") { replay(); return; }
+    rich("SIMULATED RESPONSE <b>·</b> " + answerFor(text), "cyan");
+    line("(canned reply — no model was called, no network request was made)", "dim");
+    line("", "dim");
+  }
+
+  $("promptForm").addEventListener("submit", function (e) {
+    e.preventDefault();
+    var v = cmdEl.value;
+    cmdEl.value = "";
+    runCommand(v);
+  });
+  cmdEl.addEventListener("keydown", function (e) {
+    if (e.key === "ArrowUp") {
+      if (!S.history.length) return;
+      e.preventDefault();
+      S.histIdx = Math.max(0, S.histIdx - 1);
+      cmdEl.value = S.history[S.histIdx] || "";
+    } else if (e.key === "ArrowDown") {
+      e.preventDefault();
+      S.histIdx = Math.min(S.history.length, S.histIdx + 1);
+      cmdEl.value = S.history[S.histIdx] || "";
+    } else if (e.key === "Escape") {
+      cmdEl.value = "";
+      cmdEl.blur();
+    }
+  });
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "/" && document.activeElement !== cmdEl && !e.metaKey && !e.ctrlKey) {
+      e.preventDefault();
+      cmdEl.focus();
+    }
+  });
+  var FINE_POINTER = window.matchMedia ? window.matchMedia("(pointer:fine)").matches : true;
+  document.addEventListener("click", function (e) {
+    if (!FINE_POINTER) return;                       // no keyboard popups on touch
+    if (e.target.closest("button,input,a,label")) return;
+    if (window.getSelection && String(window.getSelection())) return;
+    cmdEl.focus({ preventScroll: true });
+  });
+
+  /* ── occasional glitch (never constant) ────────────────────────────── */
+  var wordmark = $("wordmark");
+  (function glitchLoop() {
+    var wait = 5200 + Math.random() * 6400;
+    setTimeout(function () {
+      if (!S.paused && !S.exited && !REDUCED) {
+        wordmark.classList.add("glitch");
+        setTimeout(function () { wordmark.classList.remove("glitch"); }, 380);
+      }
+      glitchLoop();
+    }, wait);
+  })();
+
+  /* ── start ─────────────────────────────────────────────────────────── */
+  function start() {
+    rebuildBrain();
+    bootLog();
+    startMatrix();
+    startStream();
+    paintProgress();
+    paintClock();
+    S.rafId = requestAnimationFrame(tick);
+    if (REDUCED) {
+      S.paused = true;
+      pauseBtn.textContent = "RESUME";
+      pauseBtn.classList.add("paused");
+      pauseBtn.setAttribute("aria-pressed", "true");
+      line("reduced motion detected — simulation starts paused", "warn");
+    }
+    cmdEl.focus({ preventScroll: true });
+  }
+
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", start);
+  else start();
+})();
+</script>
+</body>
+</html>

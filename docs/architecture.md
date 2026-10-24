@@ -23,7 +23,7 @@ the HTTP/SSE server the VS Code sidebar embeds.
 | `nexus/agent.py` | the loop, sessions, compaction, pipelines | `NexusAgent`, `RunResult`, `render_system_prompt()` |
 | `nexus/cli.py` | argparse UI, REPL, `/commands`, `doctor` | `main()`, `emit_console()`, `interactive_approval()` |
 | `nexus/server.py` | stdlib HTTP + SSE for sidebar/panel | `ServerState`, `Session`, `serve()` |
-| `nexus/panel/` | the web UIs: the GUI deck and the compact extension panel | `dashboard.html/.css/.js`, `panel.html`, `panel.js` |
+| `nexus/panel/` | the web UIs: the GUI deck, the compact extension panel and the simulation console | `dashboard.html/.css/.js`, `panel.html`, `panel.js`, `index.html` |
 | `nexus/demo.py` | scripted offline run | `DemoRunner`, `patch_agent_for_demo()` |
 | `nexus/keys.py` | API key store (`~/.config/nexus/keys.json`), env resolution | `save_key()`, `get_key()`, `key_source()` |
 | `nexus/env.py` | *optional* legacy `.env` loading (with or without python-dotenv) | `load_dotenv_files()` |
