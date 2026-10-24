@@ -79,19 +79,19 @@ def test_roadmap_model_mapping(roles_yaml):
     """The mapping table from the roadmap must hold."""
     roles = roles_yaml["roles"]
     expected = {
-        "frontend": "claude",
-        "backend": "claude",
-        "database": "claude",
-        "mobile": "claude",
-        "data-science": "claude",
-        "security-audit": "claude",
-        "devops": "hermes",
-        "marketing": "hermes",
-        "trading": "hermes",
-        "qa": "hermes",
-        "docs": "hermes",
-        "pentesting": "ollama-uncensored",
-        "osint": "ollama-uncensored",
+        "frontend": "gemini",
+        "backend": "gemini",
+        "database": "gemini",
+        "mobile": "gemini",
+        "data-science": "gemini",
+        "security-audit": "gemini",
+        "devops": "deepseek",
+        "marketing": "deepseek",
+        "trading": "deepseek",
+        "qa": "deepseek",
+        "docs": "deepseek",
+        "pentesting": "openrouter-uncensored",
+        "osint": "openrouter-uncensored",
     }
     for role, agent in expected.items():
         assert role in roles, f"roadmap role '{role}' is missing"
@@ -99,7 +99,7 @@ def test_roadmap_model_mapping(roles_yaml):
 
 
 def test_offensive_roles_are_the_uncensored_ones(roles_yaml):
-    uncensored = {n for n, r in roles_yaml["roles"].items() if r.get("agent") == "ollama-uncensored"}
+    uncensored = {n for n, r in roles_yaml["roles"].items() if r.get("agent") == "openrouter-uncensored"}
     assert {"pentesting", "osint"} <= uncensored
     # defensive/business roles must never end up on the uncensored model
     for name in ("frontend", "backend", "qa", "docs", "finance", "legal-draft", "design"):
@@ -110,7 +110,7 @@ def test_general_is_the_fallback_and_inherits_the_default_agent(roles_yaml, agen
     general = roles_yaml["roles"]["general"]
     assert general["agent"] == ""
     assert not general.get("keywords")
-    assert agents_yaml["default_agent"] == "claude"
+    assert agents_yaml["default_agent"] == "gemini"
 
 
 def test_pentesting_persona_keeps_the_authorization_guardrail(roles_yaml):
@@ -148,16 +148,16 @@ def test_load_config_registers_every_role(repo):
     cfg = load_config(repo)
     assert len(cfg.roles) >= 100
     assert "general" in cfg.roles.roles
-    assert cfg.role("pentesting").agent == "ollama-uncensored"
+    assert cfg.role("pentesting").agent == "openrouter-uncensored"
     assert cfg.agent_for_role(cfg.role("pentesting")).tool_mode == "text"
     # project-local roles merge on top of the bundled ones
     (repo / ".nexus").mkdir(exist_ok=True)
     (repo / ".nexus" / "roles.yaml").write_text(
         "roles:\n  repo-historian:\n    title: Historian\n    category: docs\n"
-        "    agent: hermes\n    persona: You are the repo historian.\n    keywords: [convention]\n",
+        "    agent: deepseek\n    persona: You are the repo historian.\n    keywords: [convention]\n",
         encoding="utf-8",
     )
     cfg2 = load_config(repo)
     assert len(cfg2.roles) == len(cfg.roles) + 1
-    assert cfg2.role("repo-historian").agent == "hermes"
-    assert cfg2.role("pentesting").agent == "ollama-uncensored"
+    assert cfg2.role("repo-historian").agent == "deepseek"
+    assert cfg2.role("pentesting").agent == "openrouter-uncensored"

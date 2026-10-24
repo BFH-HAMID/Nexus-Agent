@@ -6,7 +6,6 @@ import argparse
 import io
 import json
 import sys
-from pathlib import Path
 
 import pytest
 
@@ -74,7 +73,7 @@ def test_roles_search_misses(repo):
 def test_roles_show(repo):
     code, out = run(["roles", "-C", str(repo), "--show", "pentesting"])
     assert code == 0
-    assert "ollama-uncensored" in out
+    assert "openrouter-uncensored" in out
     assert "offensive-security specialist" in out
 
 
@@ -97,9 +96,9 @@ def test_roles_category_filter(repo):
 def test_agents_lists_the_team(repo):
     code, out = run(["agents", "-C", str(repo)])
     assert code == 0
-    assert "claude-sonnet-5-5" in out
-    assert "dolphin-mixtral" in out
-    assert "hermes3:8b" in out
+    assert "gemini-3.8-flash" in out
+    assert "dolphin-mistral-24b-venice-edition" in out
+    assert "deepseek-flash" in out
 
 
 def test_prompt_command_prints_the_persona(repo):
@@ -114,8 +113,9 @@ def test_doctor_runs_offline(repo):
     code, out = run(["doctor", "-C", str(repo)])
     assert "nexus doctor" in out
     assert "✓ roles" in out
-    assert "agent:claude" in out
-    assert code == 1  # no ANTHROPIC_API_KEY / no ollama in the sandbox
+    assert "agent:gemini" in out
+    assert "key:gemini" in out
+    assert code == 1  # no GEMINI_API_KEY / DEEPSEEK_API_KEY / OPENROUTER_API_KEY in the sandbox
     assert "check(s) failed" in out
 
 
@@ -123,7 +123,7 @@ def test_doctor_json(repo):
     code, out = run(["doctor", "-C", str(repo), "--json"])
     payload = json.loads(out)
     names = {check["name"] for check in payload}
-    assert {"config", "roles", "agent:claude", "gh cli", "git repo"} <= names
+    assert {"config", "roles", "agent:gemini", "key:gemini", "gh cli", "git repo"} <= names
 
 
 def test_pipeline_list(repo):
@@ -137,11 +137,12 @@ def test_init_writes_scaffolding(tmp_path):
     target.mkdir()
     code, out = run(["init", "-C", str(target)])
     assert code == 0
-    assert (target / ".env.example").is_file()
-    assert (target / ".env").is_file()
+    # keys live in the terminal store, so no .env is ever written
+    assert not (target / ".env").exists()
+    assert not (target / ".env.example").exists()
     assert (target / ".nexus" / "roles.yaml").is_file()
     assert (target / ".vscode" / "tasks.json").is_file()
-    assert "ANTHROPIC_API_KEY" in (target / ".env.example").read_text()
+    assert "nexus keys set" in out
     # idempotent
     code2, out2 = run(["init", "-C", str(target)])
     assert code2 == 0 and "nothing to do" in out2
@@ -165,7 +166,7 @@ def factory_for(*providers):
 
 
 def test_task_runs_and_prints_a_summary(repo, capsys):
-    provider = FakeProvider("hermes", [           # docs is routed to the local hermes agent
+    provider = FakeProvider("deepseek", [           # docs is routed to the cheap deepseek agent
         tool_completion([("read_file", {"path": "README.md"})], text="reading"),
         finish_completion("documented the project", ["publish it"]),
     ])
@@ -181,7 +182,7 @@ def test_task_runs_and_prints_a_summary(repo, capsys):
 
 
 def test_task_with_injected_provider(repo, monkeypatch):
-    provider = FakeProvider("claude", [finish_completion("wrote the endpoint")])
+    provider = FakeProvider("gemini", [finish_completion("wrote the endpoint")])
     monkeypatch.setattr(cli, "build_parser", cli.build_parser)  # keep parser real
     args = ns(workspace=str(repo), yes=True, task=["add an api endpoint for profiles"],
               providers_factory=factory_for(provider))
@@ -192,7 +193,7 @@ def test_task_with_injected_provider(repo, monkeypatch):
 
 
 def test_task_json_output(repo):
-    provider = FakeProvider("claude", [finish_completion("done and dusted")])
+    provider = FakeProvider("gemini", [finish_completion("done and dusted")])
     args = ns(workspace=str(repo), yes=True, json=True, task=["polish the query builder module"],
               providers_factory=factory_for(provider))
     buffer = io.StringIO()
@@ -209,7 +210,7 @@ def test_task_json_output(repo):
 
 
 def test_ask_is_read_only(repo):
-    provider = FakeProvider("claude", [
+    provider = FakeProvider("gemini", [
         tool_completion([("write_file", {"path": "sneaky.py", "content": "x"})]),
         finish_completion("answered"),
     ])
@@ -229,7 +230,7 @@ def test_ask_is_read_only(repo):
 def test_task_failure_returns_nonzero(repo):
     from nexus.types import ProviderError
 
-    provider = FakeProvider("claude", [ProviderError("boom", retryable=False)])
+    provider = FakeProvider("gemini", [ProviderError("boom", retryable=False)])
     args = ns(workspace=str(repo), yes=True, task=["do something"],
               providers_factory=factory_for(provider))
     buffer = io.StringIO()
@@ -242,7 +243,7 @@ def test_task_failure_returns_nonzero(repo):
 
 
 def test_forced_role_flag(repo):
-    provider = FakeProvider("claude", [finish_completion("ok")])
+    provider = FakeProvider("gemini", [finish_completion("ok")])
     args = ns(workspace=str(repo), yes=True, role="database", task=["whatever"],
               providers_factory=factory_for(provider))
     buffer = io.StringIO()
@@ -255,7 +256,7 @@ def test_forced_role_flag(repo):
 
 
 def test_pipeline_command(repo):
-    provider = FakeProvider("claude", [finish_completion("step done")] * 6)
+    provider = FakeProvider("gemini", [finish_completion("step done")] * 6)
     args = ns(workspace=str(repo), yes=True, name="security-review",
               task=["review the auth layer"], providers_factory=factory_for(provider))
     buffer = io.StringIO()
@@ -282,7 +283,7 @@ def agent_for(repo, *providers, **kwargs):
 
 
 def test_slash_help_and_roles(repo, capsys):
-    agent = agent_for(repo, FakeProvider("claude", []))
+    agent = agent_for(repo, FakeProvider("gemini", []))
     assert cli.handle_slash(agent, "/help")
     assert "Nexus REPL commands" in capsys.readouterr().out
     cli.handle_slash(agent, "/roles security")
@@ -290,7 +291,7 @@ def test_slash_help_and_roles(repo, capsys):
 
 
 def test_slash_role_pins_and_disables_auto_routing(repo, capsys):
-    agent = agent_for(repo, FakeProvider("claude", []))
+    agent = agent_for(repo, FakeProvider("gemini", []))
     cli.handle_slash(agent, "/role backend")
     out = capsys.readouterr().out
     assert "pinned role: backend" in out
@@ -299,16 +300,16 @@ def test_slash_role_pins_and_disables_auto_routing(repo, capsys):
 
 
 def test_slash_unknown_role_falls_back(repo, capsys):
-    agent = agent_for(repo, FakeProvider("claude", []))
+    agent = agent_for(repo, FakeProvider("gemini", []))
     cli.handle_slash(agent, "/role not-a-role")
     assert agent.active_role.name == "general"
 
 
 def test_slash_agents_and_tools_and_system(repo, capsys):
-    agent = agent_for(repo, FakeProvider("claude", []))
+    agent = agent_for(repo, FakeProvider("gemini", []))
     cli.handle_slash(agent, "/agents")
     out = capsys.readouterr().out
-    assert "claude-sonnet-5-5" in out
+    assert "gemini-3.8-flash" in out
     cli.handle_slash(agent, "/tools")
     out = capsys.readouterr().out
     assert "read_file" in out and "write_file" in out
@@ -317,7 +318,7 @@ def test_slash_agents_and_tools_and_system(repo, capsys):
 
 
 def test_slash_memory_roundtrip(repo, capsys):
-    agent = agent_for(repo, FakeProvider("claude", []))
+    agent = agent_for(repo, FakeProvider("gemini", []))
     cli.handle_slash(agent, "/remember always use httpx here")
     cli.handle_slash(agent, "/memory general")
     out = capsys.readouterr().out
@@ -325,13 +326,13 @@ def test_slash_memory_roundtrip(repo, capsys):
 
 
 def test_slash_model_override(repo):
-    agent = agent_for(repo, FakeProvider("claude", []))
-    cli.handle_slash(agent, "/model claude-opus-5-5")
-    assert agent.active_role.model == "claude-opus-5-5"
+    agent = agent_for(repo, FakeProvider("gemini", []))
+    cli.handle_slash(agent, "/model gemini-4-argon")
+    assert agent.active_role.model == "gemini-4-argon"
 
 
 def test_slash_clear_new_compact_stats(repo, capsys):
-    provider = FakeProvider("claude", [text_completion("hi")])
+    provider = FakeProvider("gemini", [text_completion("hi")])
     agent = agent_for(repo, provider)
     agent.chat_turn("please continue")
     assert agent.history
@@ -345,7 +346,7 @@ def test_slash_clear_new_compact_stats(repo, capsys):
 
 
 def test_slash_save_transcript(repo, tmp_path, capsys):
-    provider = FakeProvider("claude", [text_completion("hi")])
+    provider = FakeProvider("gemini", [text_completion("hi")])
     agent = agent_for(repo, provider)
     agent.chat_turn("please continue")
     target = tmp_path / "t.md"
@@ -355,7 +356,7 @@ def test_slash_save_transcript(repo, tmp_path, capsys):
 
 
 def test_slash_ask_uses_read_only(repo):
-    provider = FakeProvider("claude", [
+    provider = FakeProvider("gemini", [
         tool_completion([("write_file", {"path": "nope.py", "content": "x"})]),
         text_completion("answer"),
     ])
@@ -366,7 +367,7 @@ def test_slash_ask_uses_read_only(repo):
 
 
 def test_slash_task_runs_with_tools(repo):
-    provider = FakeProvider("claude", [
+    provider = FakeProvider("gemini", [
         tool_completion([("write_file", {"path": "yes.py", "content": "x = 1\n"})]),
         finish_completion("created yes.py"),
     ])
@@ -376,7 +377,7 @@ def test_slash_task_runs_with_tools(repo):
 
 
 def test_slash_unknown_command(repo, capsys):
-    agent = agent_for(repo, FakeProvider("claude", []))
+    agent = agent_for(repo, FakeProvider("gemini", []))
     cli.handle_slash(agent, "/wat")
     assert "unknown command" in capsys.readouterr().out
 
@@ -417,7 +418,7 @@ def test_denied_tool_call_message_reaches_the_model(repo):
     from nexus.agent import NexusAgent
     from nexus.config import load_config
 
-    provider = FakeProvider("claude", [
+    provider = FakeProvider("gemini", [
         tool_completion([("write_file", {"path": "blocked.py", "content": "x"})]),
         finish_completion("respecting the denial"),
     ])
@@ -436,7 +437,7 @@ def test_emit_console_does_not_crash_on_any_event_type(capsys):
 
     for kind in EventType:
         cli.emit_console(Event(kind, {"text": "t", "message": "m", "tool": "x", "preview": "p",
-                                      "role": "backend", "agent": "claude", "method": "keyword",
+                                      "role": "backend", "agent": "gemini", "method": "keyword",
                                       "model": "m", "is_error": False, "risk": "write", "level": "warn",
                                       "error": "e", "hits": ["a"], "note": "n", "path": "p"}))
     assert capsys.readouterr().out

@@ -4,8 +4,8 @@
 
 A task string enters `NexusAgent.run()`. The **router** turns it into a **role** (keyword
 fast-match, LLM classifier fallback). The role carries a **persona** (system prompt) and an
-**agent** name; the agent name resolves to a **provider** (Anthropic or OpenAI-compatible) in
-`agents.yaml`. The provider is called with the persona, the conversation and the **tool schemas**;
+**agent** name; the agent name resolves to a **provider** (Gemini, DeepSeek, OpenRouter — or any
+OpenAI-compatible endpoint) in `agents.yaml`. The provider is called with the persona, the conversation and the **tool schemas**;
 tool calls come back, go through the **approval gate**, execute in the **tool layer**, and their
 results are appended as `tool_result` blocks. The loop repeats until the model stops calling
 tools, calls `finish`, hits `max_turns`, or errors out. Events stream to the CLI renderer *and* to
@@ -17,7 +17,7 @@ the HTTP/SSE server the VS Code sidebar embeds.
 | --- | --- | --- |
 | `nexus/types.py` | provider-agnostic data model | `Role`, `Keyword`, `Message`, `TextBlock`, `ToolCall`, `ToolResultBlock`, `Completion`, `ToolSpec`, `Risk`, `Event`/`EventType`, `Usage`, `Provider`, `ProviderError` |
 | `nexus/config.py` | layered YAML loading, `${VAR}` expansion, settings | `AgentConfig`, `Role`, `RoleRegistry`, `Settings`, `Pipeline`, `NexusConfig`, `load_config()` |
-| `nexus/providers.py` | model adapters + fallback chain | `AnthropicProvider`, `OpenAICompatProvider`, `ProviderRegistry`, `parse_tool_call_from_text()` |
+| `nexus/providers.py` | model adapters (Gemini / DeepSeek / OpenRouter, OpenAI dialect) + fallback chain | `OpenAICompatProvider`, `AnthropicProvider`, `ProviderRegistry`, `parse_tool_call_from_text()` |
 | `nexus/router.py` | task → role | `Router`, `RouteDecision`, `CLASSIFIER_PROMPT` |
 | `nexus/tools.py` | tool implementations + safety | `ToolRegistry`, `ToolContext`, `ApprovalGate`, `PathGuard`, `RoleMemory`, `build_tools()` |
 | `nexus/agent.py` | the loop, sessions, compaction, pipelines | `NexusAgent`, `RunResult`, `render_system_prompt()` |
@@ -25,7 +25,8 @@ the HTTP/SSE server the VS Code sidebar embeds.
 | `nexus/server.py` | stdlib HTTP + SSE for sidebar/panel | `ServerState`, `Session`, `serve()` |
 | `nexus/panel/` | the web UI (also embedded by the extension) | `panel.html`, `panel.js` |
 | `nexus/demo.py` | scripted offline run | `DemoRunner`, `patch_agent_for_demo()` |
-| `nexus/env.py` | `.env` loading (with or without python-dotenv) | `load_dotenv_files()` |
+| `nexus/keys.py` | API key store (`~/.config/nexus/keys.json`), env resolution | `save_key()`, `get_key()`, `key_source()` |
+| `nexus/env.py` | *optional* legacy `.env` loading (with or without python-dotenv) | `load_dotenv_files()` |
 
 Dependency direction is strictly one-way:
 
@@ -84,10 +85,14 @@ Word-boundary matching matters: `api` must not fire inside `rapid`, but `next.js
 
 Both adapters normalize to `Completion(content=[TextBlock|ToolCall], stop_reason, usage)`:
 
-* **Anthropic** — official SDK when installed, raw `httpx` otherwise. `tool_use` blocks in,
-  `tool_result` blocks out, `anthropic-version: 2023-06-01`.
-* **OpenAI-compatible** — `/v1/chat/completions` with `tools` as function schemas; tool results
-  become `role: "tool"` messages. Base URLs are normalized (`…:11434` → `…:11434/v1`).
+* **OpenAI dialect** (Gemini / DeepSeek / OpenRouter / anything compatible) —
+  `<base>/chat/completions` with `tools` as function schemas; tool results become `role: "tool"`
+  messages. `_endpoint()` accepts the three real-world base shapes (`…/v1`, Gemini's
+  `…/v1beta/openai`, or a full `…/chat/completions` URL). A hosted provider with no key fails
+  locally and instantly instead of burning a request.
+* **Anthropic** (legacy, only if you point `agents.yaml` at it) — official SDK when installed,
+  raw `httpx` otherwise. `tool_use` blocks in, `tool_result` blocks out,
+  `anthropic-version: 2023-06-01`.
 
 Both apply `_retry` (3 attempts, linear backoff) for transient statuses
 (408/409/425/429/5xx/529) and connection errors. Both recover text-mode tool calls when
@@ -137,8 +142,8 @@ needs `X-Nexus-Token` (or `?token=…`, because `EventSource` cannot send header
 ## Testing strategy
 
 * providers are scripted (`FakeProvider`) — no network, no keys, deterministic;
-* the registry auto-fills any agent named in `agents.yaml` so routing to `hermes`/`ollama` never
-  explodes in a test;
+* the registry auto-fills any agent named in `agents.yaml` so routing to `deepseek`/`openrouter`
+  never explodes in a test, and the key store is redirected to `tmp_path`;
 * tools run against a real throwaway git repo in `tmp_path`;
 * the server tests bind an ephemeral port and speak real HTTP/SSE;
 * `--demo` exercises the whole loop as an integration test.

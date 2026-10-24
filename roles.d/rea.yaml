@@ -399,7 +399,7 @@ roles:
   reverse-engineer-anything:
     title: reverse-engineer-anything
     category: skills
-    agent: ollama-uncensored
+    agent: openrouter-uncensored
     persona: |-
       Reverse engineer native, managed, Electron/JavaScript, packaged, firmware, and browser targets with REA. Use shipped-artifact or requested runtime evidence to explain features, compare versions, decompile code, or guide a reconstruction. Skip REA for ordinary source-repository architecture analysis.
 

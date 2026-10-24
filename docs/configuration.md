@@ -1,6 +1,9 @@
 # Configuration
 
-Three YAML files, one `.env`, and a handful of environment variables. No code changes, ever.
+Three YAML files and a handful of environment variables — **no `.env` file needed**. No code changes, ever.
+
+API keys are supplied once in the terminal (or exported as environment variables) and stored
+outside the repo; see [API keys](#api-keys-no-env-file) below.
 
 * [`agents.yaml`](../agents.yaml) — **which model lives where**
 * [`roles.yaml`](../roles.yaml) — **who does what** (generated, see below)
@@ -19,8 +22,8 @@ Every file is loaded in layers and deep-merged, **later wins**:
 | 5 | `<project>/agents.yaml`, `roles.yaml`, … | project root overrides |
 
 So a repo can add a `repo-historian` role in `.nexus/roles.yaml` without touching the 107
-bundled ones, and your `~/.config/nexus/agents.yaml` can repoint `hermes` at a beefier GPU box
-for every project at once.
+bundled ones, and your `~/.config/nexus/agents.yaml` can repoint `deepseek` at a different model
+(or a self-hosted OpenAI-compatible box) for every project at once.
 
 **`roles.d/` drop-in packs.** Any `roles.d/*.yaml` at each layer is merged on top of the main
 `roles.yaml`, lowest precedence first. This is where [`nexus addagent`](addagent.md) writes
@@ -28,43 +31,85 @@ imported agents — the repo ships five committed packs under `<repo>/roles.d/` 
 `/addagent` writes project-local packs to `<project>/.nexus/roles.d/`. A pack is just a
 `roles.yaml` layer, so you can hand-edit or delete one at any time.
 
-`.env` files are loaded from `<workspace>/.env`, `./.env` and `$NEXUS_HOME/.env` (first wins,
-already-set environment variables are never overwritten).
+## API keys (no `.env` file)
+
+Keys are **not** part of the YAML layering. For every agent they resolve in this order:
+
+| # | Source | Example |
+| --- | --- | --- |
+| 1 | inline `api_key:` in `agents.yaml` | not recommended (it lands in git) |
+| 2 | environment variable | `export GEMINI_API_KEY=...`, or `DEEPSEEK_API_KEY`, `OPENROUTER_API_KEY` |
+| 3 | the terminal store | `nexus keys set gemini` → `~/.config/nexus/keys.json` (mode `600`) |
+
+```bash
+nexus keys                        # what is configured, masked + where it came from
+nexus keys set deepseek           # hidden prompt, saved to the store
+echo "$KEY" | nexus keys set deepseek   # non-interactive (CI)
+nexus keys set openrouter --session     # this process only, nothing written
+nexus keys test                   # calls /models on each configured provider
+nexus keys remove deepseek
+```
+
+The store lives in `$NEXUS_HOME/keys.json` (default `~/.config/nexus/keys.json`) and is written
+atomically with `chmod 600`. Set `NEXUS_KEYS_FILE` to move it, or `NEXUS_NO_PROMPT=1` /
+`--no-key-prompt` to disable the first-run prompt.
+
+A `.env` file is **still read** if one already exists (`<workspace>/.env`, `./.env`,
+`$NEXUS_HOME/.env`, first wins; already-set environment variables are never overwritten), but
+nothing requires it any more — `nexus init` no longer writes one.
 
 ## `agents.yaml`
 
 ```yaml
-default_agent: claude          # used by roles with agent: "" and as the last resort
+default_agent: gemini          # used by roles with agent: "" and as the last resort
 
 agents:
-  claude:
-    provider: anthropic        # anthropic | openai-compatible
-    model: claude-sonnet-5-5
-    api_key_env: ANTHROPIC_API_KEY
-    base_url: ${ANTHROPIC_BASE_URL:-https://api.anthropic.com}
+  gemini:
+    provider: gemini           # gemini | deepseek | openrouter | openai-compatible | anthropic
+    model: ${GEMINI_MODEL:-gemini-3.8-flash}
+    api_key_env: GEMINI_API_KEY
+    # base_url is optional for the three API providers - it defaults to the
+    # vendor's OpenAI-compatible endpoint
     max_tokens: 8192           # per-call output cap
     temperature: null          # null = provider default
     timeout: 180               # seconds
     supports_tools: true
     tool_mode: native          # native | text | none
-    fallback: null             # agent name to try when this one fails
+    fallback: deepseek         # try this agent when the call fails / no key
     description: …
-    # any other key is passed through to the API request as-is (e.g. top_p, thinking)
+    # any other key is passed through to the API request as-is (e.g. top_p, reasoning)
 
-  ollama-uncensored:
+  openrouter-uncensored:
+    provider: openrouter
+    model: ${OPENROUTER_UNCENSORED_MODEL:-cognitivecomputations/dolphin-mistral-24b-venice-edition}
+    api_key_env: OPENROUTER_API_KEY
+    tool_mode: text            # JSON tool contract in the prompt, parsed back
+    fallback: openrouter
+
+  # self-hosted / local models still work through the same adapter
+  local:
     provider: openai-compatible
-    model: dolphin-mixtral:latest
+    model: llama3.1:8b
     base_url: ${OLLAMA_HOST:-http://localhost:11434}/v1
     api_key: ollama            # the OpenAI shim requires a key; Ollama ignores it
-    tool_mode: text            # dolphin has NO tool template -> JSON contract in the prompt
-    fallback: ollama           # Phase 8: keep working when the local box is off
 ```
+
+Built-in base URLs (override with `base_url:` at any time):
+
+| `provider` | Endpoint |
+| --- | --- |
+| `gemini` | `https://generativelanguage.googleapis.com/v1beta/openai` |
+| `deepseek` | `https://api.deepseek.com/v1` |
+| `openrouter` | `https://openrouter.ai/api/v1` |
+
+Everyone else speaks the same dialect, so `provider: openai-compatible` + a `base_url` covers
+vLLM, llama.cpp, LM Studio, Together, Groq…
 
 ### `tool_mode`
 
 | Mode | What happens | Use for |
 | --- | --- | --- |
-| `native` | tools are sent as `tools` (Anthropic) / `tools` (OpenAI function calling) | Claude, `hermes3`, `llama3.1`, `qwen`, most hosted models |
+| `native` | tools are sent as function-calling `tools` (OpenAI dialect) | Gemini, DeepSeek, OpenRouter, most hosted models |
 | `text` | the tool schemas are rendered into the system prompt as a JSON contract; the reply is parsed for a fenced `{"name": …, "arguments": …}` block | `dolphin-mixtral`, `dolphin-mistral`, any model whose chat template has no tool parser |
 | `none` (`supports_tools: false`) | no tools at all — pure conversation | chat-only endpoints, embeddings-ish models |
 
@@ -75,24 +120,29 @@ and keeps the loop going.
 ### `fallback`
 
 `ProviderRegistry.call_with_fallback` walks the chain on any `ProviderError`, emits an
-`agent` event for each hop (`⚠ agent hermes failed: …` / `⇢ falling back to agent 'claude'`),
+`agent` event for each hop (`⚠ agent deepseek failed: …` / `⇢ falling back to agent 'gemini'`),
 and refuses to loop (`a → b → a` stops after both were tried). Cycles and dead ends are reported,
 not hung on.
+
+The shipped chains are deliberately cross-provider — `gemini → deepseek → openrouter → gemini` —
+so **one configured key is enough** to run the whole roster. A missing key fails locally and
+instantly (`agent 'gemini' has no API key - run \`nexus keys set gemini\``), then the fallback
+takes over.
 
 ### Model IDs used by default
 
 | Agent | Model | Notes |
 | --- | --- | --- |
-| `claude` | `claude-sonnet-5-5` | best speed/intelligence balance for code |
-| `claude-big` | `claude-opus-5-5` | long-horizon architecture work |
-| `claude-cheap` | `claude-haiku-5-5` | the routing classifier |
-| `hermes` | `hermes3:8b` | local, tool-capable |
-| `hermes-big` | `${HERMES_BIG_MODEL:-hermes3:70b}` | local, if you have the VRAM |
-| `ollama` | `${OLLAMA_MODEL:-llama3.1:8b}` | generic local |
-| `ollama-uncensored` | `dolphin-mixtral:latest` | uncensored, text-mode tools |
-| `openrouter` | `${OPENROUTER_MODEL:-nousresearch/hermes-3-llama-3.1-405b}` | hosted open models |
+| `gemini` | `${GEMINI_MODEL:-gemini-3.8-flash}` | default workhorse for code |
+| `gemini-big` | `${GEMINI_BIG_MODEL:-gemini-4-argon}` | flagship reasoning, 1M context |
+| `gemini-flash` | `${GEMINI_FAST_MODEL:-gemini-3.5-flash-lite}` | the routing classifier |
+| `deepseek` | `${DEEPSEEK_MODEL:-deepseek-flash}` | cheap bulk work, tool calling |
+| `deepseek-pro` | `${DEEPSEEK_PRO_MODEL:-deepseek-v4-pro}` | hard reasoning |
+| `openrouter` | `${OPENROUTER_MODEL:-openrouter/auto}` | any hosted open model |
+| `openrouter-uncensored` | `${OPENROUTER_UNCENSORED_MODEL:-cognitivecomputations/dolphin-mistral-24b-venice-edition}` | uncensored, text-mode tools |
 
-`claude-sonnet-4-5` retires 2026-11-30 — that is why the default is `claude-sonnet-5-5`.
+Model ids move fast: `nexus models <agent>` lists what the provider actually serves right now,
+and every id above is overridable from the environment without editing the YAML.
 
 ## `roles.yaml`
 
@@ -139,7 +189,7 @@ roles.
 | `auto_route` | `true` | `NEXUS_AUTO_ROUTE` | route every task; off = keep the pinned role |
 | `router_min_score` | `1.0` | `NEXUS_ROUTER_MIN_SCORE` | keyword score needed to skip the LLM |
 | `router_llm_fallback` | `true` | `NEXUS_ROUTER_LLM` | classify with a model when no keyword hits |
-| `router_agent` | `claude-cheap` | `NEXUS_ROUTER_AGENT` | which agent runs the classifier |
+| `router_agent` | `gemini-flash` | `NEXUS_ROUTER_AGENT` | which agent runs the classifier |
 | `max_turns` | `24` | `NEXUS_MAX_TURNS` | hard stop for the tool loop |
 | `auto_yes` | `false` | `NEXUS_YES` | never prompt (danger calls still blocked) |
 | `allow_dangerous` | `false` | `NEXUS_ALLOW_DANGEROUS` | deny-listed commands become "ask" |
@@ -160,19 +210,23 @@ roles.
 
 ## Environment variables
 
-Everything lives in [`.env.example`](../.env.example):
+Nothing has to be exported — `nexus keys set` is the interactive path. For CI, or if you prefer
+your shell profile:
 
 ```
-ANTHROPIC_API_KEY      GITHUB_TOKEN / GH_TOKEN      ANTHROPIC_BASE_URL
-OLLAMA_HOST            OLLAMA_MODEL                 HERMES_BIG_MODEL
-OPENROUTER_API_KEY     OPENROUTER_MODEL
-NEXUS_HOME             NEXUS_WORKSPACE              NEXUS_DEFAULT_AGENT
-NEXUS_AUTO_ROUTE       NEXUS_ROUTER_AGENT           NEXUS_ROUTER_LLM
-NEXUS_ROUTER_MIN_SCORE NEXUS_MAX_TURNS              NEXUS_YES
-NEXUS_ALLOW_DANGEROUS  NEXUS_MEMORY                 NEXUS_AUTO_BRANCH
-NEXUS_COMMAND_TIMEOUT  NEXUS_SERVE_TOKEN            NEXUS_SERVE_PORT
-NEXUS_DEMO             NO_COLOR / NEXUS_NO_COLOR
+GEMINI_API_KEY         DEEPSEEK_API_KEY             OPENROUTER_API_KEY
+GEMINI_MODEL           GEMINI_BIG_MODEL             GEMINI_FAST_MODEL
+DEEPSEEK_MODEL         DEEPSEEK_PRO_MODEL
+OPENROUTER_MODEL       OPENROUTER_UNCENSORED_MODEL
+GITHUB_TOKEN / GH_TOKEN
+NEXUS_KEYS_FILE        NEXUS_HOME                   NEXUS_WORKSPACE
+NEXUS_DEFAULT_AGENT    NEXUS_AUTO_ROUTE             NEXUS_ROUTER_AGENT
+NEXUS_ROUTER_LLM       NEXUS_ROUTER_MIN_SCORE       NEXUS_MAX_TURNS
+NEXUS_YES              NEXUS_ALLOW_DANGEROUS        NEXUS_MEMORY
+NEXUS_AUTO_BRANCH      NEXUS_COMMAND_TIMEOUT        NEXUS_SERVE_TOKEN
+NEXUS_SERVE_PORT       NEXUS_DEMO                   NEXUS_NO_PROMPT
+NO_COLOR / NEXUS_NO_COLOR
 ```
 
 `${VAR}` and `${VAR:-fallback}` are expanded anywhere inside the YAML files, so you can repoint an
-agent without editing the file: `OLLAMA_HOST=http://gpu-box:11434 nexus task …`.
+agent without editing the file: `GEMINI_MODEL=gemini-3.6-flash nexus task …`.

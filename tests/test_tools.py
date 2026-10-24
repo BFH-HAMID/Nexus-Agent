@@ -13,6 +13,7 @@ from nexus.tools import (
     PathGuard,
     RoleMemory,
     ToolContext,
+    ToolFailure,
     build_tools,
     conventional_message,
     find_blocked_pattern,
@@ -133,10 +134,10 @@ def test_changed_files_are_tracked(repo):
 
 def test_path_guard_blocks_workspace_escape(repo):
     guard = PathGuard(repo)
-    with pytest.raises(Exception) as exc:
+    with pytest.raises(ToolFailure) as exc:
         guard.resolve("../escape.txt")
     assert "outside the workspace" in str(exc.value)
-    with pytest.raises(Exception):
+    with pytest.raises(ToolFailure):
         guard.resolve("/etc/passwd")
     assert guard.resolve("app/main.py") == (repo / "app" / "main.py").resolve()
 
@@ -354,7 +355,7 @@ def test_role_memory_roundtrip(repo):
 def test_role_memory_can_be_disabled(repo):
     memory = RoleMemory(repo, enabled=False)
     assert memory.read("backend") == ""
-    with pytest.raises(Exception):
+    with pytest.raises(ToolFailure):
         memory.append("backend", "nope")
 
 

@@ -7651,7 +7651,7 @@ roles:
   security-reviewer:
     title: security-reviewer
     category: agents
-    agent: ollama-uncensored
+    agent: openrouter-uncensored
     persona: |-
       Security vulnerability detection and remediation specialist. Use PROACTIVELY after writing code that handles user input, authentication, API endpoints, or sensitive data. Flags secrets, SSRF, injection, unsafe crypto, and OWASP Top 10 vulnerabilities.
 
@@ -10784,7 +10784,7 @@ roles:
   agent-security-hardening:
     title: agent-security-hardening
     category: skills
-    agent: ollama-uncensored
+    agent: openrouter-uncensored
     persona: |-
       Security hardening guidance for AI agent frameworks that process untrusted content, invoke tools, write workspace files, manage runtime identifiers, or handle credentials. Use when building or reviewing an agent runtime, autonomous worker, tool gateway, memory service, or multi-tenant agent deployment. Do not use for general web application security or offensive testing.
 
@@ -23093,7 +23093,7 @@ roles:
   defi-amm-security:
     title: defi-amm-security
     category: skills
-    agent: ollama-uncensored
+    agent: openrouter-uncensored
     persona: |-
       Security checklist for Solidity AMM contracts, liquidity pools, and swap flows. Covers reentrancy, CEI ordering, donation or inflation attacks, oracle manipulation, slippage, admin controls, and integer math. Use when auditing or writing Solidity AMM, liquidity pool, or swap code.
 
@@ -24564,7 +24564,7 @@ roles:
   django-security:
     title: django-security
     category: skills
-    agent: ollama-uncensored
+    agent: openrouter-uncensored
     persona: |-
       Django security best practices, authentication, authorization, CSRF protection, SQL injection prevention, XSS prevention, and secure deployment configurations. Use when reviewing Django authentication, authorization, input handling, or deployment settings.
 
@@ -40143,7 +40143,7 @@ roles:
   laravel-security:
     title: laravel-security
     category: skills
-    agent: ollama-uncensored
+    agent: openrouter-uncensored
     persona: |-
       Laravel security best practices — authentication, authorization, Eloquent safety, CSRF, XSS prevention, API security, and secure deployment configurations. Use when reviewing Laravel auth, Eloquent safety, CSRF, XSS, API security, or deployment configuration.
 
@@ -41356,7 +41356,7 @@ roles:
   llm-trading-agent-security:
     title: llm-trading-agent-security
     category: skills
-    agent: ollama-uncensored
+    agent: openrouter-uncensored
     persona: |-
       Security patterns for autonomous trading agents with wallet or transaction authority. Covers prompt injection, spend limits, pre-send simulation, circuit breakers, MEV protection, and key handling. Use when an autonomous agent holds wallet or transaction authority and its limits, simulation, or key handling need review.
 
@@ -47109,7 +47109,7 @@ roles:
   osint-investigation:
     title: osint-investigation
     category: skills
-    agent: ollama-uncensored
+    agent: openrouter-uncensored
     persona: |-
       Sparse-clue OSINT investigation methodology for extracting overlooked leads, connecting fragmented evidence, and testing explanations across sources. Use for multi-step CTF challenges, image/video geolocation, event reconstruction, public-account and entity verification, artifact interpretation, infrastructure research, or stalled investigations.
 
@@ -47714,7 +47714,7 @@ roles:
   perl-security:
     title: perl-security
     category: skills
-    agent: ollama-uncensored
+    agent: openrouter-uncensored
     persona: |-
       Comprehensive Perl security covering taint mode, input validation, safe process execution, DBI parameterized queries, web security (XSS/SQLi/CSRF), and perlcritic security policies. Use when reviewing Perl input handling, process execution, DBI queries, or web-facing code.
 
@@ -51164,7 +51164,7 @@ roles:
   quarkus-security:
     title: quarkus-security
     category: skills
-    agent: ollama-uncensored
+    agent: openrouter-uncensored
     persona: |-
       Quarkus security implementation patterns: JWT and OIDC authentication, @RolesAllowed RBAC and SecurityIdentity checks, Bean Validation and custom validators, parameterized Panache queries, BCrypt password hashing, CORS and security headers, rate limiting, audit logging, Vault or environment-variable secrets, and dependency CVE scanning. Use when adding authentication or authorization, validating i
 
@@ -56082,7 +56082,7 @@ roles:
   security-bounty-hunter:
     title: security-bounty-hunter
     category: skills
-    agent: ollama-uncensored
+    agent: openrouter-uncensored
     persona: |-
       Hunt for exploitable, bounty-worthy security issues in repositories. Focuses on remotely reachable vulnerabilities that qualify for real reports instead of noisy local-only findings. Use when hunting reportable, remotely reachable vulnerabilities in a repository.
 
@@ -56196,7 +56196,7 @@ roles:
   security-review:
     title: security-review
     category: skills
-    agent: ollama-uncensored
+    agent: openrouter-uncensored
     persona: |-
       Use this skill when adding authentication, handling user input, working with secrets, creating API endpoints, or implementing payment/sensitive features. Provides comprehensive security checklist and patterns.
 
@@ -56438,7 +56438,7 @@ roles:
   security-scan:
     title: security-scan
     category: skills
-    agent: ollama-uncensored
+    agent: openrouter-uncensored
     persona: |-
       Scan your Claude Code configuration (.claude/ directory) for security vulnerabilities, misconfigurations, and injection risks using AgentShield. Checks CLAUDE.md, settings.json, MCP servers, hooks, and agent definitions. Use when auditing a .claude/ directory — CLAUDE.md, settings.json, MCP servers, hooks, or agent definitions.
 
@@ -58026,7 +58026,7 @@ roles:
   springboot-security:
     title: springboot-security
     category: skills
-    agent: ollama-uncensored
+    agent: openrouter-uncensored
     persona: |-
       Spring Security best practices for authn/authz, validation, CSRF, secrets, headers, rate limiting, and dependency security in Java Spring Boot services. Use when reviewing Spring Security authn/authz, validation, CSRF, secrets, headers, or rate limiting.
 

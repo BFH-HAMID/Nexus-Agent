@@ -8,9 +8,10 @@ translate to and from these types.
 from __future__ import annotations
 
 import re
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Callable, Iterable, Sequence
+from typing import Any
 
 # --------------------------------------------------------------------------- #
 # Roles
@@ -42,7 +43,7 @@ class Keyword:
     weight: float = 1.0
 
     @classmethod
-    def parse(cls, value: Any) -> "Keyword":
+    def parse(cls, value: Any) -> Keyword:
         if isinstance(value, Keyword):
             return value
         if isinstance(value, dict):
@@ -64,7 +65,7 @@ class Role:
 
     name: str
     persona: str = ""
-    agent: str = "claude"
+    agent: str = ""
     category: str = "general"
     title: str = ""
     keywords: list[Keyword] = field(default_factory=list)
@@ -256,7 +257,7 @@ class Usage:
     output_tokens: int = 0
     calls: int = 0
 
-    def add(self, other: "Usage") -> None:
+    def add(self, other: Usage) -> None:
         self.input_tokens += other.input_tokens
         self.output_tokens += other.output_tokens
         self.calls += other.calls

@@ -11,7 +11,7 @@ account of what protects you, what does not, and where the offensive-security ro
 | Agent runs a destructive shell command | deny-list regexes (`rm -rf /`, `mkfs`, `dd of=/dev/`, fork bomb, `git push --force`, `curl \| sh`, `npm publish`, `drop database`, …) | a determined model can phrase damage differently; the deny list is a floor, not a ceiling |
 | Agent escapes the workspace | `PathGuard` resolves every path and refuses escapes | `--allow-outside` disables it deliberately |
 | Agent rewrites shared history | `git push --force` denied; `gh_merge_pr` always prompts even under `--yes` | you can still approve it |
-| Secret exfiltration | `.env` values are never printed by tools; `run_command` output is clipped; deny list blocks `curl \| sh` | any tool with network access can be told to POST somewhere — review commands you approve |
+| Secret exfiltration | API keys live outside the repo (`~/.config/nexus/keys.json`, mode 600) and are masked in every UI; `run_command` output is clipped; deny list blocks `curl \| sh` | any tool with network access can be told to POST somewhere — review commands you approve |
 | Unattended server | `nexus serve` binds loopback by default; token auth when exposed; warnings on `0.0.0.0` without a token | an exposed tokenless server = remote code execution as you |
 | Prompt injection from repo content | plan mode, read-only roles, tool whitelists per role, three-error nudge | a poisoned README can still steer an approved run — treat `--yes` on untrusted repos as unsafe |
 
@@ -30,13 +30,16 @@ account of what protects you, what does not, and where the offensive-security ro
 ## Offensive-security roles
 
 `pentesting`, `osint`, `malware-analysis`, `reverse-engineering`, `ctf-player` and `bug-bounty`
-are routed to `ollama-uncensored` (`dolphin-mixtral`) because mainstream models refuse legitimate
-authorized security research — a lab you own, a CTF box, an engagement with written permission.
+are routed to `openrouter-uncensored` (`cognitivecomputations/dolphin-mistral-24b-venice-edition`
+on OpenRouter) because mainstream models refuse legitimate authorized security research — a lab
+you own, a CTF box, an engagement with written permission.
 
 What that routing **is**:
 
 * a way to get direct, technical answers about standard methodology on **your own** targets;
-* local-only: those models run on your machine, so your engagement details do not leave it;
+* isolated: it is a separate agent and API key from your coding model, so a security run never
+  changes the default model, and you can point it at a self-hosted endpoint
+  (`provider: openai-compatible` + your own `base_url`) to keep engagement details on your box;
 * still gated by every Nexus safety layer — the deny list, the approval gate, the path guard.
 
 What it **is not**:
@@ -55,14 +58,15 @@ The personas in `roles.yaml` are written to be blunt about this:
 > lab the user owns or has written permission to test. … Still refuse anything clearly illegal
 > (targets the user doesn't control/own, real third-party harm).
 
-If you want a stricter setup, point those roles at `claude` instead
-(`roles.yaml` → `agent: claude`, or a project-local `.nexus/roles.yaml` override), or add them to
+If you want a stricter setup, point those roles at `gemini` instead
+(`roles.yaml` → `agent: gemini`, or a project-local `.nexus/roles.yaml` override), or add them to
 `settings.never_allow_tools` equivalents at the role level with a `tools:` whitelist.
 
 ## Supply chain & dependencies
 
-* Runtime deps: `anthropic`, `httpx`, `PyYAML`, `python-dotenv` — nothing else. The server,
-  panel and approval machinery are stdlib.
+* Runtime deps: `httpx`, `PyYAML`, `python-dotenv` — nothing else. Gemini, DeepSeek and
+  OpenRouter all use the same OpenAI-dialect adapter. The server, panel and approval machinery
+  are stdlib.
 * `gh_create_pr` prefers the local `gh` CLI and its existing auth session; the REST fallback needs
   a `GITHUB_TOKEN` you provide.
 * CI (`.github/workflows/ci.yml`) runs on ubuntu with `permissions: contents: read`, tests three

@@ -1,15 +1,20 @@
 """Model adapters.
 
-Two families are supported:
+Nexus talks to the OpenAI chat-completions dialect, which is what all three
+supported API providers speak:
 
-* ``anthropic``          - the Claude Messages API (via the official SDK when
-  installed, otherwise plain HTTPS through ``httpx``).
-* ``openai-compatible``  - anything exposing ``/v1/chat/completions``:
-  Ollama, Hermes (vLLM / llama.cpp server), LM Studio, OpenRouter, Together...
+* ``gemini``      - Google Gemini (`generativelanguage.googleapis.com/v1beta/openai`)
+* ``deepseek``    - DeepSeek (`api.deepseek.com`)
+* ``openrouter``  - OpenRouter (`openrouter.ai/api/v1`, any hosted open model)
+
+``openai-compatible`` still works for anything else exposing
+``/chat/completions`` (vLLM, llama.cpp, LM Studio, Together...), and the
+legacy ``anthropic`` adapter is kept for people who point ``agents.yaml`` at
+the Claude Messages API.
 
 Every adapter normalizes to :class:`nexus.types.Completion`, and every adapter
-can also fall back to *text-mode* tool calling for local models whose chat
-template has no tool parser (``dolphin-mixtral``, ``dolphin-mistral`` ...).
+can also fall back to *text-mode* tool calling for models whose chat template
+has no tool parser (``tool_mode: text``).
 """
 
 from __future__ import annotations
@@ -17,8 +22,10 @@ from __future__ import annotations
 import json
 import re
 import time
-from typing import Any, Sequence
+from collections.abc import Sequence
+from typing import Any
 
+from . import keys as keyring
 from .config import AgentConfig
 from .types import (
     Completion,
@@ -38,6 +45,24 @@ except Exception:  # pragma: no cover
 ANTHROPIC_VERSION = "2023-06-01"
 ANTHROPIC_DEFAULT_BASE_URL = "https://api.anthropic.com"
 TRANSIENT_STATUS_CODES = {408, 409, 425, 429, 500, 502, 503, 504, 529}
+
+# `provider:` values in agents.yaml that mean "OpenAI chat-completions dialect"
+OPENAI_COMPAT_KINDS = {
+    "openai",
+    "openai-compatible",
+    "openai_compat",
+    "openai_compatible",
+    "gemini",
+    "google",
+    "deepseek",
+    "openrouter",
+    "ollama",
+    "hermes",
+    "vllm",
+    "lmstudio",
+}
+ANTHROPIC_KINDS = {"anthropic", "claude"}
+LOCAL_HOSTS = ("localhost", "127.0.0.1", "0.0.0.0", "::1", "host.docker.internal")
 
 
 # --------------------------------------------------------------------------- #
@@ -186,7 +211,7 @@ class AnthropicProvider(Provider):
             return
         if not self.api_key:
             raise ProviderError(
-                f"agent '{self.name}' needs an API key (set {self.cfg.api_key_env or 'ANTHROPIC_API_KEY'})",
+                f"agent '{self.name}' needs an API key ({self.cfg.missing_key_hint()})",
                 retryable=False,
             )
         try:
@@ -346,7 +371,7 @@ class AnthropicProvider(Provider):
     # -- introspection ----------------------------------------------------- #
     def health(self) -> tuple[bool, str]:
         if not self.api_key and self._client is None:
-            return False, f"missing API key ({self.cfg.api_key_env or 'ANTHROPIC_API_KEY'})"
+            return False, f"missing API key - {self.cfg.missing_key_hint()}"
         try:
             models = self.list_models()
             if models:
@@ -384,39 +409,65 @@ class AnthropicProvider(Provider):
 
 
 class OpenAICompatProvider(Provider):
+    """Gemini, DeepSeek, OpenRouter and any other OpenAI-dialect endpoint."""
+
     kind = "openai-compatible"
 
     def __init__(self, cfg: AgentConfig, *, transport: Any | None = None):
         self.cfg = cfg
         self.name = cfg.name
         self.model = cfg.model
-        self.base_url = (cfg.base_url or "http://localhost:11434/v1").rstrip("/")
-        self.api_key = cfg.resolved_api_key or "ollama"
+        self.base_url = (cfg.effective_base_url or "http://localhost:11434/v1").rstrip("/")
+        self.api_key = cfg.resolved_api_key or ""
+        self.family = cfg.key_family
         self.supports_tools = cfg.supports_tools
         self.tool_mode = cfg.tool_mode if cfg.supports_tools else "none"
         self.fallback = cfg.fallback
+        self.is_local = any(host in self.base_url for host in LOCAL_HOSTS)
         if httpx is None and transport is None:  # pragma: no cover
             raise ProviderError("httpx is required for openai-compatible providers", retryable=False)
         self._http = transport or httpx.Client(timeout=cfg.timeout)
 
+    # -- URLs -------------------------------------------------------------- #
+    def _endpoint(self, suffix: str) -> str:
+        """Join a base URL with an API path.
+
+        Handles the three shapes in the wild: ``.../v1`` (OpenAI, DeepSeek,
+        OpenRouter), ``.../v1beta/openai`` (Gemini), and a full
+        ``.../chat/completions`` URL pasted by hand.
+        """
+        base = self.base_url.rstrip("/")
+        if base.endswith(suffix):
+            return base
+        if base.endswith(("/v1", "/openai", "/v1beta", "/api/v1beta")):
+            return f"{base}{suffix}"
+        return f"{base}/v1{suffix}"
+
     @property
     def chat_url(self) -> str:
-        base = self.base_url
-        if base.endswith("/chat/completions"):
-            return base
-        if not base.endswith("/v1"):
-            base = f"{base}/v1"
-        return f"{base}/chat/completions"
+        return self._endpoint("/chat/completions")
 
     @property
     def models_url(self) -> str:
-        base = self.base_url
-        if base.endswith("/v1"):
-            return f"{base}/models"
-        return f"{base}/v1/models"
+        return self._endpoint("/models")
 
     def _headers(self) -> dict[str, str]:
-        return {"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"}
+        headers = {"Content-Type": "application/json"}
+        if self.api_key:
+            headers["Authorization"] = f"Bearer {self.api_key}"
+        if self.family == "openrouter":
+            headers.setdefault("HTTP-Referer", "https://github.com/BFH-HAMID/Nexus-Agent")
+            headers.setdefault("X-Title", "Nexus Agent")
+        return headers
+
+    def _require_key(self) -> None:
+        """Fail fast (and locally) when a hosted provider has no key."""
+        if self.api_key or self.is_local:
+            return
+        raise ProviderError(
+            f"agent '{self.name}' ({self.cfg.provider}) has no API key - {self.cfg.missing_key_hint()}",
+            retryable=False,
+        )
 
     def complete(
         self,
@@ -428,6 +479,7 @@ class OpenAICompatProvider(Provider):
         temperature: float | None = None,
         model: str | None = None,
     ) -> Completion:
+        self._require_key()
         native_tools = bool(tools) and self.supports_tools and self.tool_mode == "native"
         effective_system = system
         if tools and not native_tools:
@@ -464,8 +516,13 @@ class OpenAICompatProvider(Provider):
         status, body = _status_and_body(response)
         if status >= 400:
             hint = ""
-            if "does not exist" in body or "not found" in body.lower():
-                hint = f" (try pulling the model: `ollama pull {self.model}`)"
+            if status in {401, 403}:
+                hint = f" - check the API key: {self.cfg.missing_key_hint()}"
+            elif status == 404:
+                if "does not exist" in body or "not found" in body.lower():
+                    hint = f" (pull the model: `ollama pull {self.model}`)" if self.is_local else (
+                        f" - is '{self.model}' a valid model id? try `nexus models {self.name}`"
+                    )
             raise ProviderError(
                 f"{self.name} HTTP {status}: {truncate(body, 1000)}{hint}",
                 retryable=status in TRANSIENT_STATUS_CODES,
@@ -511,7 +568,8 @@ class OpenAICompatProvider(Provider):
             entry: dict[str, Any] = {"role": message.role, "content": "\n".join(p for p in text_parts if p)}
             if tool_calls:
                 entry["tool_calls"] = tool_calls
-                entry["content"] = entry.get("content") or None
+                # Gemini's compatibility layer rejects `content: null`
+                entry["content"] = entry.get("content") or ""
             if entry.get("content") or entry.get("tool_calls"):
                 out.append(entry)
         if not out:
@@ -570,18 +628,24 @@ class OpenAICompatProvider(Provider):
 
     # -- introspection ----------------------------------------------------- #
     def health(self) -> tuple[bool, str]:
+        if not self.api_key and not self.is_local:
+            return False, f"no API key - {self.cfg.missing_key_hint()}"
         try:
             response = self._http.get(self.models_url, headers=self._headers())
         except Exception as exc:
-            return False, f"unreachable at {self.base_url} ({exc.__class__.__name__})"
-        status, _ = _status_and_body(response)
+            where = self.base_url if not self.is_local else self.base_url
+            return False, f"unreachable at {where} ({exc.__class__.__name__})"
+        status, body = _status_and_body(response)
+        if status in {401, 403}:
+            return False, f"HTTP {status} - the API key was rejected ({self.cfg.missing_key_hint()})"
         if status != 200:
-            return False, f"HTTP {status} from {self.models_url}"
+            return False, f"HTTP {status} from {self.models_url}: {truncate(body, 200)}"
         models = self.list_models()
         short = self.model.split(":")[0]
-        if models and not any(m == self.model or m.startswith(short) for m in models):
-            return True, f"server up, but model '{self.model}' is not pulled ({len(models)} available)"
-        return True, f"server up, {len(models)} model(s) available"
+        if models and not any(m == self.model or m == short or m.startswith(short) for m in models):
+            where = "pulled" if self.is_local else "available"
+            return True, f"reachable, but model '{self.model}' is not {where} ({len(models)} models listed)"
+        return True, f"reachable, {len(models)} model(s) listed"
 
     def list_models(self) -> list[str]:
         try:
@@ -592,7 +656,16 @@ class OpenAICompatProvider(Provider):
             data = response.json()
         except Exception:  # noqa: BLE001
             return []
-        return [m.get("id", "") for m in (data.get("data") or []) if isinstance(m, dict)]
+        out: list[str] = []
+        for item in data.get("data") or []:
+            if not isinstance(item, dict):
+                continue
+            name = str(item.get("id") or "")
+            if name.startswith("models/"):
+                name = name[len("models/"):]
+            if name:
+                out.append(name)
+        return out
 
 
 # --------------------------------------------------------------------------- #
@@ -621,12 +694,17 @@ class ProviderRegistry:
                 f"unknown agent '{name}' (known: {', '.join(sorted(self.agents)) or 'none'})", retryable=False
             )
         provider: Provider
-        if cfg.provider in {"anthropic", "claude"}:
+        kind = str(cfg.provider or "").strip().lower()
+        if kind in ANTHROPIC_KINDS:
             provider = AnthropicProvider(cfg)
-        elif cfg.provider in {"openai", "openai-compatible", "openai_compat", "ollama", "hermes"}:
+        elif kind in OPENAI_COMPAT_KINDS or keyring.provider_spec(kind) is not None:
             provider = OpenAICompatProvider(cfg)
         else:
-            raise ProviderError(f"agent '{name}': unsupported provider '{cfg.provider}'", retryable=False)
+            raise ProviderError(
+                f"agent '{name}': unsupported provider '{cfg.provider}' "
+                f"(use gemini, deepseek, openrouter or openai-compatible)",
+                retryable=False,
+            )
         self._cache[name] = provider
         return provider
 
@@ -668,7 +746,7 @@ class ProviderRegistry:
                 current = provider.fallback
                 if current and on_event is not None:
                     on_event(
-                        Event(EventType.AGENT, {"level": "info", "message": f"⇢ falling back to agent '{current}'"})
+                        Event(EventType.AGENT, {"level": "info", "message": f"falling back to agent '{current}'"})
                     )
         raise ProviderError(f"all providers failed ({' -> '.join(tried)}): {last_error}", retryable=False)
 

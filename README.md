@@ -6,15 +6,19 @@
 
 You describe a task. Nexus routes it to the right *employee* — `frontend`, `backend`,
 `pentesting`, `docs`, `trading`, `osint`, 107 curated of them (959 with the imported
-packs in `roles.d/`) — and that role runs on the model that
-fits it best: Claude for real code edits, Hermes for cheap bulk work, an uncensored local
-Ollama model for authorized offensive-security research. Then it uses tools (files, shell,
-git, GitHub), asks you before anything destructive, and can open the PR for you.
+packs in `roles.d/`) — and that role runs on the model that fits it best:
+**Gemini** for real code edits, **DeepSeek** for cheap bulk work, **OpenRouter** for hosted
+open / uncensored models used in authorized offensive-security research. Then it uses tools
+(files, shell, git, GitHub), asks you before anything destructive, and can open the PR for you.
+
+Three API providers, one key each — and **no `.env` file**: paste keys once with
+`nexus keys set gemini|deepseek|openrouter`, they are stored in
+`~/.config/nexus/keys.json` (mode `600`, outside the repo).
 
 <p align="center">
   <img src="assets/nexus-routing.svg" alt="Nexus role → agent routing animation" width="720"/>
   <br/>
-  <em>The router picks a role, the role picks its agent — `⇄ role: pentesting → agent: ollama-uncensored` — all automatic, no role flag needed.</em>
+  <em>The router picks a role, the role picks its agent — `⇄ role: pentesting → agent: openrouter-uncensored` — all automatic, no role flag needed.</em>
 </p>
 
 <!-- end hero -->
@@ -39,13 +43,13 @@ git, GitHub), asks you before anything destructive, and can open the PR for you.
                          │ role → persona + agent    │
                          └────────────┬──────────────┘
                                       │ picks provider
-              ┌───────────────┬───────┴────────┬────────────────┐
-              ▼               ▼                ▼                ▼
-         ┌─────────┐    ┌───────────┐    ┌───────────┐   ┌───────────────────┐
-         │ Claude  │    │ Hermes 3  │    │  Ollama   │   │ Ollama-uncensored │
-         │  (API)  │    │  (local)  │   │  (local)  │   │  dolphin-mixtral  │
-         └────┬────┘    └─────┬─────┘    └─────┬─────┘   └─────────┬─────────┘
-              └───────────────┴────────────────┴───────────────────┘
+              ┌───────────────┬───────────────┬────────────────┐
+              ▼               ▼               ▼                ▼
+         ┌─────────┐    ┌───────────┐   ┌────────────┐  ┌────────────────────┐
+         │ Gemini  │    │ DeepSeek  │   │ OpenRouter │  │ OpenRouter         │
+         │  (API)  │    │  (API)    │   │  (API)     │  │ uncensored model   │
+         └────┬────┘    └─────┬─────┘   └─────┬──────┘  └─────────┬──────────┘
+              └───────────────┴───────────────┴───────────────────┘
                                       │
                                       ▼
                          ┌─────────────────────────┐
@@ -57,8 +61,9 @@ git, GitHub), asks you before anything destructive, and can open the PR for you.
 
 The router is a **classifier**, not a model picker: it chooses a *role*, and the role is mapped
 to an *agent* in `agents.yaml`. That indirection is the whole idea — pentesting/OSINT need an
-uncensored local model, frontend/backend need Claude's reasoning and tool calling, and bulk work
-(docs, QA, marketing, trading scripts) can go to a free local model to keep the cost down.
+uncensored model, frontend/backend need strong reasoning and reliable tool calling, and bulk work
+(docs, QA, marketing, trading scripts) should go to the cheapest provider. Every agent also
+declares a `fallback:`, so a run keeps going even if one provider has no key or is down.
 
 ---
 
@@ -80,21 +85,33 @@ nexus task 'add pagination to the users api' --demo --yes
 approval gate, same event stream, zero tokens. It writes `demo/nexus-demo-notes.md` so you can
 see the diff and the PR-shaped output. Perfect for the VS Code sidebar on a fresh checkout.
 
-Then make it real:
+Then make it real — one command, no `.env` file to create:
 
 ```bash
-cp .env.example .env          # put ANTHROPIC_API_KEY in it
-nexus doctor                  # ✓ agent:claude reachable
+nexus keys set gemini         # paste the key (hidden). or: deepseek / openrouter
+nexus keys                    # ✓ gemini  AIzaSy…9fQ  (~/.config/nexus/keys.json)
+nexus keys test               # calls /models on every configured provider
+nexus doctor                  # ✓ key:gemini   ✓ agent:gemini reachable
 nexus chat                    # REPL with /commands
 nexus task 'add cursor pagination to /api/users and cover it with tests'
 ```
 
-Local models (optional, for the cheap and uncensored lanes):
+`nexus keys set` prompts (input is hidden), stores the key with `chmod 600`, and never writes
+anything into the repository. Prefer environment variables? `export GEMINI_API_KEY=...` works too
+and always wins over the store. A pre-existing `.env` file is still read if present, but nothing
+requires one.
+
+Only one provider key? Fine: agents whose provider has no key fall back along
+`gemini ⇄ deepseek ⇄ openrouter`, so a single key runs the whole roster. `NEXUS_NO_PROMPT=1`
+(or `--no-key-prompt`) disables the first-run key prompt for CI/scripts.
+
+Need a model list or a different model id?
 
 ```bash
-ollama pull hermes3:8b        # tool-capable local worker  -> agent: hermes
-ollama pull dolphin-mixtral   # uncensored, NO tool template -> agent: ollama-uncensored (tool_mode: text)
-ollama pull llama3.1:8b       # generic local fallback     -> agent: ollama
+nexus models                  # what the default provider actually serves right now
+nexus models deepseek         # same for one agent
+# override without editing YAML:
+export GEMINI_MODEL=gemini-3.6-flash
 ```
 
 ---
@@ -115,12 +132,17 @@ ollama pull llama3.1:8b       # generic local fallback     -> agent: ollama
 | `nexus roles [--search x \| --show x \| --category x \| --json]` | the team |
 | `nexus addagent <github-url>` | import a repo's agents/skills as new roles |
 | `nexus addagent --list` | show installed import packs + role counts |
-| `nexus agents` | configured model endpoints and which roles use them |
+| `nexus agents` | configured model endpoints, key state and which roles use them |
+| `nexus keys [list]` | API keys: where they come from, masked, never printed in full |
+| `nexus keys set <gemini\|deepseek\|openrouter>` | paste a key once (no `.env` file) |
+| `nexus keys test [provider]` | live check that the key + endpoint work |
+| `nexus keys remove <provider>` | delete a stored key |
+| `nexus models [agent]` | list the model ids the provider serves |
 | `nexus prompt <role>` | print the exact system prompt a role gets |
 | `nexus doctor [--json]` | keys, endpoints, models, `gh`, repo state |
 | `nexus serve [--demo] [--yes]` | local HTTP+SSE server for the sidebar/panel |
 | `nexus panel` | `serve` + open the built-in browser panel |
-| `nexus init` | drop `.env`, `.nexus/roles.yaml`, `.vscode/` into any project |
+| `nexus init` | drop `.nexus/roles.yaml` + `.vscode/` into any project (no `.env`) |
 | `nexus task ... --json` | machine-readable result (CI friendly) |
 
 ### REPL commands
@@ -129,6 +151,7 @@ ollama pull llama3.1:8b       # generic local fallback     -> agent: ollama
 /help  /role <name>  /auto [on|off]  /agent <name>  /model <id>
 /ask <q>  /plan <task>  /task <task>  /pipeline <name> <task>
 /roles [needle]  /addagent <github-url>  /agents  /tools  /system [role]
+/keys [set <provider>]  /models [agent]
 /memory [role]  /remember <text>
 /doctor  /stats  /compact  /clear  /new  /save [file]  /exit
 ```
@@ -143,14 +166,14 @@ The curated core is 107 hand-written specialists:
 
 | Category | Count | Examples | Default agent |
 | --- | --- | --- | --- |
-| development | 39 | frontend, backend, database, devops, mobile, blockchain, embedded, debugging, refactoring, architecture | `claude` (bulk: `hermes`) |
-| security | 14 | pentesting, osint, security-audit, malware-analysis, reverse-engineering, forensics, cryptography, devsecops | `claude` / `ollama-uncensored` |
-| business | 17 | marketing, seo, copywriting, sales, finance, legal-draft, hr, product-management | `hermes` |
-| creative | 12 | design, branding, content-writing, video-script, translation, presentation | `hermes` |
-| data-ai | 10 | data-science, ai-engineering, data-engineering, ml-ops, nlp, computer-vision | `claude` |
-| qa | 5 | qa, test-automation, performance-testing, chaos-engineering, release-engineering | `hermes` |
-| docs | 4 | docs, developer-experience, tutorial-writing, ux-writing | `hermes` |
-| trading | 4 | trading, quant-research, defi-analyst, risk-management | `hermes` |
+| development | 39 | frontend, backend, database, devops, mobile, blockchain, embedded, debugging, refactoring, architecture | `gemini` (bulk: `deepseek`) |
+| security | 14 | pentesting, osint, security-audit, malware-analysis, reverse-engineering, forensics, cryptography, devsecops | `gemini` / `openrouter-uncensored` |
+| business | 17 | marketing, seo, copywriting, sales, finance, legal-draft, hr, product-management | `deepseek` |
+| creative | 12 | design, branding, content-writing, video-script, translation, presentation | `deepseek` |
+| data-ai | 10 | data-science, ai-engineering, data-engineering, ml-ops, nlp, computer-vision | `gemini` |
+| qa | 5 | qa, test-automation, performance-testing, chaos-engineering, release-engineering | `deepseek` |
+| docs | 4 | docs, developer-experience, tutorial-writing, ux-writing | `deepseek` |
+| trading | 4 | trading, quant-research, defi-analyst, risk-management | `deepseek` |
 | general | 2 | general (fallback), assistant | *default agent* |
 
 On top of that, `roles.d/` ships **852 agents imported from five public repos**
@@ -181,7 +204,7 @@ nexus addagent https://github.com/affaan-m/ecc/tree/main/skills   # just a subdi
 
 It recognises `SKILL.md` files, frontmatter personas (`<category>/<agent>.md`)
 and example-app dirs; auto-derives keywords so routing needs no LLM; maps
-security roles to the uncensored local model; de-duplicates mirrors; and never
+security roles to the uncensored model; de-duplicates mirrors; and never
 clobbers a curated role (collisions are suffixed). In the REPL, `/addagent <url>`
 imports **and reloads**, so the next task can route to the new roles instantly.
 Details: [`docs/addagent.md`](docs/addagent.md).
@@ -190,12 +213,18 @@ Details: [`docs/addagent.md`](docs/addagent.md).
 
 | Role category | Agent | Why |
 | --- | --- | --- |
-| Frontend, Backend, Mobile, Database, Security review, Data science | `claude` | best reasoning + reliable native tool calling for real code edits |
-| DevOps, Marketing, Trading, QA, Docs | `hermes` | good enough, free, fast, runs locally |
-| Pentesting, OSINT, malware/RE analysis | `ollama-uncensored` (`dolphin-mixtral`) | mainstream models over-refuse legitimate authorized security research |
-| Long-horizon architecture, legacy modernization | `claude-big` (`claude-opus-5-5`) | deep multi-file reasoning |
-| Routing classifier | `claude-cheap` (`claude-haiku-5-5`) | high-volume, low-stakes, cents |
-| General / unclassified | `claude` | safe default |
+| Frontend, Backend, Mobile, Database, Security review, Data science | `gemini` (`gemini-3.8-flash`) | best reasoning + reliable native tool calling for real code edits |
+| DevOps, Marketing, Trading, QA, Docs | `deepseek` (`deepseek-flash`) | good enough, ~10x cheaper, 1M context |
+| Pentesting, OSINT, malware/RE analysis | `openrouter-uncensored` (`cognitivecomputations/dolphin-mistral-24b-venice-edition`) | mainstream models over-refuse legitimate authorized security research |
+| Long-horizon architecture, legacy modernization | `gemini-big` (`gemini-4-argon`) | flagship reasoning, 1M context |
+| Deep reasoning / hard debugging | `deepseek-pro` (`deepseek-v4-pro`) | strong reasoning at a low price |
+| Routing classifier | `gemini-flash` (`gemini-3.5-flash-lite`) | high-volume, low-stakes, cents |
+| General / unclassified | `gemini` | safe default |
+
+Every agent has a `fallback:` edge (`gemini → deepseek → openrouter → gemini`), so a missing key
+or a provider outage never stops the run — you just see `⇢ falling back to agent 'deepseek'` and
+the work continues. Model ids are `${VAR:-default}` so you can override any of them from the
+environment without touching `agents.yaml`.
 
 ### Adding a role = adding a YAML block (no code)
 
@@ -205,7 +234,7 @@ roles:
   rust-wasm:
     title: Rust + WASM Engineer
     category: development
-    agent: claude                 # any key from agents.yaml
+    agent: gemini                 # any key from agents.yaml
     persona: >-
       You are a Rust + WebAssembly engineer. Focus on wasm-bindgen boundaries,
       bundle size, and keeping unsafe code out of the crate root.
@@ -235,8 +264,8 @@ scores every role against the task text with word-boundary matching (`api` does 
 
 ```
 $ nexus task 'run nmap against my lab box and try privilege escalation'
-⇄ role: pentesting -> agent: ollama-uncensored [keyword] hits: nmap, privilege escalation, pentest
-→ agent: ollama-uncensored  model: dolphin-mixtral:latest  provider: openai-compatible  tools: text
+⇄ role: pentesting -> agent: openrouter-uncensored [keyword] hits: nmap, privilege escalation, pentest
+→ agent: openrouter-uncensored  model: dolphin-mistral-24b-venice-edition  provider: openrouter  tools: text
 ```
 
 **Step 2 — LLM classifier fallback (only if nothing matched).** The roadmap prompt, verbatim:
@@ -254,7 +283,7 @@ The candidate list is **narrowed to the ≤40 most relevant roles** (by keyword/
 before the call, so even a 959-role roster costs a single cheap classifier call rather than one
 per 40-role chunk; a tie among ≤8 roles is classified among exactly those. Output is
 sanitized (lowercase, `a-z0-9-` only, code fences and prose stripped) and validated against the
-full registry; anything unknown falls back to `general`. The classifier runs on `claude-cheap`
+full registry; anything unknown falls back to `general`. The classifier runs on `gemini-flash`
 (configurable via `settings.router_agent`) at `temperature: 0`, `max_tokens: 32`.
 
 ---
@@ -352,12 +381,11 @@ you can write to it with `/remember` in the REPL.
 
 ```
 Nexus-Agent/
-├── agents.yaml              # which model lives where (claude, hermes, ollama, uncensored, openrouter)
+├── agents.yaml              # which model lives where (gemini, deepseek, openrouter + fallbacks)
 ├── roles.yaml               # 107 curated roles → persona + keywords + agent  (generated)
 ├── roles.d/                 # 852 imported roles (5 packs) - `nexus addagent` writes here
 ├── pipelines.yaml           # multi-role handoff pipelines
 ├── pyproject.toml           # `pip install -e .` → `nexus`
-├── .env.example
 ├── .vscode/                 # tasks.json, launch.json, settings.json, extensions.json
 ├── .github/
 │   ├── PULL_REQUEST_TEMPLATE.md   # auto-filled by gh_create_pr
@@ -368,16 +396,17 @@ Nexus-Agent/
 │   ├── agent.py             # main loop: route → model → tools → repeat, pipelines
 │   ├── router.py            # keyword match + narrowed LLM classifier fallback
 │   ├── importers.py         # `addagent`: fetch a GitHub repo → discover agents → roles.d pack
-│   ├── providers.py         # Anthropic adapter + OpenAI-compatible adapter + fallback chain
+│   ├── providers.py         # Gemini/DeepSeek/OpenRouter (OpenAI dialect) + fallback chain
+│   ├── keys.py              # `nexus keys`: ~/.config/nexus/keys.json, no .env needed
 │   ├── tools.py             # files, shell, git, GitHub, memory, ask_agent, approval gate
 │   ├── config.py            # agents/roles/roles.d/pipelines/settings loading + layering
 │   ├── server.py            # HTTP + SSE server for the sidebar/panel
 │   ├── demo.py              # scripted offline run
-│   ├── env.py               # .env loading
+│   ├── env.py               # optional legacy .env loading (never required)
 │   ├── types.py             # roles, messages, completions, events
 │   └── panel/               # the web UI the sidebar embeds
 ├── vscode-extension/        # Phase 5 sidebar (TypeScript, no runtime deps)
-├── tests/                   # 264 offline tests
+├── tests/                   # 292 offline tests
 └── docs/                    # architecture, configuration, tools, pipelines, vscode, security, roles, roadmap, addagent
 ```
 
@@ -391,7 +420,12 @@ Nexus-Agent/
 2. the repo checkout (incl. the committed `roles.d/` import packs)
 3. `$NEXUS_HOME` (default `~/.config/nexus`) — your machine-wide overrides
 4. `./.nexus/*.yaml` + `./.nexus/roles.d/*.yaml`, then `./agents.yaml` etc. in the project you are working on
-5. environment / `.env` (`${VAR:-default}` expansion works inside the YAML)
+5. environment variables (`${VAR:-default}` expansion works inside the YAML)
+
+API keys are **not** part of that layering: they resolve per agent as
+inline `api_key:` → environment variable (`GEMINI_API_KEY`, `DEEPSEEK_API_KEY`,
+`OPENROUTER_API_KEY`) → the terminal store written by `nexus keys set`
+(`~/.config/nexus/keys.json`, mode `600`). A legacy `.env` is read only if it already exists.
 
 Behaviour knobs (`settings:` block) and every `NEXUS_*` override are documented in
 [`docs/configuration.md`](docs/configuration.md).
@@ -419,7 +453,7 @@ Behaviour knobs (`settings:` block) and every `NEXUS_*` override are documented 
 
 ```bash
 pip install -e ".[dev]"
-python -m pytest -q                     # 264 tests, all offline (scripted providers)
+python -m pytest -q                     # 292 tests, all offline (scripted providers)
 python scripts/build_roles.py --check   # validate the role data
 python scripts/build_roles.py --stats   # counts by category / agent
 ruff check nexus tests
@@ -433,7 +467,7 @@ against a real socket on an ephemeral port, and `--demo` covers the loop end to 
 ## Safety & ethics note
 
 The `pentesting` / `osint` / `malware-analysis` / `reverse-engineering` / `ctf-player` /
-`bug-bounty` roles are routed to an uncensored local model. That is for **your own systems, your
+`bug-bounty` roles are routed to an uncensored hosted model (via OpenRouter). That is for **your own systems, your
 own repos, your CTF lab, and engagements you have written permission for**. A persona prompt does
 not authorize anything: if you point it at a real third-party target you do not own, no system
 prompt makes that legal or acceptable, and the personas say so explicitly. Nexus adds its own

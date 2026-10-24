@@ -15,8 +15,9 @@ Why it exists:
 from __future__ import annotations
 
 import time
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any
 
 from .config import NexusConfig
 from .providers import ProviderRegistry
@@ -28,7 +29,6 @@ from .types import (
     Message,
     Provider,
     TextBlock,
-    ToolSpec,
     Usage,
 )
 
@@ -144,7 +144,7 @@ class DemoRunner:
                 registry.call("finish", {
                     "summary": summary,
                     "followups": [
-                        "run the same task without --demo once ANTHROPIC_API_KEY or Ollama is available",
+                        "run the same task without --demo once a Gemini/DeepSeek/OpenRouter key is set (nexus keys set)",
                         "run `nexus doctor` to check every configured agent endpoint",
                     ],
                 })

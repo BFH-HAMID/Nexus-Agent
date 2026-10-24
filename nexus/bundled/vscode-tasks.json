@@ -12,6 +12,13 @@
   },
   "tasks": [
     {
+      "label": "Nexus: set API key (Gemini / DeepSeek / OpenRouter)",
+      "detail": "Paste a key once - stored in ~/.config/nexus/keys.json, no .env file",
+      "type": "shell",
+      "command": "nexus keys set",
+      "problemMatcher": []
+    },
+    {
       "label": "Nexus: chat",
       "detail": "Interactive REPL with role auto-routing and /commands",
       "type": "shell",

@@ -88,32 +88,32 @@
   </g>
 
   <!-- RIGHT: Role → Agent lanes -->
-  <!-- Lane 1: Claude -->
+  <!-- Lane 1: Gemini -->
   <g transform="translate(510, 40)">
     <rect x="0" y="0" width="180" height="60" fill="#1e293b" class="box"/>
     <text x="12" y="22" class="role-tag">backend</text>
-    <text x="100" y="22" class="agent-tag" style="fill:#60a5fa;">claude</text>
-    <text x="12" y="42" class="switch-text animating">⇄ role: backend → agent: claude</text>
+    <text x="100" y="22" class="agent-tag" style="fill:#60a5fa;">gemini</text>
+    <text x="12" y="42" class="switch-text animating">⇄ role: backend → agent: gemini</text>
     <rect x="12" y="50" width="156" height="6" rx="3" fill="#1e293b"/>
     <rect x="12" y="50" width="78" height="6" rx="3" fill="url(#gradClaude)"/>
   </g>
 
-  <!-- Lane 2: Hermes -->
+  <!-- Lane 2: DeepSeek -->
   <g transform="translate(510, 115)">
     <rect x="0" y="0" width="180" height="60" fill="#1e293b" class="box"/>
     <text x="12" y="22" class="role-tag">qa</text>
-    <text x="100" y="22" class="agent-tag" style="fill:#34d399;">hermes</text>
-    <text x="12" y="42" class="switch-text animating" style="animation-delay:1s;">⇄ role: qa → agent: hermes</text>
+    <text x="100" y="22" class="agent-tag" style="fill:#34d399;">deepseek</text>
+    <text x="12" y="42" class="switch-text animating" style="animation-delay:1s;">⇄ role: qa → agent: deepseek</text>
     <rect x="12" y="50" width="156" height="6" rx="3" fill="#1e293b"/>
     <rect x="12" y="50" width="90" height="6" rx="3" fill="url(#gradHermes)"/>
   </g>
 
-  <!-- Lane 3: Ollama uncensored -->
+  <!-- Lane 3: OpenRouter uncensored -->
   <g transform="translate(510, 190)">
     <rect x="0" y="0" width="180" height="60" fill="#1e293b" class="box"/>
     <text x="12" y="22" class="role-tag">pentesting</text>
-    <text x="100" y="22" class="agent-tag" style="fill:#fbbf24;">ollama-uncensored</text>
-    <text x="12" y="42" class="switch-text animating" style="animation-delay:2s;">⇄ role: pentesting → agent: ollama-uncensored</text>
+    <text x="100" y="22" class="agent-tag" style="fill:#fbbf24;">openrouter-uncensored</text>
+    <text x="12" y="42" class="switch-text animating" style="animation-delay:2s;">⇄ role: pentesting → agent: openrouter-uncensored</text>
     <rect x="12" y="50" width="156" height="6" rx="3" fill="#1e293b"/>
     <rect x="12" y="50" width="110" height="6" rx="3" fill="url(#gradOllama)"/>
   </g>

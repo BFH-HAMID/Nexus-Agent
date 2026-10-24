@@ -104,8 +104,9 @@ test suite is information the agent needs, not a crash.
 * `read_file` clips to `settings.max_read_chars`;
 * when the conversation passes `settings.context_char_budget`, old tool results are compacted to
   their first 200 chars (the last few messages are never touched);
-* `.env` contents are never printed by a tool, and the deny list blocks `cat .env`-style
-  exfiltration only if you add the pattern — treat `--yes` on an untrusted repo accordingly.
+* API keys are never printed by a tool (the stores are outside the workspace), and the deny list
+  blocks `cat .env`-style exfiltration only if you add the pattern — treat `--yes` on an untrusted
+  repo accordingly.
 
 ## GitHub specifics
 

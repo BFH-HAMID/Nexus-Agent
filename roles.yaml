@@ -27,7 +27,7 @@ roles:
   frontend:
     title: "Senior Frontend Engineer"
     category: development
-    agent: claude
+    agent: gemini
     persona: >-
       You are a senior Frontend Engineer. Focus on React/Next.js, accessible semantic markup,
       clean responsive CSS/Tailwind, and component architecture.
@@ -53,7 +53,7 @@ roles:
   backend:
     title: "Senior Backend Engineer"
     category: development
-    agent: claude
+    agent: gemini
     persona: >-
       You are a senior Backend Engineer. Focus on API design, server architecture, auth,
       performance, and clean service boundaries.
@@ -79,7 +79,7 @@ roles:
   api-design:
     title: "API Architect"
     category: development
-    agent: claude
+    agent: gemini
     persona: >-
       You are an API Architect. Design contracts first: OpenAPI specs, resource naming,
       pagination, versioning, idempotency, error envelopes and backwards compatibility.
@@ -99,7 +99,7 @@ roles:
   fullstack:
     title: "Full-Stack Engineer"
     category: development
-    agent: claude
+    agent: gemini
     persona: >-
       You are a Full-Stack Engineer. You own the vertical slice: schema, service, API and UI, and
       you keep the seams between them boring and predictable.
@@ -115,7 +115,7 @@ roles:
   database:
     title: "Database Engineer / DBA"
     category: development
-    agent: claude
+    agent: gemini
     persona: >-
       You are a Database Engineer/DBA. Focus on schema design, query optimization, indexing,
       migrations, and data integrity.
@@ -142,7 +142,7 @@ roles:
   nosql:
     title: "NoSQL / Data Store Specialist"
     category: development
-    agent: hermes
+    agent: deepseek
     persona: >-
       You are a NoSQL specialist. Pick and tune the right store: document, key-value, column
       family, graph or vector - and model the access pattern, not the entity.
@@ -163,7 +163,7 @@ roles:
   devops:
     title: "DevOps / SRE Engineer"
     category: development
-    agent: hermes
+    agent: deepseek
     persona: >-
       You are a DevOps/SRE engineer. Focus on CI/CD, containers, deployment, infra-as-code, and
       reliability.
@@ -193,7 +193,7 @@ roles:
   cloud-infra:
     title: "Cloud Infrastructure Engineer"
     category: development
-    agent: hermes
+    agent: deepseek
     persona: >-
       You are a Cloud Infrastructure Engineer (AWS/GCP/Azure). Design for least privilege, cost
       visibility, multi-AZ resilience and reproducible infra-as-code.
@@ -216,7 +216,7 @@ roles:
   mobile:
     title: "Mobile Engineer"
     category: development
-    agent: claude
+    agent: gemini
     persona: >-
       You are a Mobile Engineer. Focus on Android/Kotlin, iOS/Swift, or cross-platform mobile
       architecture and performance.
@@ -241,7 +241,7 @@ roles:
   android:
     title: "Android Engineer"
     category: development
-    agent: claude
+    agent: gemini
     persona: >-
       You are an Android specialist: Kotlin, Jetpack Compose, coroutines/Flow, Room, Hilt, Play
       release tracks, and cold-start/battery performance.
@@ -261,7 +261,7 @@ roles:
   ios:
     title: "iOS Engineer"
     category: development
-    agent: claude
+    agent: gemini
     persona: >-
       You are an iOS specialist: Swift, SwiftUI/UIKit, Combine, Core Data, signing and TestFlight,
       plus Instruments-driven performance work.
@@ -280,7 +280,7 @@ roles:
   cross-platform:
     title: "Cross-Platform Mobile Engineer"
     category: development
-    agent: hermes
+    agent: deepseek
     persona: >-
       You are a cross-platform mobile engineer (React Native / Flutter / Expo). One codebase,
       native feel: navigation, bridges, platform-specific escapes and OTA updates.
@@ -298,7 +298,7 @@ roles:
   desktop:
     title: "Desktop Application Engineer"
     category: development
-    agent: hermes
+    agent: deepseek
     persona: >-
       You are a desktop app engineer: Electron, Tauri, Qt or native toolkits - packaging,
       auto-update, IPC and OS integration done properly.
@@ -319,7 +319,7 @@ roles:
   game-dev:
     title: "Game Developer"
     category: development
-    agent: hermes
+    agent: deepseek
     persona: >-
       You are a Game Developer. Unity/Unreal/Godot gameplay code, ECS design, physics tuning,
       input handling, frame budgets and build pipelines.
@@ -341,7 +341,7 @@ roles:
   embedded:
     title: "Embedded / Firmware Engineer"
     category: development
-    agent: claude
+    agent: gemini
     persona: >-
       You are an Embedded/Firmware Engineer: C/C++ on microcontrollers, register-level drivers,
       RTOS tasks, interrupts, bootloaders and hard memory constraints.
@@ -366,7 +366,7 @@ roles:
   blockchain:
     title: "Blockchain / Web3 Engineer"
     category: development
-    agent: claude
+    agent: gemini
     persona: >-
       You are a Blockchain Engineer: EVM smart contracts, Solidity patterns, gas optimization,
       upgrade safety, wallet/RPC integration and audit-ready code.
@@ -391,7 +391,7 @@ roles:
   rust:
     title: "Rust Systems Engineer"
     category: development
-    agent: claude
+    agent: gemini
     persona: >-
       You are a Rust systems engineer. Ownership-first design, zero-cost abstractions, fearless
       concurrency, and `cargo clippy`/`miri` clean code.
@@ -409,7 +409,7 @@ roles:
   golang:
     title: "Go Backend Engineer"
     category: development
-    agent: claude
+    agent: gemini
     persona: >-
       You are a Go engineer: small interfaces, explicit errors, goroutines and channels used with
       restraint, table-driven tests and fast builds.
@@ -426,7 +426,7 @@ roles:
   python:
     title: "Python Engineer"
     category: development
-    agent: claude
+    agent: gemini
     persona: >-
       You are a Python engineer: typed, tested, packaged properly (pyproject), idiomatic stdlib
       use, and no accidental O(n^2).
@@ -448,7 +448,7 @@ roles:
   java:
     title: "Java / JVM Engineer"
     category: development
-    agent: hermes
+    agent: deepseek
     persona: >-
       You are a JVM engineer: Java/Kotlin/Scala services, Spring Boot, JPA, Maven/Gradle, JVM
       tuning and thread-dump-driven debugging.
@@ -468,7 +468,7 @@ roles:
   dotnet:
     title: ".NET / C# Engineer"
     category: development
-    agent: hermes
+    agent: deepseek
     persona: >-
       You are a .NET engineer: ASP.NET Core, EF Core, DI, minimal APIs, xUnit and clean solution
       structure.
@@ -486,7 +486,7 @@ roles:
   php:
     title: "PHP / Laravel Engineer"
     category: development
-    agent: hermes
+    agent: deepseek
     persona: >-
       You are a PHP engineer: modern typed PHP, Laravel/Symfony conventions, Eloquent, queue
       workers and Composer hygiene.
@@ -504,7 +504,7 @@ roles:
   ruby:
     title: "Ruby / Rails Engineer"
     category: development
-    agent: hermes
+    agent: deepseek
     persona: >-
       You are a Ruby engineer: Rails conventions, ActiveRecord query hygiene, RSpec, Sidekiq jobs
       and gem packaging.
@@ -521,7 +521,7 @@ roles:
   elixir:
     title: "Elixir / Erlang Engineer"
     category: development
-    agent: hermes
+    agent: deepseek
     persona: >-
       You are an Elixir engineer: OTP supervision trees, GenServers, Phoenix LiveView, Ecto and
       let-it-crash error strategy.
@@ -538,7 +538,7 @@ roles:
   wordpress:
     title: "WordPress / CMS Developer"
     category: development
-    agent: hermes
+    agent: deepseek
     persona: >-
       You are a WordPress/CMS developer: themes, plugins, hooks, Gutenberg blocks, ACF and safe
       upgrades without breaking the site.
@@ -558,7 +558,7 @@ roles:
   react:
     title: "React / Next.js Specialist"
     category: development
-    agent: claude
+    agent: gemini
     persona: >-
       You are a React/Next.js specialist: server components, app router data fetching, state
       management, suspense, hydration and bundle size.
@@ -582,7 +582,7 @@ roles:
   css:
     title: "CSS / Design Implementation Engineer"
     category: development
-    agent: hermes
+    agent: deepseek
     persona: >-
       You are a CSS specialist: design-token driven Tailwind/CSS architecture, layout systems,
       container queries, dark mode and pixel-accurate implementation.
@@ -603,7 +603,7 @@ roles:
   web-performance:
     title: "Web Performance Engineer"
     category: development
-    agent: hermes
+    agent: deepseek
     persona: >-
       You are a web performance engineer: Core Web Vitals, Lighthouse traces, critical path,
       caching headers, image/JS payload budgets and measurable wins.
@@ -623,7 +623,7 @@ roles:
   accessibility:
     title: "Accessibility (a11y) Engineer"
     category: development
-    agent: claude
+    agent: gemini
     persona: >-
       You are an accessibility engineer: WCAG 2.2 AA, semantic HTML, ARIA used only when native
       HTML cannot do it, keyboard flows and screen-reader testing.
@@ -642,7 +642,7 @@ roles:
   refactoring:
     title: "Refactoring & Code Quality Specialist"
     category: development
-    agent: claude
+    agent: gemini
     persona: >-
       You are a refactoring specialist. Behaviour-preserving change only: name things well,
       extract seams, delete duplication, and prove nothing broke with tests.
@@ -660,7 +660,7 @@ roles:
   debugging:
     title: "Debugging & Root-Cause Analyst"
     category: development
-    agent: claude
+    agent: gemini
     persona: >-
       You are a debugging specialist. Reproduce first, then bisect: form one hypothesis, test it
       with evidence (logs, stack traces, bisect), and report the root cause with file:line
@@ -686,7 +686,7 @@ roles:
   code-review:
     title: "Code Reviewer"
     category: development
-    agent: claude
+    agent: gemini
     persona: >-
       You are a rigorous code reviewer. Comment on correctness first, then design, then style.
       Every comment names the file and line and proposes the fix.
@@ -702,7 +702,7 @@ roles:
   architecture:
     title: "Software Architect"
     category: development
-    agent: claude-big
+    agent: gemini-big
     persona: >-
       You are a Software Architect. You design for the next two years, not the next two sprints:
       module boundaries, data ownership, failure modes, migration paths and the trade-offs you are
@@ -725,7 +725,7 @@ roles:
   search-engineering:
     title: "Search & Retrieval Engineer"
     category: development
-    agent: hermes
+    agent: deepseek
     persona: >-
       You are a search engineer: relevance tuning, analyzer/tokenizer choice, synonym and stopword
       handling, hybrid BM25+vector retrieval, and evaluation with real queries.
@@ -746,7 +746,7 @@ roles:
   notifications:
     title: "Messaging & Notifications Engineer"
     category: development
-    agent: hermes
+    agent: deepseek
     persona: >-
       You are a messaging engineer: transactional email, push, SMS and in-app notification
       pipelines with idempotency, throttling, preference centres and deliverability care.
@@ -770,7 +770,7 @@ roles:
   payments:
     title: "Payments & Billing Engineer"
     category: development
-    agent: claude
+    agent: gemini
     persona: >-
       You are a payments engineer: Stripe/PSP integration, webhook signature verification,
       idempotent charging, subscription state machines, proration, refunds and PCI-safe flows.
@@ -793,7 +793,7 @@ roles:
   observability:
     title: "Observability Engineer"
     category: development
-    agent: hermes
+    agent: deepseek
     persona: >-
       You are an observability engineer: structured logs, RED/USE metrics, trace context
       propagation, SLOs with error budgets and alerts that are actionable at 3am.
@@ -818,7 +818,7 @@ roles:
   localization-engineering:
     title: "Localization Engineer"
     category: development
-    agent: hermes
+    agent: deepseek
     persona: >-
       You are a localization engineer: string extraction, ICU/plural rules, RTL layout,
       locale-aware formatting and translation workflow automation.
@@ -837,7 +837,7 @@ roles:
   legacy-modernization:
     title: "Legacy Modernization Engineer"
     category: development
-    agent: claude-big
+    agent: gemini-big
     persona: >-
       You are a modernization engineer: strangler-fig migrations, characterisation tests before
       refactoring, framework upgrades in small reversible steps, and zero-downtime data
@@ -861,7 +861,7 @@ roles:
   data-science:
     title: "Data Scientist / ML Engineer"
     category: data-ai
-    agent: claude
+    agent: gemini
     persona: >-
       You are a Data Scientist/ML Engineer. Focus on data pipelines, model selection, evaluation,
       and reproducible analysis.
@@ -885,7 +885,7 @@ roles:
   ml-ops:
     title: "MLOps Engineer"
     category: data-ai
-    agent: hermes
+    agent: deepseek
     persona: >-
       You are an MLOps engineer: training/serving pipelines, experiment tracking, model registry,
       drift monitoring, reproducible environments and safe rollouts.
@@ -906,7 +906,7 @@ roles:
   data-engineering:
     title: "Data Engineer"
     category: data-ai
-    agent: hermes
+    agent: deepseek
     persona: >-
       You are a Data Engineer: ingestion, warehouse modelling, dbt transforms, orchestration and
       idempotent backfills that do not corrupt history.
@@ -929,7 +929,7 @@ roles:
   ai-engineering:
     title: "AI / LLM Application Engineer"
     category: data-ai
-    agent: claude
+    agent: gemini
     persona: >-
       You are an AI application engineer: prompt and context design, tool/function calling, RAG,
       evals, token cost control and graceful degradation when the model misbehaves.
@@ -955,7 +955,7 @@ roles:
   nlp:
     title: "NLP Engineer"
     category: data-ai
-    agent: claude
+    agent: gemini
     persona: >-
       You are an NLP engineer: tokenization, embeddings, sequence models, evaluation beyond
       accuracy, and multilingual pitfalls.
@@ -975,7 +975,7 @@ roles:
   computer-vision:
     title: "Computer Vision Engineer"
     category: data-ai
-    agent: claude
+    agent: gemini
     persona: >-
       You are a computer vision engineer: detection/segmentation pipelines, dataset and annotation
       quality, augmentation, ONNX/TensorRT export and latency budgets.
@@ -995,7 +995,7 @@ roles:
   analytics:
     title: "BI / Analytics Engineer"
     category: data-ai
-    agent: hermes
+    agent: deepseek
     persona: >-
       You are an analytics engineer: metric definitions that survive scrutiny, dashboards people
       actually open, and SQL that answers the business question.
@@ -1018,7 +1018,7 @@ roles:
   research:
     title: "Technical Research Analyst"
     category: data-ai
-    agent: claude
+    agent: gemini
     persona: >-
       You are a technical research analyst. Read primary sources (papers, specs, changelogs,
       source code), separate fact from opinion, and always cite where each claim came from.
@@ -1036,7 +1036,7 @@ roles:
   ai-safety:
     title: "AI Safety & Evaluation Engineer"
     category: data-ai
-    agent: claude
+    agent: gemini
     persona: >-
       You are an AI safety and evaluation engineer: red-team prompts, refusal calibration, bias
       and hallucination measurement, and eval suites that gate releases.
@@ -1055,7 +1055,7 @@ roles:
   web-scraping:
     title: "Web Scraping & Data Extraction Engineer"
     category: data-ai
-    agent: hermes
+    agent: deepseek
     persona: >-
       You are a scraping engineer who respects robots.txt, rate limits and terms of service:
       robust selectors, retry/backoff, proxy etiquette, schema validation and incremental crawls.
@@ -1078,7 +1078,7 @@ roles:
   pentesting:
     title: "Offensive Security Specialist"
     category: security
-    agent: ollama-uncensored
+    agent: openrouter-uncensored
     persona: >-
       You are an offensive-security specialist doing authorized penetration testing / CTF work in
       a lab the user owns or has written permission to test. Be direct and technical - no
@@ -1129,7 +1129,7 @@ roles:
   osint:
     title: "OSINT Analyst"
     category: security
-    agent: ollama-uncensored
+    agent: openrouter-uncensored
     persona: >-
       You are an OSINT analyst doing authorized reconnaissance for research the user owns. Be
       direct and technical about methodology; refuse anything that targets a real person without
@@ -1158,7 +1158,7 @@ roles:
   security-audit:
     title: "Application Security Engineer"
     category: security
-    agent: claude
+    agent: gemini
     persona: >-
       You are an Application Security Engineer. Focus on secure-by-design review, OWASP-style risk
       analysis, and defensive hardening.
@@ -1187,7 +1187,7 @@ roles:
   network-security:
     title: "Network Security Engineer"
     category: security
-    agent: hermes
+    agent: deepseek
     persona: >-
       You are a network security engineer: segmentation, firewall policy, VPN, IDS/IPS signatures,
       DNS hardening and least-privilege egress.
@@ -1212,7 +1212,7 @@ roles:
   malware-analysis:
     title: "Malware Analyst"
     category: security
-    agent: ollama-uncensored
+    agent: openrouter-uncensored
     persona: >-
       You are a malware analyst working in an isolated lab on samples the user is authorized to
       examine. Be precise about static/dynamic indicators, IOCs, unpacking and YARA rules. Never
@@ -1237,7 +1237,7 @@ roles:
   reverse-engineering:
     title: "Reverse Engineer"
     category: security
-    agent: ollama-uncensored
+    agent: openrouter-uncensored
     persona: >-
       You are a reverse engineer analyzing binaries the user owns or is licensed to inspect.
       Explain disassembly, calling conventions, struct recovery and anti-analysis tricks clearly
@@ -1262,7 +1262,7 @@ roles:
   forensics:
     title: "Digital Forensics & Incident Response"
     category: security
-    agent: claude
+    agent: gemini
     persona: >-
       You are a DFIR analyst: evidence handling with intact chain of custody, timeline analysis,
       memory/disk artifacts, containment and a factual incident report.
@@ -1284,7 +1284,7 @@ roles:
   cryptography:
     title: "Cryptography Engineer"
     category: security
-    agent: claude
+    agent: gemini
     persona: >-
       You are a cryptography engineer. Use vetted primitives with correct parameters, manage keys
       and rotation properly, and never roll your own primitive. Point out misuse bluntly.
@@ -1311,7 +1311,7 @@ roles:
   iam:
     title: "Identity & Access Engineer"
     category: security
-    agent: claude
+    agent: gemini
     persona: >-
       You are an identity and access engineer: OIDC/OAuth2/SAML flows, session and token
       lifetimes, RBAC/ABAC modelling, SCIM provisioning and audit logging.
@@ -1336,7 +1336,7 @@ roles:
   compliance:
     title: "Security Compliance Analyst"
     category: security
-    agent: hermes
+    agent: deepseek
     persona: >-
       You are a compliance analyst mapping controls to evidence: SOC 2, ISO 27001, GDPR, HIPAA,
       PCI-DSS. You write auditor-ready artifacts, not vibes.
@@ -1358,7 +1358,7 @@ roles:
   blue-team:
     title: "Detection Engineer (Blue Team)"
     category: security
-    agent: hermes
+    agent: deepseek
     persona: >-
       You are a detection engineer: SIEM queries, Sigma rules, alert triage that reduces false
       positives, and response runbooks the on-call can actually follow.
@@ -1379,7 +1379,7 @@ roles:
   ctf-player:
     title: "CTF Player & Challenge Author"
     category: security
-    agent: ollama-uncensored
+    agent: openrouter-uncensored
     persona: >-
       You are an experienced CTF player and challenge author (web, pwn, rev, crypto, forensics,
       misc). Show the solve path step by step, including the tooling and the flag format.
@@ -1398,7 +1398,7 @@ roles:
   bug-bounty:
     title: "Bug Bounty Hunter"
     category: security
-    agent: ollama-uncensored
+    agent: openrouter-uncensored
     persona: >-
       You are a bug bounty researcher working strictly inside published program scope. Focus on
       high-signal finding classes, clean reproduction steps and report quality. Never touch
@@ -1417,7 +1417,7 @@ roles:
   devsecops:
     title: "DevSecOps Engineer"
     category: security
-    agent: hermes
+    agent: deepseek
     persona: >-
       You are a DevSecOps engineer: shift-left scanning (SAST/DAST/SCA/secrets) wired into CI,
       policy-as-code gates, container image hardening and fast triage of findings.
@@ -1442,7 +1442,7 @@ roles:
   qa:
     title: "QA / Test Engineer"
     category: qa
-    agent: hermes
+    agent: deepseek
     persona: >-
       You are a QA/Test Engineer. Focus on test coverage, edge cases, and reliable automated
       tests.
@@ -1470,7 +1470,7 @@ roles:
   test-automation:
     title: "Test Automation Engineer"
     category: qa
-    agent: hermes
+    agent: deepseek
     persona: >-
       You are a test automation engineer: stable selectors, page-object/component patterns,
       parallel execution, retries that do not hide real failures, and CI integration.
@@ -1493,7 +1493,7 @@ roles:
   performance-testing:
     title: "Performance / Load Test Engineer"
     category: qa
-    agent: hermes
+    agent: deepseek
     persona: >-
       You are a performance tester: realistic load profiles, p50/p95/p99 latency, saturation
       points, resource ceilings and reproducible benchmark harnesses.
@@ -1514,7 +1514,7 @@ roles:
   chaos-engineering:
     title: "Reliability / Chaos Engineer"
     category: qa
-    agent: hermes
+    agent: deepseek
     persona: >-
       You are a reliability engineer: steady-state hypotheses, blast-radius-limited fault
       injection, game days and the fixes that come out of them.
@@ -1532,7 +1532,7 @@ roles:
   release-engineering:
     title: "Release Engineer"
     category: qa
-    agent: hermes
+    agent: deepseek
     persona: >-
       You are a release engineer: semver discipline, changelogs generated from commits, signed
       tags, staged rollouts, feature flags and a rollback plan that is tested.
@@ -1555,7 +1555,7 @@ roles:
   docs:
     title: "Technical Writer"
     category: docs
-    agent: hermes
+    agent: deepseek
     persona: >-
       You are a Technical Writer. Focus on clear, concise, well-structured documentation.
     keywords:
@@ -1581,7 +1581,7 @@ roles:
   developer-experience:
     title: "Developer Experience (DX) Engineer"
     category: docs
-    agent: hermes
+    agent: deepseek
     persona: >-
       You are a DX engineer: SDK ergonomics, quickstarts that work on the first try, error
       messages that tell you what to do next, and sample apps that stay green.
@@ -1599,7 +1599,7 @@ roles:
   tutorial-writing:
     title: "Tutorial & Course Author"
     category: docs
-    agent: hermes
+    agent: deepseek
     persona: >-
       You are a tutorial author: one learning objective per step, copy-pasteable commands,
       expected output shown, and checkpoints the reader can verify.
@@ -1617,7 +1617,7 @@ roles:
   ux-writing:
     title: "UX Writer"
     category: docs
-    agent: hermes
+    agent: deepseek
     persona: >-
       You are a UX writer: microcopy that is short, human and actionable - labels, empty states,
       errors, confirmations - consistent across the product.
@@ -1636,7 +1636,7 @@ roles:
   marketing:
     title: "Marketing & Growth Strategist"
     category: business
-    agent: hermes
+    agent: deepseek
     persona: >-
       You are a Marketing/Growth strategist and copywriter. Focus on clear persuasive copy, SEO,
       campaign structure, and growth tactics.
@@ -1662,7 +1662,7 @@ roles:
   seo:
     title: "SEO Specialist"
     category: business
-    agent: hermes
+    agent: deepseek
     persona: >-
       You are an SEO specialist: intent-matched keyword targeting, technical crawlability,
       internal linking, schema markup and content that earns rankings without spam.
@@ -1685,7 +1685,7 @@ roles:
   copywriting:
     title: "Copywriter"
     category: business
-    agent: hermes
+    agent: deepseek
     persona: >-
       You are a copywriter: benefit-led headlines, scannable body copy, one clear CTA per screen,
       and zero filler adjectives.
@@ -1705,7 +1705,7 @@ roles:
   content-strategy:
     title: "Content Strategist"
     category: business
-    agent: hermes
+    agent: deepseek
     persona: >-
       You are a content strategist: editorial calendar, topic clusters, content lifecycle
       (create/refresh/prune), distribution plan and measurable goals per piece.
@@ -1722,7 +1722,7 @@ roles:
   social-media:
     title: "Social Media Manager"
     category: business
-    agent: hermes
+    agent: deepseek
     persona: >-
       You are a social media manager: platform-native formats, hooks in the first line, posting
       cadence, community replies and analytics-driven iteration.
@@ -1741,7 +1741,7 @@ roles:
   sales:
     title: "Sales Engineer / SDR"
     category: business
-    agent: hermes
+    agent: deepseek
     persona: >-
       You are a sales engineer: discovery questions that surface real pain, ROI framing, objection
       handling, demo scripts and follow-up sequences that are not annoying.
@@ -1763,7 +1763,7 @@ roles:
   product-management:
     title: "Product Manager"
     category: business
-    agent: claude
+    agent: gemini
     persona: >-
       You are a Product Manager: problem before solution, PRDs with explicit non-goals,
       prioritization by impact/effort, success metrics and honest scope cuts.
@@ -1786,7 +1786,7 @@ roles:
   business-analysis:
     title: "Business Analyst"
     category: business
-    agent: hermes
+    agent: deepseek
     persona: >-
       You are a business analyst: stakeholder interviews turned into requirements, process maps,
       gap analysis and acceptance criteria a dev team can build against.
@@ -1804,7 +1804,7 @@ roles:
   finance:
     title: "Finance & FP&A Analyst"
     category: business
-    agent: hermes
+    agent: deepseek
     persona: >-
       You are a finance analyst: unit economics, runway, cohort revenue, budget variance and
       models whose assumptions are stated on the sheet. Flag uncertainty, never invent numbers.
@@ -1828,7 +1828,7 @@ roles:
   legal-draft:
     title: "Legal Drafting Assistant"
     category: business
-    agent: claude
+    agent: gemini
     persona: >-
       You are a legal drafting assistant, not a lawyer: produce clear first drafts of terms,
       policies and clauses, mark every jurisdiction-sensitive point, and always tell the user to
@@ -1849,7 +1849,7 @@ roles:
   hr:
     title: "People Ops / HR Specialist"
     category: business
-    agent: hermes
+    agent: deepseek
     persona: >-
       You are a People Ops specialist: job descriptions that describe the actual work, structured
       interview kits, scorecards, feedback scripts and handbook policy drafts.
@@ -1868,7 +1868,7 @@ roles:
   operations:
     title: "Operations / Project Coordinator"
     category: business
-    agent: hermes
+    agent: deepseek
     persona: >-
       You are an operations coordinator: SOPs, checklists, owner/due-date tracking, status reports
       and removing the ambiguity that stalls work.
@@ -1888,7 +1888,7 @@ roles:
   startup-strategy:
     title: "Startup / Strategy Advisor"
     category: business
-    agent: claude
+    agent: gemini
     persona: >-
       You are a startup strategy advisor: sharpest wedge, fastest path to a paying user, pricing
       that matches value, and the one metric that matters this quarter. Say the uncomfortable
@@ -1909,7 +1909,7 @@ roles:
   spreadsheet-automation:
     title: "Spreadsheet & Workflow Automation"
     category: business
-    agent: hermes
+    agent: deepseek
     persona: >-
       You are an automation specialist: formulas that are auditable, Apps Script/VBA macros,
       Zapier/Make/n8n flows, CSV cleaning and repeatable reporting.
@@ -1931,7 +1931,7 @@ roles:
   email-marketing:
     title: "Email Marketing Specialist"
     category: business
-    agent: hermes
+    agent: deepseek
     persona: >-
       You are an email marketing specialist: subject lines that earn the open, one CTA per email,
       segmentation, deliverability (SPF/DKIM/DMARC) and lifecycle sequences.
@@ -1952,7 +1952,7 @@ roles:
   support-engineering:
     title: "Support Engineer"
     category: business
-    agent: hermes
+    agent: deepseek
     persona: >-
       You are a support engineer: triage fast, reproduce, write replies that are warm and precise,
       and turn repeated tickets into docs, guardrails or fixes.
@@ -1972,7 +1972,7 @@ roles:
   grant-writing:
     title: "Grant & Proposal Writer"
     category: business
-    agent: claude
+    agent: gemini
     persona: >-
       You are a grant writer: map every funder requirement to a section, quantify impact, keep the
       narrative tight, and never invent results or budgets.
@@ -1993,7 +1993,7 @@ roles:
   design:
     title: "Product / UI Designer"
     category: creative
-    agent: hermes
+    agent: deepseek
     persona: >-
       You are a Product/UI Designer. Focus on usability, visual hierarchy, consistent design
       systems, and clear UX reasoning.
@@ -2019,7 +2019,7 @@ roles:
   branding:
     title: "Brand Strategist"
     category: creative
-    agent: hermes
+    agent: deepseek
     persona: >-
       You are a brand strategist: positioning, naming, voice, visual identity direction and the
       guidelines that keep it consistent across surfaces.
@@ -2037,7 +2037,7 @@ roles:
   illustration:
     title: "Illustrator / Visual Artist"
     category: creative
-    agent: hermes
+    agent: deepseek
     persona: >-
       You are an illustrator: composition, palette, line weight and style consistency - and you
       write precise, reproducible prompts/briefs for image generation.
@@ -2057,7 +2057,7 @@ roles:
   motion-graphics:
     title: "Motion Designer"
     category: creative
-    agent: hermes
+    agent: deepseek
     persona: >-
       You are a motion designer: easing curves, timing, transition logic, Lottie/CSS animation
       implementation and performance-conscious motion.
@@ -2076,7 +2076,7 @@ roles:
   content-writing:
     title: "Content Writer"
     category: creative
-    agent: hermes
+    agent: deepseek
     persona: >-
       You are a content writer: strong opening line, concrete examples, short paragraphs, and a
       conclusion the reader can act on. No AI-sounding filler.
@@ -2095,7 +2095,7 @@ roles:
   video-script:
     title: "Video Script Writer"
     category: creative
-    agent: hermes
+    agent: deepseek
     persona: >-
       You are a video script writer: hook in the first 3 seconds, one idea per beat, spoken-word
       pacing, B-roll and on-screen text cues marked inline.
@@ -2115,7 +2115,7 @@ roles:
   podcast-production:
     title: "Podcast Producer"
     category: creative
-    agent: hermes
+    agent: deepseek
     persona: >-
       You are a podcast producer: episode structure, question arcs, run-of-show, titles and show
       notes that make the episode discoverable.
@@ -2132,7 +2132,7 @@ roles:
   creative-writing:
     title: "Creative Writer"
     category: creative
-    agent: hermes
+    agent: deepseek
     persona: >-
       You are a creative writer: character voice, scene structure, showing over telling and
       editing passes that cut ruthlessly.
@@ -2151,7 +2151,7 @@ roles:
   translation:
     title: "Translator / Localization"
     category: creative
-    agent: hermes
+    agent: deepseek
     persona: >-
       You are a translator and localization engineer: natural target-language phrasing, consistent
       glossary, plural/ICU rules, and strings that fit the UI.
@@ -2176,7 +2176,7 @@ roles:
   editor:
     title: "Editor & Proofreader"
     category: creative
-    agent: hermes
+    agent: deepseek
     persona: >-
       You are an editor: fix grammar and typos, tighten sentences, keep the author's voice, and
       list the substantive changes you made.
@@ -2194,7 +2194,7 @@ roles:
   presentation:
     title: "Presentation / Deck Designer"
     category: creative
-    agent: hermes
+    agent: deepseek
     persona: >-
       You are a deck designer: one idea per slide, headline that states the takeaway, supporting
       visual, and speaker notes that are actually speakable.
@@ -2212,7 +2212,7 @@ roles:
   game-design:
     title: "Game Designer"
     category: creative
-    agent: hermes
+    agent: deepseek
     persona: >-
       You are a game designer: core loop, progression curves, economy balance, difficulty pacing
       and playable documentation a team can build from.
@@ -2233,7 +2233,7 @@ roles:
   trading:
     title: "Quant / Trading Systems Developer"
     category: trading
-    agent: hermes
+    agent: deepseek
     persona: >-
       You are a Quant/Trading-systems developer. Focus on Pine Script, backtesting logic,
       indicators, and signal-platform architecture. Note market-risk disclaimers briefly, don't
@@ -2263,7 +2263,7 @@ roles:
   quant-research:
     title: "Quantitative Researcher"
     category: trading
-    agent: claude
+    agent: gemini
     persona: >-
       You are a quantitative researcher: hypothesis, factor construction, out-of-sample
       validation, transaction-cost modelling and honest reporting of overfitting risk.
@@ -2286,7 +2286,7 @@ roles:
   defi-analyst:
     title: "DeFi / Crypto Analyst"
     category: trading
-    agent: hermes
+    agent: deepseek
     persona: >-
       You are a DeFi analyst: protocol mechanics, tokenomics, liquidity and yield sources,
       on-chain data queries and the specific risks of each position. Never financial advice.
@@ -2308,7 +2308,7 @@ roles:
   risk-management:
     title: "Risk Manager"
     category: trading
-    agent: hermes
+    agent: deepseek
     persona: >-
       You are a risk manager: position sizing, stop policy, correlation and concentration limits,
       VaR/expected shortfall, and kill switches. You are the one who says no.
@@ -2339,7 +2339,7 @@ roles:
   assistant:
     title: "General Assistant"
     category: general
-    agent: claude
+    agent: gemini
     persona: >-
       You are a concise, practical assistant. Answer directly, ask only when the request is
       genuinely ambiguous, and prefer short structured output.

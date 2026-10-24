@@ -5,12 +5,12 @@ build-backend = "hatchling.build"
 [project]
 name = "nexus-agent"
 version = "0.1.0"
-description = "Nexus - one CLI/VS Code agent that routes your task to a team of specialist agents (Claude, Hermes, Ollama, uncensored local models) and ships the result."
+description = "Nexus - one CLI/VS Code agent that routes your task to a team of specialist agents (Gemini, DeepSeek, OpenRouter) and ships the result."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { file = "LICENSE" }
 authors = [{ name = "NXR HAMID" }]
-keywords = ["agent", "llm", "cli", "multi-agent", "anthropic", "ollama", "hermes", "automation", "devtools"]
+keywords = ["agent", "llm", "cli", "multi-agent", "gemini", "deepseek", "openrouter", "automation", "devtools"]
 classifiers = [
   "Development Status :: 4 - Beta",
   "Environment :: Console",
@@ -25,7 +25,6 @@ classifiers = [
   "Topic :: Utilities",
 ]
 dependencies = [
-  "anthropic>=0.40",
   "httpx>=0.27",
   "PyYAML>=6.0",
   "python-dotenv>=1.0",
@@ -33,6 +32,8 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0", "ruff>=0.6"]
+# only if you point agents.yaml at the legacy Anthropic Messages API
+anthropic = ["anthropic>=0.40"]
 
 [project.urls]
 Homepage = "https://github.com/BFH-HAMID/Nexus-Agent"

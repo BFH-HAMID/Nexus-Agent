@@ -20,7 +20,6 @@ from nexus.agent import RunResult
 from nexus.server import ServerState, make_handler
 from nexus.types import Event, EventType
 
-
 # --------------------------------------------------------------------------- #
 # a scripted stand-in for NexusAgent
 # --------------------------------------------------------------------------- #
@@ -37,7 +36,7 @@ class FakeAgent:
     wants_approval: bool = True
 
     def run(self, task: str, *, role: str | None = None, read_only: bool = False, **kwargs) -> RunResult:
-        self.emit(Event(EventType.ROLE, {"role": role or "backend", "agent": "claude", "method": "manual"}))
+        self.emit(Event(EventType.ROLE, {"role": role or "backend", "agent": "gemini", "method": "manual"}))
         self.emit(Event(EventType.TEXT, {"text": f"working on: {task}"}))
         if self.wants_approval and self.approval_callback is not None:
             from nexus.types import Risk, ToolSpec
@@ -48,7 +47,7 @@ class FakeAgent:
             if not decision.approved:
                 return RunResult(text="", ok=False, stopped_reason="denied by user")
         self.emit(Event(EventType.TOOL_CALL, {"tool": "write_file", "preview": "x.py"}))
-        return RunResult(text="all done", role=role or "backend", agent="claude", turns=1,
+        return RunResult(text="all done", role=role or "backend", agent="gemini", turns=1,
                          tool_calls=1, summary="wrote x.py", changed_files=["x.py"],
                          stopped_reason="finish", duration_s=0.01, ok=True)
 
@@ -149,7 +148,7 @@ def test_health(server):
     assert status == 200
     assert body["ok"] is True
     assert body["roles"] >= 100
-    assert "claude" in body["agents"]
+    assert "gemini" in body["agents"]
     assert Path(body["workspace"]).is_dir()
 
 
@@ -159,12 +158,12 @@ def test_roles_and_agents_and_pipelines_endpoints(server):
     names = {r["name"] for r in roles}
     assert {"pentesting", "backend", "general"} <= names
     pentesting = next(r for r in roles if r["name"] == "pentesting")
-    assert pentesting["agent"] == "ollama-uncensored"
+    assert pentesting["agent"] == "openrouter-uncensored"
 
     status, agents = server.get("/api/agents")
     assert status == 200
-    assert agents["hermes"]["tool_mode"] == "native"
-    assert agents["ollama-uncensored"]["tool_mode"] == "text"
+    assert agents["deepseek"]["tool_mode"] == "native"
+    assert agents["openrouter-uncensored"]["tool_mode"] == "text"
 
     status, pipelines = server.get("/api/pipelines")
     assert "ship-feature" in pipelines

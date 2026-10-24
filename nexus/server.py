@@ -36,8 +36,8 @@ from urllib.parse import parse_qs, urlparse
 from . import __version__
 from .agent import NexusAgent
 from .config import load_config
-from .tools import ApprovalDecision, preview_args
-from .types import Event, EventType
+from .tools import ApprovalDecision
+from .types import Event
 
 PANEL_DIR = Path(__file__).resolve().parent / "panel"
 APPROVAL_TIMEOUT = 600.0
@@ -50,7 +50,7 @@ class Session:
     role: str | None = None
     read_only: bool = False
     status: str = "queued"          # queued | running | awaiting_approval | done | error | cancelled
-    events: "queue.Queue[dict[str, Any]]" = field(default_factory=queue.Queue)
+    events: queue.Queue[dict[str, Any]] = field(default_factory=queue.Queue)
     pending: dict[str, Any] | None = None
     approval_event: threading.Event = field(default_factory=threading.Event)
     approval_decision: ApprovalDecision | None = None
@@ -287,9 +287,12 @@ def make_handler(state: ServerState):
             if path == "/api/agents":
                 return self._send_json({
                     name: {
-                        "provider": cfg.provider, "model": cfg.model, "base_url": cfg.base_url,
-                        "tool_mode": cfg.tool_mode, "fallback": cfg.fallback, "description": cfg.description,
+                        "provider": cfg.provider, "model": cfg.model,
+                        "base_url": cfg.effective_base_url,
+                        "tool_mode": cfg.tool_mode, "fallback": cfg.fallback,
+                        "description": cfg.description,
                         "key_present": bool(cfg.resolved_api_key),
+                        "key_source": cfg.key_source,
                     }
                     for name, cfg in state.config.agents.items()
                 })
@@ -382,7 +385,7 @@ def make_handler(state: ServerState):
 
             def write(obj: dict[str, Any]) -> bool:
                 try:
-                    self.wfile.write(f"data: {json.dumps(obj, ensure_ascii=False, default=str)}\n\n".encode("utf-8"))
+                    self.wfile.write(f"data: {json.dumps(obj, ensure_ascii=False, default=str)}\n\n".encode())
                     self.wfile.flush()
                     return True
                 except (BrokenPipeError, ConnectionResetError, OSError):
@@ -429,6 +432,8 @@ def serve(*, host: str = "127.0.0.1", port: int = 8787, workspace: Path | None =
     print(f"  roles      {len(state.config.roles)} | agents {sorted(state.config.agents)}")
     if state.demo:
         print("  mode       DEMO (scripted runs - no API key or local model needed)")
+    elif not any(state.config.agents[name].resolved_api_key for name in state.config.agents):
+        print("  api keys   NONE - run `nexus keys set gemini` (or deepseek / openrouter) first")
     if open_panel:
         try:
             import webbrowser

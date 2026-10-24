@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
-
 from nexus.agent import NexusAgent
 from nexus.config import load_config
 from nexus.demo import DEMO_NOTE_PATH, patch_agent_for_demo
@@ -27,7 +25,7 @@ def test_demo_run_routes_and_writes(repo):
     result = agent.run("add pagination to the users api")
     assert result.ok
     assert result.role == "backend"
-    assert result.agent == "claude"
+    assert result.agent == "gemini"
     assert result.tool_calls >= 3
     assert (repo / DEMO_NOTE_PATH).is_file()
     assert "demo" in (repo / DEMO_NOTE_PATH).read_text().lower()

@@ -54,6 +54,8 @@ jobs:
           nexus version
           nexus roles --json | head -c 400
           nexus agents
+          nexus keys
+          nexus keys --json
           nexus prompt backend | head -20
           nexus doctor --json || true
 

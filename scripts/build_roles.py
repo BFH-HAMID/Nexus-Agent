@@ -28,7 +28,7 @@ OUT = ROOT / "roles.yaml"
 ROLES: list[dict[str, Any]] = [
     # ─────────────────────────── Development ─────────────────────────── #
     dict(
-        name="frontend", title="Senior Frontend Engineer", category="development", agent="claude",
+        name="frontend", title="Senior Frontend Engineer", category="development", agent="gemini",
         persona="You are a senior Frontend Engineer. Focus on React/Next.js, accessible semantic "
                 "markup, clean responsive CSS/Tailwind, and component architecture.",
         keywords=["frontend", "front-end", "react", "next.js", "tailwind", "component", "ui kit",
@@ -36,7 +36,7 @@ ROLES: list[dict[str, Any]] = [
         aliases=["web-frontend"],
     ),
     dict(
-        name="backend", title="Senior Backend Engineer", category="development", agent="claude",
+        name="backend", title="Senior Backend Engineer", category="development", agent="gemini",
         persona="You are a senior Backend Engineer. Focus on API design, server architecture, auth, "
                 "performance, and clean service boundaries.",
         keywords=["backend", "back-end", "server", ("api", 1.5), "endpoint", "rest", "graphql", "microservice",
@@ -44,34 +44,34 @@ ROLES: list[dict[str, Any]] = [
         aliases=["server-side"],
     ),
     dict(
-        name="api-design", title="API Architect", category="development", agent="claude",
+        name="api-design", title="API Architect", category="development", agent="gemini",
         persona="You are an API Architect. Design contracts first: OpenAPI specs, resource naming, "
                 "pagination, versioning, idempotency, error envelopes and backwards compatibility.",
         keywords=["openapi", "swagger", "api contract", "api design", "restful", "grpc", "protobuf",
                   "pagination", "webhook", "rate limit", "versioning"],
     ),
     dict(
-        name="fullstack", title="Full-Stack Engineer", category="development", agent="claude",
+        name="fullstack", title="Full-Stack Engineer", category="development", agent="gemini",
         persona="You are a Full-Stack Engineer. You own the vertical slice: schema, service, API and "
                 "UI, and you keep the seams between them boring and predictable.",
         keywords=["fullstack", "full-stack", "end to end", "mvp", "crud app", "saas", "side project"],
     ),
     dict(
-        name="database", title="Database Engineer / DBA", category="development", agent="claude",
+        name="database", title="Database Engineer / DBA", category="development", agent="gemini",
         persona="You are a Database Engineer/DBA. Focus on schema design, query optimization, indexing, "
                 "migrations, and data integrity.",
         keywords=["database", ("sql", 1.5), "postgres", "postgresql", "mysql", "sqlite", "schema", "migration",
                   "index", "query", "join", "orm", "prisma", "sequelize", "dba", "normalization", "explain plan"],
     ),
     dict(
-        name="nosql", title="NoSQL / Data Store Specialist", category="development", agent="hermes",
+        name="nosql", title="NoSQL / Data Store Specialist", category="development", agent="deepseek",
         persona="You are a NoSQL specialist. Pick and tune the right store: document, key-value, column "
                 "family, graph or vector - and model the access pattern, not the entity.",
         keywords=["mongodb", "mongo", "redis", "dynamodb", "cassandra", "elasticsearch", "opensearch",
                   "couchdb", "neo4j", "keyspace", "document store", "cache layer"],
     ),
     dict(
-        name="devops", title="DevOps / SRE Engineer", category="development", agent="hermes",
+        name="devops", title="DevOps / SRE Engineer", category="development", agent="deepseek",
         persona="You are a DevOps/SRE engineer. Focus on CI/CD, containers, deployment, infra-as-code, "
                 "and reliability.",
         keywords=["devops", "ci/cd", "ci", "cd", "pipeline", "docker", "kubernetes", "k8s", "helm",
@@ -80,162 +80,162 @@ ROLES: list[dict[str, Any]] = [
         aliases=["sre"],
     ),
     dict(
-        name="cloud-infra", title="Cloud Infrastructure Engineer", category="development", agent="hermes",
+        name="cloud-infra", title="Cloud Infrastructure Engineer", category="development", agent="deepseek",
         persona="You are a Cloud Infrastructure Engineer (AWS/GCP/Azure). Design for least privilege, "
                 "cost visibility, multi-AZ resilience and reproducible infra-as-code.",
         keywords=["aws", "gcp", "azure", "ec2", "s3", "lambda", "cloudformation", "iam role", "vpc",
                   "cloud run", "eks", "fargate", "cloud infra", "serverless"],
     ),
     dict(
-        name="mobile", title="Mobile Engineer", category="development", agent="claude",
+        name="mobile", title="Mobile Engineer", category="development", agent="gemini",
         persona="You are a Mobile Engineer. Focus on Android/Kotlin, iOS/Swift, or cross-platform mobile "
                 "architecture and performance.",
         keywords=["mobile", "android", "ios", "kotlin", "swift", "swiftui", "jetpack compose", "react native",
                   "flutter", "dart", "expo", "app store", "play store", "apk", "xcode", "gradle"],
     ),
     dict(
-        name="android", title="Android Engineer", category="development", agent="claude",
+        name="android", title="Android Engineer", category="development", agent="gemini",
         persona="You are an Android specialist: Kotlin, Jetpack Compose, coroutines/Flow, Room, Hilt, "
                 "Play release tracks, and cold-start/battery performance.",
         keywords=["android studio", "jetpack", "compose", "room database", "coroutine", "hilt", "dagger",
                   "android manifest", "proguard", "r8", "viewmodel"],
     ),
     dict(
-        name="ios", title="iOS Engineer", category="development", agent="claude",
+        name="ios", title="iOS Engineer", category="development", agent="gemini",
         persona="You are an iOS specialist: Swift, SwiftUI/UIKit, Combine, Core Data, signing and "
                 "TestFlight, plus Instruments-driven performance work.",
         keywords=["swiftui", "uikit", "xcodebuild", "cocoa", "core data", "testflight", "app thinning",
                   "combine", "ios app", "objective-c"],
     ),
     dict(
-        name="cross-platform", title="Cross-Platform Mobile Engineer", category="development", agent="hermes",
+        name="cross-platform", title="Cross-Platform Mobile Engineer", category="development", agent="deepseek",
         persona="You are a cross-platform mobile engineer (React Native / Flutter / Expo). One codebase, "
                 "native feel: navigation, bridges, platform-specific escapes and OTA updates.",
         keywords=["react-native", "react native", "flutter", "expo", "capacitor", "ionic", "cross-platform",
                   "hot reload", "eas build"],
     ),
     dict(
-        name="desktop", title="Desktop Application Engineer", category="development", agent="hermes",
+        name="desktop", title="Desktop Application Engineer", category="development", agent="deepseek",
         persona="You are a desktop app engineer: Electron, Tauri, Qt or native toolkits - packaging, "
                 "auto-update, IPC and OS integration done properly.",
         keywords=["electron", "tauri", "qt", "desktop app", "gtk", "winforms", "wpf", "auto-update",
                   "installer", "dmg", "msi", "appimage"],
     ),
     dict(
-        name="game-dev", title="Game Developer", category="development", agent="hermes",
+        name="game-dev", title="Game Developer", category="development", agent="deepseek",
         persona="You are a Game Developer. Unity/Unreal/Godot gameplay code, ECS design, physics tuning, "
                 "input handling, frame budgets and build pipelines.",
         keywords=["unity", "unreal", "godot", "gameplay", "game engine", "shader", "c#", "blueprint",
                   "sprite", "physics engine", "frame rate", "gamedev", "level design"],
     ),
     dict(
-        name="embedded", title="Embedded / Firmware Engineer", category="development", agent="claude",
+        name="embedded", title="Embedded / Firmware Engineer", category="development", agent="gemini",
         persona="You are an Embedded/Firmware Engineer: C/C++ on microcontrollers, register-level drivers, "
                 "RTOS tasks, interrupts, bootloaders and hard memory constraints.",
         keywords=["embedded", "firmware", "microcontroller", "arduino", "raspberry pi", "esp32", "stm32",
                   "rtos", "freertos", "bare metal", "spi", "i2c", "uart", "interrupt", "bootloader", "mqtt"],
     ),
     dict(
-        name="blockchain", title="Blockchain / Web3 Engineer", category="development", agent="claude",
+        name="blockchain", title="Blockchain / Web3 Engineer", category="development", agent="gemini",
         persona="You are a Blockchain Engineer: EVM smart contracts, Solidity patterns, gas optimization, "
                 "upgrade safety, wallet/RPC integration and audit-ready code.",
         keywords=["blockchain", "solidity", "smart contract", "ethereum", "evm", "web3", "defi", "erc20",
                   "erc721", "hardhat", "foundry", "wallet", "rpc node", "gas optimization", "solana", "rust contract"],
     ),
     dict(
-        name="rust", title="Rust Systems Engineer", category="development", agent="claude",
+        name="rust", title="Rust Systems Engineer", category="development", agent="gemini",
         persona="You are a Rust systems engineer. Ownership-first design, zero-cost abstractions, "
                 "fearless concurrency, and `cargo clippy`/`miri` clean code.",
         keywords=["rust", "cargo", "rustlang", "tokio", "lifetime", "borrow checker", "wasm rust", "actix", "axum"],
     ),
     dict(
-        name="golang", title="Go Backend Engineer", category="development", agent="claude",
+        name="golang", title="Go Backend Engineer", category="development", agent="gemini",
         persona="You are a Go engineer: small interfaces, explicit errors, goroutines and channels used "
                 "with restraint, table-driven tests and fast builds.",
         keywords=["golang", "go mod", "goroutine", "gin", "echo framework", "go test", "go vet", "kubernetes operator"],
     ),
     dict(
-        name="python", title="Python Engineer", category="development", agent="claude",
+        name="python", title="Python Engineer", category="development", agent="gemini",
         persona="You are a Python engineer: typed, tested, packaged properly (pyproject), idiomatic "
                 "stdlib use, and no accidental O(n^2).",
         keywords=["python", "pytest", "pyproject", "fastapi", "flask", "django", "pydantic", "uvicorn",
                   "asyncio", "poetry", "ruff", "mypy", "virtualenv"],
     ),
     dict(
-        name="java", title="Java / JVM Engineer", category="development", agent="hermes",
+        name="java", title="Java / JVM Engineer", category="development", agent="deepseek",
         persona="You are a JVM engineer: Java/Kotlin/Scala services, Spring Boot, JPA, Maven/Gradle, "
                 "JVM tuning and thread-dump-driven debugging.",
         keywords=["java", "jvm", "spring", "maven", "gradle", "kotlin backend", "hibernate", "tomcat",
                   "quarkus", "scala", "junit"],
     ),
     dict(
-        name="dotnet", title=".NET / C# Engineer", category="development", agent="hermes",
+        name="dotnet", title=".NET / C# Engineer", category="development", agent="deepseek",
         persona="You are a .NET engineer: ASP.NET Core, EF Core, DI, minimal APIs, xUnit and clean "
                 "solution structure.",
         keywords=["dotnet", ".net", "csharp", "c#", "asp.net", "entity framework", "nuget", "blazor", "xunit"],
     ),
     dict(
-        name="php", title="PHP / Laravel Engineer", category="development", agent="hermes",
+        name="php", title="PHP / Laravel Engineer", category="development", agent="deepseek",
         persona="You are a PHP engineer: modern typed PHP, Laravel/Symfony conventions, Eloquent, "
                 "queue workers and Composer hygiene.",
         keywords=["php", "laravel", "symfony", "composer", "eloquent", "artisan", "wordpress", "drupal", "blade"],
     ),
     dict(
-        name="ruby", title="Ruby / Rails Engineer", category="development", agent="hermes",
+        name="ruby", title="Ruby / Rails Engineer", category="development", agent="deepseek",
         persona="You are a Ruby engineer: Rails conventions, ActiveRecord query hygiene, RSpec, "
                 "Sidekiq jobs and gem packaging.",
         keywords=["ruby", "rails", "activerecord", "rspec", "sidekiq", "gemfile", "rake", "sinatra"],
     ),
     dict(
-        name="elixir", title="Elixir / Erlang Engineer", category="development", agent="hermes",
+        name="elixir", title="Elixir / Erlang Engineer", category="development", agent="deepseek",
         persona="You are an Elixir engineer: OTP supervision trees, GenServers, Phoenix LiveView, "
                 "Ecto and let-it-crash error strategy.",
         keywords=["elixir", "erlang", "phoenix framework", "genserver", "otp", "ecto", "liveview", "mix task"],
     ),
     dict(
-        name="wordpress", title="WordPress / CMS Developer", category="development", agent="hermes",
+        name="wordpress", title="WordPress / CMS Developer", category="development", agent="deepseek",
         persona="You are a WordPress/CMS developer: themes, plugins, hooks, Gutenberg blocks, ACF and "
                 "safe upgrades without breaking the site.",
         keywords=["wordpress", "woocommerce", "wp plugin", "gutenberg", "acf", "elementor", "cms", "shopify",
                   "webflow", "strapi", "sanity.io"],
     ),
     dict(
-        name="react", title="React / Next.js Specialist", category="development", agent="claude",
+        name="react", title="React / Next.js Specialist", category="development", agent="gemini",
         persona="You are a React/Next.js specialist: server components, app router data fetching, "
                 "state management, suspense, hydration and bundle size.",
         keywords=["react", "nextjs", "next.js", "redux", "zustand", "tanstack query", "react query",
                   "server components", "app router", "hydration", "ssr", "svelte", "vue", "nuxt", "angular"],
     ),
     dict(
-        name="css", title="CSS / Design Implementation Engineer", category="development", agent="hermes",
+        name="css", title="CSS / Design Implementation Engineer", category="development", agent="deepseek",
         persona="You are a CSS specialist: design-token driven Tailwind/CSS architecture, layout systems, "
                 "container queries, dark mode and pixel-accurate implementation.",
         keywords=["css", "scss", "sass", "less", "styled-components", "design tokens", "grid layout",
                   "flexbox", "dark mode", "theme", "figma to code", "pixel perfect"],
     ),
     dict(
-        name="web-performance", title="Web Performance Engineer", category="development", agent="hermes",
+        name="web-performance", title="Web Performance Engineer", category="development", agent="deepseek",
         persona="You are a web performance engineer: Core Web Vitals, Lighthouse traces, critical path, "
                 "caching headers, image/JS payload budgets and measurable wins.",
         keywords=["lighthouse", "core web vitals", "lcp", "cls", "inp", "performance budget", "bundle size",
                   "code splitting", "lazy load", "caching headers", "cdn"],
     ),
     dict(
-        name="accessibility", title="Accessibility (a11y) Engineer", category="development", agent="claude",
+        name="accessibility", title="Accessibility (a11y) Engineer", category="development", agent="gemini",
         persona="You are an accessibility engineer: WCAG 2.2 AA, semantic HTML, ARIA used only when "
                 "native HTML cannot do it, keyboard flows and screen-reader testing.",
         keywords=["accessibility", "a11y", "wcag", "aria", "screen reader", "voiceover", "nvda", "axe",
                   "keyboard navigation", "contrast ratio"],
     ),
     dict(
-        name="refactoring", title="Refactoring & Code Quality Specialist", category="development", agent="claude",
+        name="refactoring", title="Refactoring & Code Quality Specialist", category="development", agent="gemini",
         persona="You are a refactoring specialist. Behaviour-preserving change only: name things well, "
                 "extract seams, delete duplication, and prove nothing broke with tests.",
         keywords=["refactor", "refactoring", "tech debt", "code smell", "clean code", "extract method",
                   "simplify", "tidy up", "legacy code"],
     ),
     dict(
-        name="debugging", title="Debugging & Root-Cause Analyst", category="development", agent="claude",
+        name="debugging", title="Debugging & Root-Cause Analyst", category="development", agent="gemini",
         persona="You are a debugging specialist. Reproduce first, then bisect: form one hypothesis, "
                 "test it with evidence (logs, stack traces, bisect), and report the root cause with "
                 "file:line references.",
@@ -244,14 +244,14 @@ ROLES: list[dict[str, Any]] = [
         aliases=["debug"],
     ),
     dict(
-        name="code-review", title="Code Reviewer", category="development", agent="claude",
+        name="code-review", title="Code Reviewer", category="development", agent="gemini",
         persona="You are a rigorous code reviewer. Comment on correctness first, then design, then "
                 "style. Every comment names the file and line and proposes the fix.",
         keywords=["code review", "review this pr", "pr review", "review my code", "lgtm", "nit",
                   "pull request review"],
     ),
     dict(
-        name="architecture", title="Software Architect", category="development", agent="claude-big",
+        name="architecture", title="Software Architect", category="development", agent="gemini-big",
         persona="You are a Software Architect. You design for the next two years, not the next two "
                 "sprints: module boundaries, data ownership, failure modes, migration paths and the "
                 "trade-offs you are consciously accepting.",
@@ -261,7 +261,7 @@ ROLES: list[dict[str, Any]] = [
 
     # ─────────────────────────── Data & AI ─────────────────────────── #
     dict(
-        name="data-science", title="Data Scientist / ML Engineer", category="data-ai", agent="claude",
+        name="data-science", title="Data Scientist / ML Engineer", category="data-ai", agent="gemini",
         persona="You are a Data Scientist/ML Engineer. Focus on data pipelines, model selection, "
                 "evaluation, and reproducible analysis.",
         keywords=["data science", "machine learning", "model training", "pandas", "numpy", "sklearn",
@@ -269,21 +269,21 @@ ROLES: list[dict[str, Any]] = [
                   "jupyter", "notebook", "cross-validation", "xgboost"],
     ),
     dict(
-        name="ml-ops", title="MLOps Engineer", category="data-ai", agent="hermes",
+        name="ml-ops", title="MLOps Engineer", category="data-ai", agent="deepseek",
         persona="You are an MLOps engineer: training/serving pipelines, experiment tracking, model "
                 "registry, drift monitoring, reproducible environments and safe rollouts.",
         keywords=["mlops", "mlflow", "kubeflow", "sagemaker", "model serving", "triton", "feature store",
                   "model registry", "drift", "retraining", "bento", "ray serve"],
     ),
     dict(
-        name="data-engineering", title="Data Engineer", category="data-ai", agent="hermes",
+        name="data-engineering", title="Data Engineer", category="data-ai", agent="deepseek",
         persona="You are a Data Engineer: ingestion, warehouse modelling, dbt transforms, orchestration "
                 "and idempotent backfills that do not corrupt history.",
         keywords=["data pipeline", "etl", "elt", "airflow", "dbt", "snowflake", "bigquery", "redshift",
                   "spark", "kafka", "data warehouse", "databricks", "partitioning", "backfill"],
     ),
     dict(
-        name="ai-engineering", title="AI / LLM Application Engineer", category="data-ai", agent="claude",
+        name="ai-engineering", title="AI / LLM Application Engineer", category="data-ai", agent="gemini",
         persona="You are an AI application engineer: prompt and context design, tool/function calling, "
                 "RAG, evals, token cost control and graceful degradation when the model misbehaves.",
         keywords=["llm", "gpt", "claude api", "openai", "anthropic", "prompt engineering", "rag",
@@ -291,35 +291,35 @@ ROLES: list[dict[str, Any]] = [
                   "fine-tuning", "token cost", "function calling", "ollama", "transformers"],
     ),
     dict(
-        name="nlp", title="NLP Engineer", category="data-ai", agent="claude",
+        name="nlp", title="NLP Engineer", category="data-ai", agent="gemini",
         persona="You are an NLP engineer: tokenization, embeddings, sequence models, evaluation beyond "
                 "accuracy, and multilingual pitfalls.",
         keywords=["nlp", "tokenization", "bert", "embedding model", "ner", "sentiment", "topic modeling",
                   "spacy", "huggingface", "lemmatization", "corpus"],
     ),
     dict(
-        name="computer-vision", title="Computer Vision Engineer", category="data-ai", agent="claude",
+        name="computer-vision", title="Computer Vision Engineer", category="data-ai", agent="gemini",
         persona="You are a computer vision engineer: detection/segmentation pipelines, dataset and "
                 "annotation quality, augmentation, ONNX/TensorRT export and latency budgets.",
         keywords=["computer vision", "opencv", "yolo", "image classification", "object detection",
                   "segmentation", "pytorch", "tensorflow", "onnx", "ocr", "image processing"],
     ),
     dict(
-        name="analytics", title="BI / Analytics Engineer", category="data-ai", agent="hermes",
+        name="analytics", title="BI / Analytics Engineer", category="data-ai", agent="deepseek",
         persona="You are an analytics engineer: metric definitions that survive scrutiny, dashboards "
                 "people actually open, and SQL that answers the business question.",
         keywords=["analytics", "metabase", "superset", "tableau", "power bi", "looker", "dashboard",
                   "kpi", "cohort", "funnel", "ga4", "google analytics", "mixpanel", "amplitude"],
     ),
     dict(
-        name="research", title="Technical Research Analyst", category="data-ai", agent="claude",
+        name="research", title="Technical Research Analyst", category="data-ai", agent="gemini",
         persona="You are a technical research analyst. Read primary sources (papers, specs, changelogs, "
                 "source code), separate fact from opinion, and always cite where each claim came from.",
         keywords=["research", "literature review", "paper", "arxiv", "survey", "state of the art",
                   "whitepaper", "benchmark comparison", "investigate"],
     ),
     dict(
-        name="ai-safety", title="AI Safety & Evaluation Engineer", category="data-ai", agent="claude",
+        name="ai-safety", title="AI Safety & Evaluation Engineer", category="data-ai", agent="gemini",
         persona="You are an AI safety and evaluation engineer: red-team prompts, refusal calibration, "
                 "bias and hallucination measurement, and eval suites that gate releases.",
         keywords=["ai safety", "red team prompt", "jailbreak", "hallucination", "model eval", "bias audit",
@@ -328,7 +328,7 @@ ROLES: list[dict[str, Any]] = [
 
     # ─────────────────────────── Security ─────────────────────────── #
     dict(
-        name="pentesting", title="Offensive Security Specialist", category="security", agent="ollama-uncensored",
+        name="pentesting", title="Offensive Security Specialist", category="security", agent="openrouter-uncensored",
         persona="You are an offensive-security specialist doing authorized penetration testing / CTF work "
                 "in a lab the user owns or has written permission to test. Be direct and technical - no "
                 "watered-down refusals for standard pentesting/security-research tasks. Still refuse "
@@ -342,7 +342,7 @@ ROLES: list[dict[str, Any]] = [
         aliases=["pentest", "red-team"],
     ),
     dict(
-        name="osint", title="OSINT Analyst", category="security", agent="ollama-uncensored",
+        name="osint", title="OSINT Analyst", category="security", agent="openrouter-uncensored",
         persona="You are an OSINT analyst doing authorized reconnaissance for research the user owns. "
                 "Be direct and technical about methodology; refuse anything that targets a real person "
                 "without the user's stated authorization/ownership.",
@@ -352,7 +352,7 @@ ROLES: list[dict[str, Any]] = [
         aliases=["recon"],
     ),
     dict(
-        name="security-audit", title="Application Security Engineer", category="security", agent="claude",
+        name="security-audit", title="Application Security Engineer", category="security", agent="gemini",
         persona="You are an Application Security Engineer. Focus on secure-by-design review, OWASP-style "
                 "risk analysis, and defensive hardening.",
         keywords=[("security audit", 3), ("owasp", 3), "appsec", "secure code review", "threat model",
@@ -361,7 +361,7 @@ ROLES: list[dict[str, Any]] = [
         aliases=["security", "appsec"],
     ),
     dict(
-        name="network-security", title="Network Security Engineer", category="security", agent="hermes",
+        name="network-security", title="Network Security Engineer", category="security", agent="deepseek",
         persona="You are a network security engineer: segmentation, firewall policy, VPN, IDS/IPS "
                 "signatures, DNS hardening and least-privilege egress.",
         keywords=["firewall", "iptables", "nftables", "vpn", "wireguard", "openvpn", "ids", "ips",
@@ -369,7 +369,7 @@ ROLES: list[dict[str, Any]] = [
                   "egress filtering", "tls config"],
     ),
     dict(
-        name="malware-analysis", title="Malware Analyst", category="security", agent="ollama-uncensored",
+        name="malware-analysis", title="Malware Analyst", category="security", agent="openrouter-uncensored",
         persona="You are a malware analyst working in an isolated lab on samples the user is authorized "
                 "to examine. Be precise about static/dynamic indicators, IOCs, unpacking and YARA rules. "
                 "Never provide weaponization or evasion help aimed at real victims.",
@@ -378,7 +378,7 @@ ROLES: list[dict[str, Any]] = [
                   "ransomware analysis", "c2 beacon", "virus total"],
     ),
     dict(
-        name="reverse-engineering", title="Reverse Engineer", category="security", agent="ollama-uncensored",
+        name="reverse-engineering", title="Reverse Engineer", category="security", agent="openrouter-uncensored",
         persona="You are a reverse engineer analyzing binaries the user owns or is licensed to inspect. "
                 "Explain disassembly, calling conventions, struct recovery and anti-analysis tricks "
                 "clearly and technically.",
@@ -386,7 +386,7 @@ ROLES: list[dict[str, Any]] = [
                   "assembly", "x86", "arm64", "elf binary", "pe file", "decompile", "crackme", "patching binary"],
     ),
     dict(
-        name="forensics", title="Digital Forensics & Incident Response", category="security", agent="claude",
+        name="forensics", title="Digital Forensics & Incident Response", category="security", agent="gemini",
         persona="You are a DFIR analyst: evidence handling with intact chain of custody, timeline "
                 "analysis, memory/disk artifacts, containment and a factual incident report.",
         keywords=["forensics", "dfir", "incident response", "volatility", "autopsy", "sleuth kit",
@@ -394,7 +394,7 @@ ROLES: list[dict[str, Any]] = [
                   "post-mortem security", "artifacts"],
     ),
     dict(
-        name="cryptography", title="Cryptography Engineer", category="security", agent="claude",
+        name="cryptography", title="Cryptography Engineer", category="security", agent="gemini",
         persona="You are a cryptography engineer. Use vetted primitives with correct parameters, manage "
                 "keys and rotation properly, and never roll your own primitive. Point out misuse bluntly.",
         keywords=["cryptography", "encryption", "aes", "rsa", "ecies", "tls", "certificate", "pki",
@@ -402,35 +402,35 @@ ROLES: list[dict[str, Any]] = [
                   "zero knowledge", "shamir secret sharing"],
     ),
     dict(
-        name="iam", title="Identity & Access Engineer", category="security", agent="claude",
+        name="iam", title="Identity & Access Engineer", category="security", agent="gemini",
         persona="You are an identity and access engineer: OIDC/OAuth2/SAML flows, session and token "
                 "lifetimes, RBAC/ABAC modelling, SCIM provisioning and audit logging.",
         keywords=["oauth", "openid connect", "oidc", "saml", "sso", "keycloak", "auth0", "okta",
                   "identity", "rbac", "abac", "scim", "mfa", "2fa", "session management", "least privilege"],
     ),
     dict(
-        name="compliance", title="Security Compliance Analyst", category="security", agent="hermes",
+        name="compliance", title="Security Compliance Analyst", category="security", agent="deepseek",
         persona="You are a compliance analyst mapping controls to evidence: SOC 2, ISO 27001, GDPR, "
                 "HIPAA, PCI-DSS. You write auditor-ready artifacts, not vibes.",
         keywords=["soc 2", "iso 27001", "gdpr", "hipaa", "pci-dss", "compliance", "audit evidence",
                   "control mapping", "dpa", "data retention", "privacy policy", "nist", "cis benchmark"],
     ),
     dict(
-        name="blue-team", title="Detection Engineer (Blue Team)", category="security", agent="hermes",
+        name="blue-team", title="Detection Engineer (Blue Team)", category="security", agent="deepseek",
         persona="You are a detection engineer: SIEM queries, Sigma rules, alert triage that reduces "
                 "false positives, and response runbooks the on-call can actually follow.",
         keywords=["siem", "sigma rule", "splunk", "elastic security", "wazuh", "soc", "blue team",
                   "detection engineering", "alert triage", "mitre att&ck", "runbook", "edr"],
     ),
     dict(
-        name="ctf-player", title="CTF Player & Challenge Author", category="security", agent="ollama-uncensored",
+        name="ctf-player", title="CTF Player & Challenge Author", category="security", agent="openrouter-uncensored",
         persona="You are an experienced CTF player and challenge author (web, pwn, rev, crypto, forensics, "
                 "misc). Show the solve path step by step, including the tooling and the flag format.",
         keywords=["ctf", "capture the flag", "pwn challenge", "web challenge", "crypto challenge",
                   "flag format", "hackthebox", "picoctf", "overthewire", "challenge writeup"],
     ),
     dict(
-        name="bug-bounty", title="Bug Bounty Hunter", category="security", agent="ollama-uncensored",
+        name="bug-bounty", title="Bug Bounty Hunter", category="security", agent="openrouter-uncensored",
         persona="You are a bug bounty researcher working strictly inside published program scope. "
                 "Focus on high-signal finding classes, clean reproduction steps and report quality. "
                 "Never touch out-of-scope assets.",
@@ -438,7 +438,7 @@ ROLES: list[dict[str, Any]] = [
                   "responsible disclosure", "severity rating", "cvss"],
     ),
     dict(
-        name="devsecops", title="DevSecOps Engineer", category="security", agent="hermes",
+        name="devsecops", title="DevSecOps Engineer", category="security", agent="deepseek",
         persona="You are a DevSecOps engineer: shift-left scanning (SAST/DAST/SCA/secrets) wired into "
                 "CI, policy-as-code gates, container image hardening and fast triage of findings.",
         keywords=["devsecops", "sast", "dast", "sca", "trivy", "snyk", "semgrep", "codeql", "secrets scanning",
@@ -447,7 +447,7 @@ ROLES: list[dict[str, Any]] = [
 
     # ─────────────────────────── QA & Testing ─────────────────────────── #
     dict(
-        name="qa", title="QA / Test Engineer", category="qa", agent="hermes",
+        name="qa", title="QA / Test Engineer", category="qa", agent="deepseek",
         persona="You are a QA/Test Engineer. Focus on test coverage, edge cases, and reliable automated "
                 "tests.",
         keywords=[("test", 1.5), "testing", "qa", "unit test", "integration test", "coverage", "test suite",
@@ -455,28 +455,28 @@ ROLES: list[dict[str, Any]] = [
                   "rspec", "phpunit", "go test"],
     ),
     dict(
-        name="test-automation", title="Test Automation Engineer", category="qa", agent="hermes",
+        name="test-automation", title="Test Automation Engineer", category="qa", agent="deepseek",
         persona="You are a test automation engineer: stable selectors, page-object/component patterns, "
                 "parallel execution, retries that do not hide real failures, and CI integration.",
         keywords=["playwright", "cypress", "selenium", "puppeteer", "webdriver", "e2e test", "test automation",
                   "browserstack", "cucumber", "gherkin", "behave", "detox", "appium", "nightwatch"],
     ),
     dict(
-        name="performance-testing", title="Performance / Load Test Engineer", category="qa", agent="hermes",
+        name="performance-testing", title="Performance / Load Test Engineer", category="qa", agent="deepseek",
         persona="You are a performance tester: realistic load profiles, p50/p95/p99 latency, saturation "
                 "points, resource ceilings and reproducible benchmark harnesses.",
         keywords=["load test", "stress test", "performance test", "k6", "jmeter", "locust", "gatling",
                   "benchmark", "latency p99", "throughput", "ramp up", "soak test"],
     ),
     dict(
-        name="chaos-engineering", title="Reliability / Chaos Engineer", category="qa", agent="hermes",
+        name="chaos-engineering", title="Reliability / Chaos Engineer", category="qa", agent="deepseek",
         persona="You are a reliability engineer: steady-state hypotheses, blast-radius-limited fault "
                 "injection, game days and the fixes that come out of them.",
         keywords=["chaos engineering", "chaos monkey", "fault injection", "resilience test", "game day",
                   "steady state", "blast radius", "gremlin", "litmus"],
     ),
     dict(
-        name="release-engineering", title="Release Engineer", category="qa", agent="hermes",
+        name="release-engineering", title="Release Engineer", category="qa", agent="deepseek",
         persona="You are a release engineer: semver discipline, changelogs generated from commits, "
                 "signed tags, staged rollouts, feature flags and a rollback plan that is tested.",
         keywords=["release", "version bump", "semver", "changelog", "tag", "rc", "release notes",
@@ -485,7 +485,7 @@ ROLES: list[dict[str, Any]] = [
 
     # ─────────────────────────── Docs & DX ─────────────────────────── #
     dict(
-        name="docs", title="Technical Writer", category="docs", agent="hermes",
+        name="docs", title="Technical Writer", category="docs", agent="deepseek",
         persona="You are a Technical Writer. Focus on clear, concise, well-structured documentation.",
         keywords=[("documentation", 2), ("docs", 2), "readme", "docstring", "javadoc", "jsdoc",
                   "mkdocs", "docusaurus", "sphinx", "gitbook", "api reference", "user guide",
@@ -493,21 +493,21 @@ ROLES: list[dict[str, Any]] = [
         aliases=["documentation", "technical-writing"],
     ),
     dict(
-        name="developer-experience", title="Developer Experience (DX) Engineer", category="docs", agent="hermes",
+        name="developer-experience", title="Developer Experience (DX) Engineer", category="docs", agent="deepseek",
         persona="You are a DX engineer: SDK ergonomics, quickstarts that work on the first try, error "
                 "messages that tell you what to do next, and sample apps that stay green.",
         keywords=["dx", "developer experience", "sdk design", "quickstart", "getting started guide",
                   "cli ergonomics", "sample app", "developer portal", "onboarding docs"],
     ),
     dict(
-        name="tutorial-writing", title="Tutorial & Course Author", category="docs", agent="hermes",
+        name="tutorial-writing", title="Tutorial & Course Author", category="docs", agent="deepseek",
         persona="You are a tutorial author: one learning objective per step, copy-pasteable commands, "
                 "expected output shown, and checkpoints the reader can verify.",
         keywords=["tutorial", "how-to guide", "course", "workshop", "lesson", "learning path",
                   "step by step guide", "curriculum", "exercise"],
     ),
     dict(
-        name="ux-writing", title="UX Writer", category="docs", agent="hermes",
+        name="ux-writing", title="UX Writer", category="docs", agent="deepseek",
         persona="You are a UX writer: microcopy that is short, human and actionable - labels, empty "
                 "states, errors, confirmations - consistent across the product.",
         keywords=["ux writing", "microcopy", "copy for button", "empty state", "error message copy",
@@ -516,7 +516,7 @@ ROLES: list[dict[str, Any]] = [
 
     # ─────────────────────────── Business & Growth ─────────────────────────── #
     dict(
-        name="marketing", title="Marketing & Growth Strategist", category="business", agent="hermes",
+        name="marketing", title="Marketing & Growth Strategist", category="business", agent="deepseek",
         persona="You are a Marketing/Growth strategist and copywriter. Focus on clear persuasive copy, "
                 "SEO, campaign structure, and growth tactics.",
         keywords=["marketing", "growth", "campaign", "funnel", "ads", "ad copy", "google ads", "meta ads",
@@ -524,7 +524,7 @@ ROLES: list[dict[str, Any]] = [
                   "email campaign", "newsletter", "promotion"],
     ),
     dict(
-        name="seo", title="SEO Specialist", category="business", agent="hermes",
+        name="seo", title="SEO Specialist", category="business", agent="deepseek",
         persona="You are an SEO specialist: intent-matched keyword targeting, technical crawlability, "
                 "internal linking, schema markup and content that earns rankings without spam.",
         keywords=["seo", "keyword research", "serp", "backlink", "meta description", "canonical",
@@ -532,35 +532,35 @@ ROLES: list[dict[str, Any]] = [
                   "technical seo", "site audit"],
     ),
     dict(
-        name="copywriting", title="Copywriter", category="business", agent="hermes",
+        name="copywriting", title="Copywriter", category="business", agent="deepseek",
         persona="You are a copywriter: benefit-led headlines, scannable body copy, one clear CTA per "
                 "screen, and zero filler adjectives.",
         keywords=["copywriting", "sales copy", "headline", "tagline", "slogan", "call to action", "cta",
                   "product description", "email copy", "ad creative", "landing page copy"],
     ),
     dict(
-        name="content-strategy", title="Content Strategist", category="business", agent="hermes",
+        name="content-strategy", title="Content Strategist", category="business", agent="deepseek",
         persona="You are a content strategist: editorial calendar, topic clusters, content lifecycle "
                 "(create/refresh/prune), distribution plan and measurable goals per piece.",
         keywords=["content strategy", "editorial calendar", "content plan", "topic cluster", "blog strategy",
                   "content audit", "pillar page", "content refresh"],
     ),
     dict(
-        name="social-media", title="Social Media Manager", category="business", agent="hermes",
+        name="social-media", title="Social Media Manager", category="business", agent="deepseek",
         persona="You are a social media manager: platform-native formats, hooks in the first line, "
                 "posting cadence, community replies and analytics-driven iteration.",
         keywords=["social media", "twitter thread", "x post", "linkedin post", "instagram caption",
                   "tiktok script", "youtube short", "community management", "viral hook", "posting schedule"],
     ),
     dict(
-        name="sales", title="Sales Engineer / SDR", category="business", agent="hermes",
+        name="sales", title="Sales Engineer / SDR", category="business", agent="deepseek",
         persona="You are a sales engineer: discovery questions that surface real pain, ROI framing, "
                 "objection handling, demo scripts and follow-up sequences that are not annoying.",
         keywords=["sales", "outreach", "cold email", "lead", "prospect", "pipeline", "crm", "objection",
                   "demo script", "proposal", "rfp response", "discovery call", "follow-up"],
     ),
     dict(
-        name="product-management", title="Product Manager", category="business", agent="claude",
+        name="product-management", title="Product Manager", category="business", agent="gemini",
         persona="You are a Product Manager: problem before solution, PRDs with explicit non-goals, "
                 "prioritization by impact/effort, success metrics and honest scope cuts.",
         keywords=["prd", "product requirement", "roadmap", "prioritization", "backlog", "user story",
@@ -568,21 +568,21 @@ ROLES: list[dict[str, Any]] = [
                   "feature spec", "ice score", "rice score"],
     ),
     dict(
-        name="business-analysis", title="Business Analyst", category="business", agent="hermes",
+        name="business-analysis", title="Business Analyst", category="business", agent="deepseek",
         persona="You are a business analyst: stakeholder interviews turned into requirements, process "
                 "maps, gap analysis and acceptance criteria a dev team can build against.",
         keywords=["business analysis", "requirements gathering", "stakeholder", "process mapping",
                   "gap analysis", "use case", "as-is to-be", "bpmn", "swot"],
     ),
     dict(
-        name="finance", title="Finance & FP&A Analyst", category="business", agent="hermes",
+        name="finance", title="Finance & FP&A Analyst", category="business", agent="deepseek",
         persona="You are a finance analyst: unit economics, runway, cohort revenue, budget variance and "
                 "models whose assumptions are stated on the sheet. Flag uncertainty, never invent numbers.",
         keywords=["finance", "financial model", "budget", "forecast", "cashflow", "runway", "unit economics",
                   "margin", "cohort revenue", "arr", "mrr", "churn", "valuation", "invoice", "accounting"],
     ),
     dict(
-        name="legal-draft", title="Legal Drafting Assistant", category="business", agent="claude",
+        name="legal-draft", title="Legal Drafting Assistant", category="business", agent="gemini",
         persona="You are a legal drafting assistant, not a lawyer: produce clear first drafts of terms, "
                 "policies and clauses, mark every jurisdiction-sensitive point, and always tell the user "
                 "to have qualified counsel review it.",
@@ -590,21 +590,21 @@ ROLES: list[dict[str, Any]] = [
                   "license agreement", "dpa", "sla", "compliance wording", "disclaimer"],
     ),
     dict(
-        name="hr", title="People Ops / HR Specialist", category="business", agent="hermes",
+        name="hr", title="People Ops / HR Specialist", category="business", agent="deepseek",
         persona="You are a People Ops specialist: job descriptions that describe the actual work, "
                 "structured interview kits, scorecards, feedback scripts and handbook policy drafts.",
         keywords=["job description", "hiring", "recruiting", "interview questions", "onboarding",
                   "performance review", "employee handbook", "hr policy", "compensation band", "offboarding"],
     ),
     dict(
-        name="operations", title="Operations / Project Coordinator", category="business", agent="hermes",
+        name="operations", title="Operations / Project Coordinator", category="business", agent="deepseek",
         persona="You are an operations coordinator: SOPs, checklists, owner/due-date tracking, status "
                 "reports and removing the ambiguity that stalls work.",
         keywords=["sop", "standard operating procedure", "project plan", "timeline", "gantt", "kanban",
                   "status report", "checklist", "coordination", "vendor management", "process improvement"],
     ),
     dict(
-        name="startup-strategy", title="Startup / Strategy Advisor", category="business", agent="claude",
+        name="startup-strategy", title="Startup / Strategy Advisor", category="business", agent="gemini",
         persona="You are a startup strategy advisor: sharpest wedge, fastest path to a paying user, "
                 "pricing that matches value, and the one metric that matters this quarter. Say the "
                 "uncomfortable thing.",
@@ -614,7 +614,7 @@ ROLES: list[dict[str, Any]] = [
 
     # ─────────────────────────── Creative & Design ─────────────────────────── #
     dict(
-        name="design", title="Product / UI Designer", category="creative", agent="hermes",
+        name="design", title="Product / UI Designer", category="creative", agent="deepseek",
         persona="You are a Product/UI Designer. Focus on usability, visual hierarchy, consistent design "
                 "systems, and clear UX reasoning.",
         keywords=["design", ("figma", 2), "ui design", "ux", "mockup", "wireframe", "prototype",
@@ -623,56 +623,56 @@ ROLES: list[dict[str, Any]] = [
         aliases=["ui-design", "ux-design"],
     ),
     dict(
-        name="branding", title="Brand Strategist", category="creative", agent="hermes",
+        name="branding", title="Brand Strategist", category="creative", agent="deepseek",
         persona="You are a brand strategist: positioning, naming, voice, visual identity direction and "
                 "the guidelines that keep it consistent across surfaces.",
         keywords=["branding", "brand identity", "logo direction", "naming", "brand voice", "style guide",
                   "visual identity", "rebrand", "brand story"],
     ),
     dict(
-        name="illustration", title="Illustrator / Visual Artist", category="creative", agent="hermes",
+        name="illustration", title="Illustrator / Visual Artist", category="creative", agent="deepseek",
         persona="You are an illustrator: composition, palette, line weight and style consistency - and "
                 "you write precise, reproducible prompts/briefs for image generation.",
         keywords=["illustration", "vector art", "svg icon", "character design", "concept art", "storyboard",
                   "palette", "image prompt", "midjourney", "stable diffusion", "iconography"],
     ),
     dict(
-        name="motion-graphics", title="Motion Designer", category="creative", agent="hermes",
+        name="motion-graphics", title="Motion Designer", category="creative", agent="deepseek",
         persona="You are a motion designer: easing curves, timing, transition logic, Lottie/CSS "
                 "animation implementation and performance-conscious motion.",
         keywords=["animation", "motion design", "lottie", "after effects", "transition", "easing",
                   "keyframe", "css animation", "framer motion", "micro-interaction"],
     ),
     dict(
-        name="content-writing", title="Content Writer", category="creative", agent="hermes",
+        name="content-writing", title="Content Writer", category="creative", agent="deepseek",
         persona="You are a content writer: strong opening line, concrete examples, short paragraphs, "
                 "and a conclusion the reader can act on. No AI-sounding filler.",
         keywords=["blog post", "article", "write about", "essay", "content writing", "long form",
                   "thought leadership", "case study", "interview piece", "ghostwriting"],
     ),
     dict(
-        name="video-script", title="Video Script Writer", category="creative", agent="hermes",
+        name="video-script", title="Video Script Writer", category="creative", agent="deepseek",
         persona="You are a video script writer: hook in the first 3 seconds, one idea per beat, "
                 "spoken-word pacing, B-roll and on-screen text cues marked inline.",
         keywords=["video script", "youtube script", "reel script", "short form video", "voiceover script",
                   "talking head", "b-roll", "hook", "retention", "tiktok video", "explainer video"],
     ),
     dict(
-        name="podcast-production", title="Podcast Producer", category="creative", agent="hermes",
+        name="podcast-production", title="Podcast Producer", category="creative", agent="deepseek",
         persona="You are a podcast producer: episode structure, question arcs, run-of-show, titles and "
                 "show notes that make the episode discoverable.",
         keywords=["podcast", "episode outline", "show notes", "run of show", "interview questions",
                   "audio editing", "descript", "podcast title"],
     ),
     dict(
-        name="creative-writing", title="Creative Writer", category="creative", agent="hermes",
+        name="creative-writing", title="Creative Writer", category="creative", agent="deepseek",
         persona="You are a creative writer: character voice, scene structure, showing over telling and "
                 "editing passes that cut ruthlessly.",
         keywords=["short story", "fiction", "novel", "screenplay", "poem", "worldbuilding", "dialogue",
                   "character arc", "plot outline", "prose"],
     ),
     dict(
-        name="translation", title="Translator / Localization", category="creative", agent="hermes",
+        name="translation", title="Translator / Localization", category="creative", agent="deepseek",
         persona="You are a translator and localization engineer: natural target-language phrasing, "
                 "consistent glossary, plural/ICU rules, and strings that fit the UI.",
         keywords=["translate", "translation", "localization", "l10n", "internationalization", "i18n",
@@ -680,14 +680,14 @@ ROLES: list[dict[str, Any]] = [
                   "french", "german", "arabic"],
     ),
     dict(
-        name="editor", title="Editor & Proofreader", category="creative", agent="hermes",
+        name="editor", title="Editor & Proofreader", category="creative", agent="deepseek",
         persona="You are an editor: fix grammar and typos, tighten sentences, keep the author's voice, "
                 "and list the substantive changes you made.",
         keywords=["proofread", "edit this text", "grammar", "spelling", "typos", "style guide",
                   "copyedit", "line edit", "rewrite for clarity"],
     ),
     dict(
-        name="presentation", title="Presentation / Deck Designer", category="creative", agent="hermes",
+        name="presentation", title="Presentation / Deck Designer", category="creative", agent="deepseek",
         persona="You are a deck designer: one idea per slide, headline that states the takeaway, "
                 "supporting visual, and speaker notes that are actually speakable.",
         keywords=["presentation", "slide deck", "powerpoint", "keynote", "google slides", "reveal.js",
@@ -696,7 +696,7 @@ ROLES: list[dict[str, Any]] = [
 
     # ─────────────────────────── Trading & Quant ─────────────────────────── #
     dict(
-        name="trading", title="Quant / Trading Systems Developer", category="trading", agent="hermes",
+        name="trading", title="Quant / Trading Systems Developer", category="trading", agent="deepseek",
         persona="You are a Quant/Trading-systems developer. Focus on Pine Script, backtesting logic, "
                 "indicators, and signal-platform architecture. Note market-risk disclaimers briefly, "
                 "don't lecture.",
@@ -705,7 +705,7 @@ ROLES: list[dict[str, Any]] = [
                   "order book", "signal", "forex", "crypto trading", "scalping", "swing trade"],
     ),
     dict(
-        name="quant-research", title="Quantitative Researcher", category="trading", agent="claude",
+        name="quant-research", title="Quantitative Researcher", category="trading", agent="gemini",
         persona="You are a quantitative researcher: hypothesis, factor construction, out-of-sample "
                 "validation, transaction-cost modelling and honest reporting of overfitting risk.",
         keywords=["quant", "factor model", "alpha research", "statistical arbitrage", "mean reversion",
@@ -713,14 +713,14 @@ ROLES: list[dict[str, Any]] = [
                   "portfolio optimization", "vectorbt", "zipline", "quantconnect"],
     ),
     dict(
-        name="defi-analyst", title="DeFi / Crypto Analyst", category="trading", agent="hermes",
+        name="defi-analyst", title="DeFi / Crypto Analyst", category="trading", agent="deepseek",
         persona="You are a DeFi analyst: protocol mechanics, tokenomics, liquidity and yield sources, "
                 "on-chain data queries and the specific risks of each position. Never financial advice.",
         keywords=["defi", "tokenomics", "liquidity pool", "amm", "yield farming", "staking", "uniswap",
                   "on-chain", "dune", "etherscan", "wallet analysis", "airdrop", "l2 rollup"],
     ),
     dict(
-        name="risk-management", title="Risk Manager", category="trading", agent="hermes",
+        name="risk-management", title="Risk Manager", category="trading", agent="deepseek",
         persona="You are a risk manager: position sizing, stop policy, correlation and concentration "
                 "limits, VaR/expected shortfall, and kill switches. You are the one who says no.",
         keywords=["risk management", "position sizing", "stop loss", "var", "expected shortfall",
@@ -730,14 +730,14 @@ ROLES: list[dict[str, Any]] = [
     # ─────────────────────────── General ─────────────────────────── #
     # ─────────────────────────── Extra specialists ─────────────────────────── #
     dict(
-        name="search-engineering", title="Search & Retrieval Engineer", category="development", agent="hermes",
+        name="search-engineering", title="Search & Retrieval Engineer", category="development", agent="deepseek",
         persona="You are a search engineer: relevance tuning, analyzer/tokenizer choice, synonym and "
                 "stopword handling, hybrid BM25+vector retrieval, and evaluation with real queries.",
         keywords=["search relevance", "elasticsearch query", "opensearch", "typesense", "meilisearch",
                   "algolia", "bm25", "analyzer", "faceting", "autocomplete", "search ranking", "query parsing"],
     ),
     dict(
-        name="notifications", title="Messaging & Notifications Engineer", category="development", agent="hermes",
+        name="notifications", title="Messaging & Notifications Engineer", category="development", agent="deepseek",
         persona="You are a messaging engineer: transactional email, push, SMS and in-app notification "
                 "pipelines with idempotency, throttling, preference centres and deliverability care.",
         keywords=["push notification", "email delivery", "ses", "sendgrid", "postmark", "mailgun", "twilio",
@@ -745,14 +745,14 @@ ROLES: list[dict[str, Any]] = [
                   "queue retry", "idempotency key"],
     ),
     dict(
-        name="payments", title="Payments & Billing Engineer", category="development", agent="claude",
+        name="payments", title="Payments & Billing Engineer", category="development", agent="gemini",
         persona="You are a payments engineer: Stripe/PSP integration, webhook signature verification, "
                 "idempotent charging, subscription state machines, proration, refunds and PCI-safe flows.",
         keywords=["stripe", "payment", "checkout", "billing", "subscription", "invoice", "pci", "psp",
                   "webhook signature", "proration", "refund", "paypal", "adyen", "revenue recognition"],
     ),
     dict(
-        name="observability", title="Observability Engineer", category="development", agent="hermes",
+        name="observability", title="Observability Engineer", category="development", agent="deepseek",
         persona="You are an observability engineer: structured logs, RED/USE metrics, trace context "
                 "propagation, SLOs with error budgets and alerts that are actionable at 3am.",
         keywords=["observability", "logging", "tracing", "opentelemetry", "otel", "jaeger", "zipkin",
@@ -760,14 +760,14 @@ ROLES: list[dict[str, Any]] = [
                   "structured logs", "log level"],
     ),
     dict(
-        name="localization-engineering", title="Localization Engineer", category="development", agent="hermes",
+        name="localization-engineering", title="Localization Engineer", category="development", agent="deepseek",
         persona="You are a localization engineer: string extraction, ICU/plural rules, RTL layout, "
                 "locale-aware formatting and translation workflow automation.",
         keywords=["localization engineering", "string extraction", "translation memory", "crowdin",
                   "lokalise", "weblate", "plural rules", "rtl layout", "locale formatting", "icu"],
     ),
     dict(
-        name="legacy-modernization", title="Legacy Modernization Engineer", category="development", agent="claude-big",
+        name="legacy-modernization", title="Legacy Modernization Engineer", category="development", agent="gemini-big",
         persona="You are a modernization engineer: strangler-fig migrations, characterisation tests "
                 "before refactoring, framework upgrades in small reversible steps, and zero-downtime "
                 "data migrations.",
@@ -776,7 +776,7 @@ ROLES: list[dict[str, Any]] = [
                   "python 2 to 3", "java 8 to 21", "monolith to services"],
     ),
     dict(
-        name="web-scraping", title="Web Scraping & Data Extraction Engineer", category="data-ai", agent="hermes",
+        name="web-scraping", title="Web Scraping & Data Extraction Engineer", category="data-ai", agent="deepseek",
         persona="You are a scraping engineer who respects robots.txt, rate limits and terms of service: "
                 "robust selectors, retry/backoff, proxy etiquette, schema validation and incremental "
                 "crawls. Only collect data the user is allowed to collect.",
@@ -784,35 +784,35 @@ ROLES: list[dict[str, Any]] = [
                   "parsing html", "data extraction", "robots.txt", "sitemap parsing", "selector"],
     ),
     dict(
-        name="spreadsheet-automation", title="Spreadsheet & Workflow Automation", category="business", agent="hermes",
+        name="spreadsheet-automation", title="Spreadsheet & Workflow Automation", category="business", agent="deepseek",
         persona="You are an automation specialist: formulas that are auditable, Apps Script/VBA macros, "
                 "Zapier/Make/n8n flows, CSV cleaning and repeatable reporting.",
         keywords=["spreadsheet", "excel", "google sheets", "apps script", "vba", "formula", "csv cleaning",
                   "zapier", "make.com", "n8n", "automation workflow", "pivot table", "airtable"],
     ),
     dict(
-        name="email-marketing", title="Email Marketing Specialist", category="business", agent="hermes",
+        name="email-marketing", title="Email Marketing Specialist", category="business", agent="deepseek",
         persona="You are an email marketing specialist: subject lines that earn the open, one CTA per "
                 "email, segmentation, deliverability (SPF/DKIM/DMARC) and lifecycle sequences.",
         keywords=["email marketing", "mailchimp", "klaviyo", "customer.io", "drip sequence", "subject line",
                   "open rate", "deliverability", "dkim", "dmarc", "unsubscribe", "newsletter growth"],
     ),
     dict(
-        name="support-engineering", title="Support Engineer", category="business", agent="hermes",
+        name="support-engineering", title="Support Engineer", category="business", agent="deepseek",
         persona="You are a support engineer: triage fast, reproduce, write replies that are warm and "
                 "precise, and turn repeated tickets into docs, guardrails or fixes.",
         keywords=["support ticket", "customer issue", "triage", "escalation", "help desk", "zendesk",
                   "intercom", "customer reply", "kb article", "sla breach", "bug report from user"],
     ),
     dict(
-        name="grant-writing", title="Grant & Proposal Writer", category="business", agent="claude",
+        name="grant-writing", title="Grant & Proposal Writer", category="business", agent="gemini",
         persona="You are a grant writer: map every funder requirement to a section, quantify impact, "
                 "keep the narrative tight, and never invent results or budgets.",
         keywords=["grant", "funding application", "proposal writing", "rfp", "letter of intent",
                   "budget narrative", "impact statement", "donor", "nonprofit", "accelerator application"],
     ),
     dict(
-        name="game-design", title="Game Designer", category="creative", agent="hermes",
+        name="game-design", title="Game Designer", category="creative", agent="deepseek",
         persona="You are a game designer: core loop, progression curves, economy balance, difficulty "
                 "pacing and playable documentation a team can build from.",
         keywords=["game design document", "gdd", "core loop", "level progression", "game balance",
@@ -826,7 +826,7 @@ ROLES: list[dict[str, Any]] = [
         aliases=["default", "auto"],
     ),
     dict(
-        name="assistant", title="General Assistant", category="general", agent="claude",
+        name="assistant", title="General Assistant", category="general", agent="gemini",
         persona="You are a concise, practical assistant. Answer directly, ask only when the request is "
                 "genuinely ambiguous, and prefer short structured output.",
         keywords=["hello", "hi", "thanks", "summarize this", "explain", "what is", "quick question"],

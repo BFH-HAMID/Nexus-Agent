@@ -10,8 +10,7 @@
       "args": ["chat"],
       "console": "integratedTerminal",
       "cwd": "${workspaceFolder}",
-      "justMyCode": false,
-      "envFile": "${workspaceFolder}/.env"
+      "justMyCode": false
     },
     {
       "name": "Nexus: task (debug)",
@@ -21,8 +20,7 @@
       "args": ["task", "${input:taskText}"],
       "console": "integratedTerminal",
       "cwd": "${workspaceFolder}",
-      "justMyCode": false,
-      "envFile": "${workspaceFolder}/.env"
+      "justMyCode": false
     },
     {
       "name": "Nexus: ask (read-only, debug)",
@@ -32,8 +30,7 @@
       "args": ["ask", "${input:taskText}"],
       "console": "integratedTerminal",
       "cwd": "${workspaceFolder}",
-      "justMyCode": false,
-      "envFile": "${workspaceFolder}/.env"
+      "justMyCode": false
     },
     {
       "name": "Nexus: pipeline ship-feature (debug)",
@@ -43,8 +40,7 @@
       "args": ["pipeline", "ship-feature", "${input:taskText}"],
       "console": "integratedTerminal",
       "cwd": "${workspaceFolder}",
-      "justMyCode": false,
-      "envFile": "${workspaceFolder}/.env"
+      "justMyCode": false
     },
     {
       "name": "Nexus: serve sidebar (debug)",
@@ -54,8 +50,7 @@
       "args": ["serve", "--host", "127.0.0.1", "--port", "8787"],
       "console": "integratedTerminal",
       "cwd": "${workspaceFolder}",
-      "justMyCode": false,
-      "envFile": "${workspaceFolder}/.env"
+      "justMyCode": false
     },
     {
       "name": "Nexus: doctor",

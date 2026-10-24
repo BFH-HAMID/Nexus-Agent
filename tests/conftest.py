@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-import json
 import shutil
 import subprocess
 import sys
+from collections.abc import Callable, Sequence
 from pathlib import Path
-from typing import Any, Callable, Sequence
+from typing import Any
 
 import pytest
 
@@ -16,7 +16,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from nexus.providers import ProviderRegistry  # noqa: E402
-from nexus.types import Completion, Message, Provider, TextBlock, ToolCall, ToolSpec, Usage  # noqa: E402
+from nexus.types import Completion, Provider, TextBlock, ToolCall, ToolSpec  # noqa: E402
 
 GIT = shutil.which("git")
 
@@ -121,15 +121,15 @@ def finish_completion(summary: str = "done", followups: Sequence[str] = ()) -> C
     return tool_completion([("finish", {"summary": summary, "followups": list(followups)})])
 
 
-ROUTER_AGENT = "claude-cheap"
+ROUTER_AGENT = "gemini-flash"
 
 
 def fake_registry(*providers: FakeProvider, config=None, router_script: Sequence[Any] = ()) -> ProviderRegistry:
     """A provider registry for tests.
 
     * every agent named in ``config`` (or the bundled agents.yaml) gets a
-      provider, so routing to hermes/ollama never explodes mid-test;
-    * ``claude-cheap`` - the agent agents.yaml assigns to the routing
+      provider, so routing to deepseek/openrouter never explodes mid-test;
+    * ``gemini-flash`` - the agent agents.yaml assigns to the routing
       classifier - answers "general" by default so it never eats a scripted
       item meant for the worker provider.
     """

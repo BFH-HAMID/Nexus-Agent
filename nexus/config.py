@@ -22,6 +22,7 @@ from typing import Any
 
 import yaml
 
+from . import keys as keyring
 from .types import Keyword, Role, sanitize_role_name
 
 PACKAGE_ROOT = Path(__file__).resolve().parent
@@ -195,13 +196,48 @@ class AgentConfig:
     description: str = ""
     extra: dict[str, Any] = field(default_factory=dict)
 
+    # -- credentials ------------------------------------------------------- #
+    @property
+    def key_family(self) -> str | None:
+        """``gemini`` / ``deepseek`` / ``openrouter`` (or None for a local box)."""
+        return keyring.family_for(self.provider, self.api_key_env)
+
+    @property
+    def key_env_names(self) -> tuple[str, ...]:
+        return keyring.env_names(self.provider, self.api_key_env)
+
     @property
     def resolved_api_key(self) -> str | None:
+        """Inline key > environment variable > `nexus keys set` store."""
         if self.api_key:
             return self.api_key
-        if self.api_key_env:
-            return os.environ.get(self.api_key_env) or None
-        return None
+        value, _origin = keyring.key_from_env(self.provider, self.api_key_env)
+        if value:
+            return value
+        family = self.key_family
+        if not family:
+            return None
+        return keyring.stored_key(family) or None
+
+    @property
+    def key_source(self) -> str:
+        """Where the key came from: ``env:GEMINI_API_KEY``, ``keys.json`` or ``""``."""
+        return keyring.key_source(self.provider, self.api_key_env)
+
+    @property
+    def effective_base_url(self) -> str:
+        """Configured ``base_url``, else the provider's public default."""
+        if self.base_url:
+            return str(self.base_url)
+        spec = keyring.provider_spec(self.provider)
+        return spec.base_url if spec else ""
+
+    def missing_key_hint(self) -> str:
+        family = self.key_family
+        if family and family in keyring.PROVIDERS:
+            return f"run `nexus keys set {family}` (or export {self.key_env_names[0]})"
+        names = self.key_env_names
+        return f"set {names[0]}" if names else "set an API key"
 
     def describe(self) -> str:
         return self.label or f"{self.name}: {self.provider}/{self.model}"
@@ -209,14 +245,28 @@ class AgentConfig:
 
 DEFAULT_AGENT_YAML: dict[str, Any] = {
     "agents": {
-        "claude": {
-            "provider": "anthropic",
-            "model": "claude-sonnet-5-5",
-            "api_key_env": "ANTHROPIC_API_KEY",
+        "gemini": {
+            "provider": "gemini",
+            "model": "gemini-3.8-flash",
+            "api_key_env": "GEMINI_API_KEY",
             "max_tokens": 8192,
-        }
+            "fallback": "deepseek",
+        },
+        "deepseek": {
+            "provider": "deepseek",
+            "model": "deepseek-flash",
+            "api_key_env": "DEEPSEEK_API_KEY",
+            "max_tokens": 8192,
+            "fallback": "openrouter",
+        },
+        "openrouter": {
+            "provider": "openrouter",
+            "model": "openrouter/auto",
+            "api_key_env": "OPENROUTER_API_KEY",
+            "max_tokens": 8192,
+        },
     },
-    "default_agent": "claude",
+    "default_agent": "gemini",
 }
 
 
@@ -424,7 +474,7 @@ class Settings:
     workspace: Path = field(default_factory=Path.cwd)
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any], workspace: Path) -> "Settings":
+    def from_dict(cls, data: dict[str, Any], workspace: Path) -> Settings:
         cfg = data.get("settings") or {}
         if not isinstance(cfg, dict):
             raise ConfigError("agents.yaml: `settings` must be a mapping")
@@ -477,7 +527,7 @@ class NexusConfig:
     agents: dict[str, AgentConfig]
     roles: RoleRegistry
     settings: Settings
-    default_agent: str = "claude"
+    default_agent: str = "gemini"
     pipelines: dict[str, Pipeline] = field(default_factory=dict)
     sources: dict[str, list[Path]] = field(default_factory=dict)
     raw: dict[str, Any] = field(default_factory=dict)
@@ -505,6 +555,28 @@ class NexusConfig:
     def pipeline(self, name: str) -> Pipeline | None:
         return self.pipelines.get(name)
 
+    def key_families(self) -> list[str]:
+        """Provider families this config can actually call, in priority order."""
+        order = [self.default_agent, self.settings.router_agent, *sorted(self.agents)]
+        families: list[str] = []
+        for name in order:
+            cfg = self.agents.get(name)
+            if cfg is None:
+                continue
+            family = cfg.key_family
+            if family and family not in families:
+                families.append(family)
+        return families
+
+    def agents_missing_keys(self) -> list[AgentConfig]:
+        """Agents that will fail before a fallback takes over."""
+        missing: list[AgentConfig] = []
+        for name in sorted(self.agents):
+            cfg = self.agents[name]
+            if cfg.key_family and not cfg.resolved_api_key:
+                missing.append(cfg)
+        return missing
+
 
 def load_config(workspace: Path | str | None = None, *, load_pipelines: bool = True) -> NexusConfig:
     ws = Path(workspace or os.environ.get("NEXUS_WORKSPACE") or Path.cwd()).resolve()
@@ -513,7 +585,7 @@ def load_config(workspace: Path | str | None = None, *, load_pipelines: bool = T
     if not agent_data:
         agent_data = dict(DEFAULT_AGENT_YAML)
     agents = parse_agents(agent_data)
-    default_agent = str(agent_data.get("default_agent") or os.environ.get("NEXUS_DEFAULT_AGENT") or "claude")
+    default_agent = str(agent_data.get("default_agent") or os.environ.get("NEXUS_DEFAULT_AGENT") or "gemini")
     if default_agent not in agents and agents:
         default_agent = sorted(agents)[0]
 

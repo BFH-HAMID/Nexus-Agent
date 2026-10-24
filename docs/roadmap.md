@@ -17,7 +17,7 @@ Where each phase from the original plan landed, and what is deliberately next.
 * `router.py`: weighted keyword fast-match → LLM classifier fallback (the exact roadmap prompt,
   chunked for a big team) → `general`.
 * Every run auto-detects the role, switches the active agent and injects the persona; the switch
-  is printed: `⇄ role: pentesting -> agent: ollama-uncensored`.
+  is printed: `⇄ role: pentesting -> agent: openrouter-uncensored`.
 
 ## Phase 3 — 100+ roles ✅ (959)
 

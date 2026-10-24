@@ -9,24 +9,24 @@ from __future__ import annotations
 import os
 import platform
 import time
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any
 
 from .config import NexusConfig, Pipeline, load_config
 from .providers import ProviderRegistry, build_providers
-from .router import RouteDecision, Router, explain
+from .router import RouteDecision, Router
 from .tools import (
+    READ_ONLY_TOOLS,
     ApprovalCallback,
     ApprovalGate,
     PathGuard,
-    READ_ONLY_TOOLS,
     RoleMemory,
     ToolContext,
     build_tools,
 )
 from .types import (
-    Completion,
     Event,
     EventHandler,
     EventType,
@@ -46,7 +46,7 @@ Ground rules
 - Prefer small, surgical `edit_file` changes over rewriting whole files.
 - Verify your work: run the tests, the linter or the build when they exist.
 - Never invent file contents, command output or API responses.
-- Never print secrets from .env or the environment.
+- Never print API keys or secrets from the environment.
 - If the task is ambiguous in a way that changes the outcome, ask ONE focused question
   and stop; otherwise pick the sensible option and state your assumption.
 - Finish by calling the `finish` tool with a short summary (or by replying with plain prose
@@ -361,12 +361,16 @@ class NexusAgent:
 
             results: list[Any] = []
             for call in calls:
+                # A `finish` call ends the run, but every tool_use block still
+                # needs its own tool_result or the next request is rejected by
+                # strict APIs (Anthropic, Gemini). Answer the leftovers.
+                if ctx.state.get("finished"):
+                    results.append(ToolResultBlock(call.id, "skipped: the run already finished", False))
+                    continue
                 text, is_error = registry.call(call.name, call.input)
                 results.append(ToolResultBlock(call.id, text, is_error))
                 tool_calls += 1
                 consecutive_errors = consecutive_errors + 1 if is_error else 0
-                if call.name == "finish":
-                    break
             if consecutive_errors == 3:
                 # appended as plain text so no phantom tool_use_id is invented
                 results.append(

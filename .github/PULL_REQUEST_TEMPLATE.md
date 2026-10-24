@@ -17,7 +17,7 @@ and appends a "Nexus run" footer with role, branch, commits and diffstat.
 
 ## Role / agent
 
-<!-- e.g. backend -> hermes (hermes3:8b) -->
+<!-- e.g. backend -> gemini (gemini-3.8-flash) -->
 
 ## Testing
 
@@ -27,6 +27,6 @@ and appends a "Nexus run" footer with role, branch, commits and diffstat.
 
 ## Checklist
 
-- [ ] No secrets, tokens or `.env` content committed
+- [ ] No secrets, tokens, `.env` files or `keys.json` committed
 - [ ] Docs/README updated if behaviour changed
 - [ ] Breaking changes called out above
