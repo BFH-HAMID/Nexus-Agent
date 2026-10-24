@@ -37,6 +37,7 @@ smoke:  ## CLI smoke test (no keys required)
 	$(PY) -m nexus version
 	$(PY) -m nexus roles
 	$(PY) -m nexus agents
+	$(PY) -m nexus keys
 	$(PY) -m nexus pipeline --list
 	-$(PY) -m nexus doctor
 

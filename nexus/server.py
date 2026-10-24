@@ -14,7 +14,10 @@ GET  /api/events/<task_id>       SSE stream of live agent events
 POST /api/approve/<task_id>      {approved, scope} - answers a pending approval
 POST /api/cancel/<task_id>       stop a run
 GET  /api/tasks                  run history
-GET  /panel                      built-in web UI (also used by the extension)
+GET  /api/stats                  dashboard snapshot: agents, keys, telemetry
+GET  /api/memory/<role>          per-role memory notes
+GET  /dashboard                  the full GUI dashboard (this is `nexus gui`)
+GET  /panel                      compact panel (also embedded by the VS Code extension)
 
 Everything is stdlib-only so the server has no extra dependencies.
 """
@@ -31,16 +34,26 @@ from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 
 from . import __version__
 from .agent import NexusAgent
 from .config import load_config
-from .tools import ApprovalDecision, preview_args
-from .types import Event, EventType
+from .tools import ApprovalDecision
+from .types import Event
 
 PANEL_DIR = Path(__file__).resolve().parent / "panel"
 APPROVAL_TIMEOUT = 600.0
+STATIC_TYPES = {
+    ".html": "text/html; charset=utf-8",
+    ".css": "text/css; charset=utf-8",
+    ".js": "application/javascript; charset=utf-8",
+    ".json": "application/json; charset=utf-8",
+    ".svg": "image/svg+xml",
+    ".png": "image/png",
+    ".ico": "image/x-icon",
+    ".woff2": "font/woff2",
+}
 
 
 @dataclass
@@ -49,8 +62,10 @@ class Session:
     task: str
     role: str | None = None
     read_only: bool = False
+    pipeline: str | None = None
+    auto_yes: bool = False
     status: str = "queued"          # queued | running | awaiting_approval | done | error | cancelled
-    events: "queue.Queue[dict[str, Any]]" = field(default_factory=queue.Queue)
+    events: queue.Queue[dict[str, Any]] = field(default_factory=queue.Queue)
     pending: dict[str, Any] | None = None
     approval_event: threading.Event = field(default_factory=threading.Event)
     approval_decision: ApprovalDecision | None = None
@@ -73,6 +88,7 @@ class Session:
             "task_id": self.task_id,
             "task": self.task,
             "role": self.role,
+            "pipeline": self.pipeline,
             "status": self.status,
             "created": self.created,
             "result": self.result,
@@ -91,9 +107,95 @@ class ServerState:
         self.sessions: dict[str, Session] = {}
         self.lock = threading.Lock()
         self.config = load_config(self.workspace)
+        self.started = time.time()
 
-    def create(self, task: str, role: str | None, read_only: bool) -> Session:
-        session = Session(task_id=uuid.uuid4().hex[:12], task=task, role=role, read_only=read_only)
+    # ------------------------------------------------------------------ #
+    def stats(self) -> dict[str, Any]:
+        """Everything the dashboard needs for its first paint."""
+        from . import __version__
+        from . import keys as keyring
+
+        cfg = self.config
+        with self.lock:
+            sessions = list(self.sessions.values())
+        running = sum(1 for s in sessions if s.status in {"queued", "running", "awaiting_approval"})
+        done = sum(1 for s in sessions if s.status == "done")
+        failed = sum(1 for s in sessions if s.status == "error")
+        tokens_in = sum(int((s.result or {}).get("input_tokens") or 0) for s in sessions)
+        tokens_out = sum(int((s.result or {}).get("output_tokens") or 0) for s in sessions)
+
+        agents: dict[str, Any] = {}
+        for name, agent in cfg.agents.items():
+            agents[name] = {
+                "provider": agent.provider,
+                "model": agent.model,
+                "base_url": agent.effective_base_url,
+                "tool_mode": agent.tool_mode,
+                "fallback": agent.fallback,
+                "optional": agent.optional,
+                "key_present": bool(agent.resolved_api_key),
+                "key_family": agent.key_family,
+                "key_source": agent.key_source,
+                "description": agent.description,
+            }
+        keys = {}
+        for family in keyring.PROVIDERS:
+            key = keyring.get_key(family)
+            keys[family] = {
+                "label": keyring.PROVIDERS[family].label,
+                "configured": bool(key),
+                "masked": keyring.mask(key),
+                "source": keyring.key_source(family),
+                "console": keyring.PROVIDERS[family].console_url,
+            }
+        categories: dict[str, int] = {}
+        for role in cfg.roles.roles.values():
+            categories[role.category or "general"] = categories.get(role.category or "general", 0) + 1
+        return {
+            "version": __version__,
+            "demo": self.demo,
+            "workspace": str(self.workspace),
+            "uptime_s": round(time.time() - self.started, 1),
+            "default_agent": cfg.default_agent,
+            "prefer_local": cfg.settings.prefer_local,
+            "local_agents": cfg.local_agents,
+            "roles": len(cfg.roles),
+            "categories": dict(sorted(categories.items())),
+            "agents": agents,
+            "keys": keys,
+            "pipelines": {
+                name: {"description": pipe.description,
+                       "steps": [str(step.get("role") or "?") for step in pipe.steps]}
+                for name, pipe in cfg.pipelines.items()
+            },
+            "settings": {
+                "auto_route": cfg.settings.auto_route,
+                "max_turns": cfg.settings.max_turns,
+                "router_agent": cfg.settings.router_agent,
+                "memory_enabled": cfg.settings.memory_enabled,
+            },
+            "sessions": {"total": len(sessions), "running": running, "done": done, "error": failed},
+            "tokens": {"in": tokens_in, "out": tokens_out},
+            "auth_required": bool(self.token),
+        }
+
+    def memory(self, role: str) -> dict[str, Any]:
+        from .tools import RoleMemory
+
+        memory = RoleMemory(self.workspace, self.config.settings.memory_dir,
+                            enabled=self.config.settings.memory_enabled)
+        name = self.config.role(role).name
+        return {
+            "role": name,
+            "path": str(memory.path_for(name)),
+            "enabled": memory.enabled,
+            "text": memory.read(name),
+        }
+
+    def create(self, task: str, role: str | None, read_only: bool, pipeline: str | None = None,
+               auto_yes: bool = False) -> Session:
+        session = Session(task_id=uuid.uuid4().hex[:12], task=task, role=role, read_only=read_only,
+                          pipeline=pipeline, auto_yes=auto_yes)
         with self.lock:
             self.sessions[session.task_id] = session
         return session
@@ -145,12 +247,13 @@ class ServerState:
 
     def _run(self, session: Session) -> None:
         try:
+            auto_yes = self.auto_yes or session.auto_yes
             agent = NexusAgent(
                 load_config(self.workspace),
                 workspace=self.workspace,
                 emit=self._emit(session),
-                approval_callback=None if self.auto_yes else self._approval(session),
-                auto_yes=self.auto_yes,
+                approval_callback=None if auto_yes else self._approval(session),
+                auto_yes=auto_yes,
             )
             if self.demo:
                 from .demo import patch_agent_for_demo
@@ -160,11 +263,25 @@ class ServerState:
             session.agent = agent
             session.status = "running"
             session.push({"type": "status", "message": f"starting run in {self.workspace}"})
-            result = agent.run(
-                session.task,
-                role=session.role or None,
-                read_only=session.read_only,
-            )
+            steps: list[dict[str, Any]] = []
+            if session.pipeline:
+                session.push({"type": "status",
+                              "message": f"pipeline '{session.pipeline}' -> {session.task}"})
+                results = agent.run_pipeline(session.pipeline, session.task)
+                steps = [
+                    {"role": r.role, "agent": r.agent, "ok": r.ok, "summary": r.summary,
+                     "tool_calls": r.tool_calls, "turns": r.turns}
+                    for r in results
+                ]
+                if not results:
+                    raise RuntimeError(f"pipeline '{session.pipeline}' produced no steps")
+                result = results[-1]
+            else:
+                result = agent.run(
+                    session.task,
+                    role=session.role or None,
+                    read_only=session.read_only,
+                )
             session.result = {
                 "ok": result.ok,
                 "role": result.role,
@@ -180,6 +297,8 @@ class ServerState:
                 "stopped_reason": result.stopped_reason,
                 "duration_s": round(result.duration_s, 2),
                 "text": result.text,
+                "pipeline": session.pipeline,
+                "steps": steps,
             }
             session.status = "cancelled" if session.cancel.is_set() else ("done" if result.ok else "error")
         except Exception as exc:  # noqa: BLE001
@@ -262,13 +381,26 @@ def make_handler(state: ServerState):
             self.end_headers()
 
         # -- routes -------------------------------------------------------- #
+        @staticmethod
+        def _public_asset(path: str) -> bool:
+            """UI files carry no data - the browser must be able to load them
+            before it knows the token (the token lives in the page's query string)."""
+            return (
+                path == "/"
+                or path in {"/dashboard", "/gui", "/panel", "/console"}
+                or path.startswith(("/dashboard/", "/gui/", "/panel/", "/console/"))
+            )
+
         def do_GET(self) -> None:  # noqa: N802
             parsed = urlparse(self.path)
             path = parsed.path.rstrip("/") or "/"
-            if not self._authorized():
+            if not self._authorized() and not self._public_asset(path):
                 return self._send_json({"error": "invalid or missing token"}, 401)
 
-            if path in {"/", "/health"}:
+            if path == "/":
+                return self._redirect("/dashboard")
+
+            if path in {"/health", "/api/health"}:
                 cfg = state.config
                 return self._send_json({
                     "ok": True,
@@ -287,9 +419,12 @@ def make_handler(state: ServerState):
             if path == "/api/agents":
                 return self._send_json({
                     name: {
-                        "provider": cfg.provider, "model": cfg.model, "base_url": cfg.base_url,
-                        "tool_mode": cfg.tool_mode, "fallback": cfg.fallback, "description": cfg.description,
+                        "provider": cfg.provider, "model": cfg.model,
+                        "base_url": cfg.effective_base_url,
+                        "tool_mode": cfg.tool_mode, "fallback": cfg.fallback,
+                        "description": cfg.description,
                         "key_present": bool(cfg.resolved_api_key),
+                        "key_source": cfg.key_source,
                     }
                     for name, cfg in state.config.agents.items()
                 })
@@ -309,12 +444,36 @@ def make_handler(state: ServerState):
                     return self._send_json({"error": "unknown task"}, 404)
                 return self._send_json({**session.snapshot(), "pending": session.pending,
                                         "log": session.log[-200:]})
+            if path == "/api/stats":
+                return self._send_json(state.stats())
+            if path.startswith("/api/memory/"):
+                role = unquote(path.rsplit("/", 1)[-1])
+                if role not in state.config.roles:
+                    return self._send_json({"error": f"unknown role: {role}"}, 404)
+                try:
+                    return self._send_json(state.memory(role))
+                except Exception as exc:  # noqa: BLE001
+                    return self._send_json({"error": f"memory unavailable: {exc}"}, 400)
+
+            # -- the GUI ------------------------------------------------- #
+            if path in {"/dashboard", "/gui"}:
+                return self._static("dashboard.html", STATIC_TYPES[".html"])
+            if path.startswith("/dashboard/"):
+                return self._static_asset(path[len("/dashboard/") :])
+            if path.startswith("/gui/"):
+                return self._static_asset(path[len("/gui/") :])
+
+            # -- the cinematic simulation console (single self-contained file) -- #
+            if path in {"/console", "/console/"}:
+                return self._static("index.html", STATIC_TYPES[".html"])
+            if path.startswith("/console/"):
+                return self._static_asset(path[len("/console/") :])
+
+            # -- the compact panel (VS Code webview) --------------------- #
             if path in {"/panel", "/panel/"}:
                 return self._static("panel.html", "text/html; charset=utf-8")
             if path.startswith("/panel/"):
-                name = path[len("/panel/") :]
-                ctype = "text/css" if name.endswith(".css") else "application/javascript"
-                return self._static(name, ctype)
+                return self._static_asset(path[len("/panel/") :])
             return self._send_json({"error": f"no route for {path}"}, 404)
 
         def do_POST(self) -> None:  # noqa: N802
@@ -328,7 +487,14 @@ def make_handler(state: ServerState):
                 task = str(payload.get("task") or "").strip()
                 if not task:
                     return self._send_json({"error": "task is required"}, 400)
-                session = state.create(task, payload.get("role"), bool(payload.get("read_only")))
+                wanted_pipeline = payload.get("pipeline") or None
+                if wanted_pipeline and wanted_pipeline not in state.config.pipelines:
+                    return self._send_json(
+                        {"error": f"unknown pipeline '{wanted_pipeline}' "
+                                  f"(known: {', '.join(sorted(state.config.pipelines)) or 'none'})"}, 400)
+                session = state.create(task, payload.get("role"), bool(payload.get("read_only")),
+                                       pipeline=wanted_pipeline,
+                                       auto_yes=bool(payload.get("auto_yes")))
                 state.start(session)
                 return self._send_json({"task_id": session.task_id, "status": session.status}, 202)
 
@@ -358,6 +524,20 @@ def make_handler(state: ServerState):
             return self._send_json({"error": f"no route for {path}"}, 404)
 
         # -- helpers ------------------------------------------------------- #
+        def _redirect(self, location: str) -> None:
+            self.send_response(302)
+            self.send_header("Location", location)
+            self.send_header("Content-Length", "0")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+
+        def _static_asset(self, name: str) -> None:
+            """Serve an asset from nexus/panel/ with the right content type."""
+            clean = name.split("?", 1)[0].lstrip("/")
+            suffix = Path(clean).suffix.lower()
+            ctype = STATIC_TYPES.get(suffix, "application/octet-stream")
+            return self._static(clean, ctype)
+
         def _static(self, name: str, content_type: str) -> None:
             target = (PANEL_DIR / name).resolve()
             try:
@@ -382,7 +562,7 @@ def make_handler(state: ServerState):
 
             def write(obj: dict[str, Any]) -> bool:
                 try:
-                    self.wfile.write(f"data: {json.dumps(obj, ensure_ascii=False, default=str)}\n\n".encode("utf-8"))
+                    self.wfile.write(f"data: {json.dumps(obj, ensure_ascii=False, default=str)}\n\n".encode())
                     self.wfile.flush()
                     return True
                 except (BrokenPipeError, ConnectionResetError, OSError):
@@ -424,16 +604,20 @@ def serve(*, host: str = "127.0.0.1", port: int = 8787, workspace: Path | None =
             "Set NEXUS_SERVE_TOKEN (or --token) before exposing this port."
         )
     print(f"nexus server {__version__} on http://{host}:{port}  (workspace {ws})")
-    print(f"  panel      http://{host}:{port}/panel")
+    print(f"  dashboard  http://{host}:{port}/dashboard   <- the GUI")
+    print(f"  console    http://{host}:{port}/console     <- simulation-only CLI look")
+    print(f"  panel      http://{host}:{port}/panel       (compact / VS Code)")
     print(f"  health     http://{host}:{port}/health")
     print(f"  roles      {len(state.config.roles)} | agents {sorted(state.config.agents)}")
     if state.demo:
         print("  mode       DEMO (scripted runs - no API key or local model needed)")
+    elif not any(state.config.agents[name].resolved_api_key for name in state.config.agents):
+        print("  api keys   NONE - run `nexus keys set gemini` (or deepseek / openrouter) first")
     if open_panel:
         try:
             import webbrowser
 
-            webbrowser.open(f"http://{'127.0.0.1' if host == '0.0.0.0' else host}:{port}/panel")
+            webbrowser.open(f"http://{'127.0.0.1' if host == '0.0.0.0' else host}:{port}/dashboard")
         except Exception:  # noqa: BLE001
             pass
     try:

@@ -24,19 +24,18 @@ Everything is heuristic and offline-testable: ``discover_agents`` and
 from __future__ import annotations
 
 import io
-import json
 import os
 import re
 import shutil
 import subprocess
 import tarfile
 import tempfile
-import time
 import urllib.request
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
-from typing import Any, Iterable, Sequence
+from typing import Any
 
 import yaml
 
@@ -336,7 +335,7 @@ def make_keywords(*sources: str) -> list[str]:
         _add(tok)
     # a few bigrams for phrase matching (skip compounds already captured)
     joined = [t for t in tokens if t not in STOPWORDS and len(t) >= 3 and "-" not in t and "." not in t]
-    for a, b in zip(joined, joined[1:]):
+    for a, b in zip(joined, joined[1:], strict=False):
         if len(out) >= MAX_KEYWORDS:
             break
         if a == b:
@@ -585,7 +584,7 @@ def _agent_for(raw: RawAgent, forced: str | None) -> str:
     if forced:
         return forced
     if SECURITY_RE.search(raw.category) or SECURITY_RE.search(raw.slug) or SECURITY_RE.search(raw.title):
-        return "ollama-uncensored"
+        return "openrouter-uncensored"
     return ""  # inherit default_agent
 
 

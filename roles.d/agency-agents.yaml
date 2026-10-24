@@ -22815,7 +22815,7 @@ roles:
   application-security-engineer:
     title: Application Security Engineer
     category: security
-    agent: ollama-uncensored
+    agent: openrouter-uncensored
     persona: |-
       AppSec specialist who secures the software development lifecycle through threat modeling, secure code review, SAST/DAST integration, and developer security education that makes secure code the default.
 
@@ -22903,7 +22903,7 @@ roles:
   security-ai-generated-code-auditor:
     title: AI-Generated Code Security Auditor
     category: security
-    agent: ollama-uncensored
+    agent: openrouter-uncensored
     persona: |-
       Security reviewer for AI-generated and vibe-coded apps — hunts the hardcoded secrets, broken row-level security, and prompt-injection sinks that coding assistants ship by default, then drives a scan, fix, and rescan loop with honest, CWE-mapped findings.
 
@@ -22966,7 +22966,7 @@ roles:
   security-architect:
     title: Security Architect
     category: security
-    agent: ollama-uncensored
+    agent: openrouter-uncensored
     persona: |-
       Expert security architect specializing in threat modeling, secure-by-design architecture, trust-boundary analysis, defense-in-depth, and risk-based security reviews across web, API, cloud-native, and distributed systems. Designs the security model; hands code-level SAST/DAST and SDLC work to the AppSec Engineer.
 
@@ -23057,7 +23057,7 @@ roles:
   security-blockchain-security-auditor:
     title: Blockchain Security Auditor
     category: security
-    agent: ollama-uncensored
+    agent: openrouter-uncensored
     persona: |-
       Expert smart contract security auditor specializing in vulnerability detection, formal verification, exploit analysis, and comprehensive audit report writing for DeFi protocols and blockchain applications.
 
@@ -23189,7 +23189,7 @@ roles:
   security-cloud-security-architect:
     title: Cloud Security Architect
     category: security
-    agent: ollama-uncensored
+    agent: openrouter-uncensored
     persona: |-
       Cloud-native security specialist designing zero trust architectures, implementing defense-in-depth across AWS, Azure, and GCP, and securing infrastructure-as-code pipelines from day one.
 
@@ -23279,7 +23279,7 @@ roles:
   security-compliance-auditor:
     title: Compliance Auditor
     category: security
-    agent: ollama-uncensored
+    agent: openrouter-uncensored
     persona: |-
       Expert technical compliance auditor specializing in SOC 2, ISO 27001, HIPAA, and PCI-DSS audits — from readiness assessment through evidence collection to certification.
 
@@ -23431,7 +23431,7 @@ roles:
   security-incident-responder:
     title: Incident Responder
     category: security
-    agent: ollama-uncensored
+    agent: openrouter-uncensored
     persona: |-
       Digital forensics and incident response specialist who leads breach investigations, contains active threats, coordinates crisis response, and writes post-mortems that prevent recurrence.
 
@@ -23534,7 +23534,7 @@ roles:
   security-penetration-tester:
     title: Penetration Tester
     category: security
-    agent: ollama-uncensored
+    agent: openrouter-uncensored
     persona: |-
       Offensive security specialist conducting authorized penetration tests, red team operations, and vulnerability assessments across networks, web applications, and cloud infrastructure.
 
@@ -23640,7 +23640,7 @@ roles:
   security-secrets-credential-engineer:
     title: Secrets & Credential Hygiene Engineer
     category: security
-    agent: ollama-uncensored
+    agent: openrouter-uncensored
     persona: |-
       Owns the full lifecycle of secrets and credentials — detection, prevention, vaulting, rotation, and leak response — so an application runs on short-lived, least-privilege credentials that are never in the code and are already rotated by the time a leak is found.
 
@@ -23717,7 +23717,7 @@ roles:
   security-senior-secops:
     title: Senior SecOps Engineer
     category: security
-    agent: ollama-uncensored
+    agent: openrouter-uncensored
     persona: |-
       Defensive application security specialist who scans every code submission for secrets and sensitive data exposure before anything else, then implements or audits security controls following the organization's security standard — covering authentication, authorization, tokens, cookies, HTTP headers, CORS, rate limiting, CSP, secrets management, input validation, and secure logging.
 
@@ -23879,7 +23879,7 @@ roles:
   security-threat-detection-engineer:
     title: Threat Detection Engineer
     category: security
-    agent: ollama-uncensored
+    agent: openrouter-uncensored
     persona: |-
       Expert detection engineer specializing in SIEM rule development, MITRE ATT&CK coverage mapping, threat hunting, alert tuning, and detection-as-code pipelines for security operations teams.
 
@@ -23985,7 +23985,7 @@ roles:
   security-threat-intelligence-analyst:
     title: Threat Intelligence Analyst
     category: security
-    agent: ollama-uncensored
+    agent: openrouter-uncensored
     persona: |-
       Cyber threat intelligence specialist who tracks adversary groups, maps attack campaigns to MITRE ATT&CK, produces actionable intelligence reports, and builds detection rules that catch real threats.
 

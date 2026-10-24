@@ -2,60 +2,132 @@
 # Nexus Agent — agents.yaml
 #
 # "kon model kothay" — every callable model endpoint lives here. Roles point at
-# one of these names, the router never picks a model directly.
+# one of these names; the router never picks a model directly.
 #
-# ${VAR} and ${VAR:-default} are expanded from the environment (.env is loaded
-# automatically by the CLI).
+# All three supported providers speak the OpenAI chat-completions dialect, so a
+# single adapter drives them:
+#   gemini      -> https://generativelanguage.googleapis.com/v1beta/openai
+#   deepseek    -> https://api.deepseek.com/v1
+#   openrouter  -> https://openrouter.ai/api/v1
+#
+# API keys — no .env file needed:
+#   nexus keys set gemini        # or: deepseek / openrouter
+#   nexus keys                  # show what is configured
+# Keys are stored in ~/.config/nexus/keys.json (chmod 600), or exported as
+# GEMINI_API_KEY / DEEPSEEK_API_KEY / OPENROUTER_API_KEY.
+#
+# ${VAR} and ${VAR:-default} are expanded from the environment, so every model
+# id below can be overridden without editing this file.
 # ─────────────────────────────────────────────────────────────────────────────
 
-default_agent: claude
+default_agent: gemini
 
 agents:
-  # ── Claude (API) — best reasoning + most reliable native tool calling ──────
-  claude:
-    provider: anthropic
-    model: claude-sonnet-5-5          # alternatives: claude-opus-5-5, claude-fable-5-1
-    api_key_env: ANTHROPIC_API_KEY
-    base_url: ${ANTHROPIC_BASE_URL:-https://api.anthropic.com}
+  # ── Google Gemini ─────────────────────────────────────────────────────────
+  gemini:                             # default workhorse: real code edits, reviews
+    provider: gemini
+    model: ${GEMINI_MODEL:-gemini-3.8-flash}
+    api_key_env: GEMINI_API_KEY
     max_tokens: 8192
     supports_tools: true
     tool_mode: native
-    description: Default workhorse for real code edits, security review and anything subtle.
+    fallback: deepseek                # no Gemini key? keep working on DeepSeek
+    description: Default workhorse - long-horizon coding with reliable native tool calling.
 
-  claude-big:
-    provider: anthropic
-    model: claude-opus-5-5
-    api_key_env: ANTHROPIC_API_KEY
+  gemini-big:                         # long-horizon architecture, hard refactors
+    provider: gemini
+    model: ${GEMINI_BIG_MODEL:-gemini-4-argon}
+    api_key_env: GEMINI_API_KEY
     max_tokens: 16384
     supports_tools: true
     tool_mode: native
-    fallback: claude
-    description: Long-horizon architecture, hard refactors, deep debugging.
+    fallback: gemini
+    description: Flagship reasoning with a 1M context window.
 
-  claude-cheap:
-    provider: anthropic
-    model: claude-haiku-5-5           # fast + cheap: routing, classification, summaries
-    api_key_env: ANTHROPIC_API_KEY
-    max_tokens: 1024
+  gemini-flash:                       # routing, classification, summaries
+    provider: gemini
+    model: ${GEMINI_FAST_MODEL:-gemini-3.5-flash-lite}
+    api_key_env: GEMINI_API_KEY
+    max_tokens: 4096
     temperature: 0.0
     supports_tools: true
     tool_mode: native
-    fallback: claude
-    description: Used by the router LLM fallback and other high-volume, low-stakes calls.
+    fallback: gemini
+    description: Cheapest/fastest Gemini - used by the router LLM fallback.
 
-  # ── Hermes 3 (local, Ollama) — cheap bulk work: docs, QA, marketing, trading
-  hermes:
+  # ── DeepSeek ──────────────────────────────────────────────────────────────
+  deepseek:                           # cheap bulk work: docs, QA, business, trading
+    provider: deepseek
+    model: ${DEEPSEEK_MODEL:-deepseek-flash}
+    api_key_env: DEEPSEEK_API_KEY
+    max_tokens: 8192
+    temperature: 0.3
+    supports_tools: true
+    tool_mode: native
+    fallback: openrouter
+    description: Low-cost, 1M-context workhorse with tool calling.
+
+  deepseek-pro:                       # the hard reasoning tier
+    provider: deepseek
+    model: ${DEEPSEEK_PRO_MODEL:-deepseek-v4-pro}
+    api_key_env: DEEPSEEK_API_KEY
+    max_tokens: 16384
+    supports_tools: true
+    tool_mode: native
+    fallback: deepseek
+    description: DeepSeek's top reasoning model for architectural or gnarly tasks.
+
+  # ── OpenRouter (any hosted open model behind one key) ─────────────────────
+  openrouter:
+    provider: openrouter
+    model: ${OPENROUTER_MODEL:-openrouter/auto}   # or e.g. deepseek/deepseek-v4-pro
+    api_key_env: OPENROUTER_API_KEY
+    max_tokens: 8192
+    supports_tools: true
+    tool_mode: native
+    fallback: gemini
+    description: Hosted open models; `openrouter/auto` picks one for you.
+
+  # Uncensored open model for authorized pentesting / OSINT / RE research.
+  # Override the model with OPENROUTER_UNCENSORED_MODEL; `nexus models` lists ids.
+  openrouter-uncensored:
+    provider: openrouter
+    model: ${OPENROUTER_UNCENSORED_MODEL:-cognitivecomputations/dolphin-mistral-24b-venice-edition}
+    api_key_env: OPENROUTER_API_KEY
+    max_tokens: 8192
+    temperature: 0.6
+    timeout: 300
+    supports_tools: true
+    tool_mode: text                   # JSON tool contract in the prompt, parsed back
+    fallback: openrouter
+    description: Uncensored model for authorized offensive-security / OSINT work.
+
+  # ── Local models through Ollama (optional, free, offline) ─────────────────
+  # These need NO API key: a keyless localhost endpoint is allowed by design.
+  # If `ollama serve` is not running they fail fast and fall back to the hosted
+  # agents above, so leaving them enabled costs nothing.
+  #
+  #   ollama pull hermes3:8b        # tool-capable worker   -> agent: hermes
+  #   ollama pull hermes3:70b       # bigger worker         -> agent: hermes-big
+  #   ollama pull dolphin-mixtral   # uncensored, no tool template -> tool_mode: text
+  #   ollama pull llama3.1:8b       # generic local         -> agent: ollama
+  #
+  # Use them per role (`/agent hermes` in the REPL, or `agent: hermes` in
+  # roles.yaml) or flip the whole roster to local-first with NEXUS_PREFER_LOCAL=1.
+
+  hermes:                             # local bulk worker: docs, QA, business
     provider: openai-compatible
-    model: hermes3:8b                 # hermes3 has a real tool template -> native tool calls
+    model: ${HERMES_MODEL:-hermes3:8b}
     base_url: ${OLLAMA_HOST:-http://localhost:11434}/v1
-    api_key: ollama                   # required by the OpenAI shim, ignored by Ollama
+    api_key: ollama                   # Ollama ignores it; the OpenAI shim wants one
     max_tokens: 4096
     temperature: 0.4
     timeout: 300
     supports_tools: true
-    tool_mode: native
-    fallback: claude                  # if Ollama is down, keep working (Phase 8)
-    description: Local, free, good enough for docs/QA/marketing/trading scripts.
+    tool_mode: native                 # hermes3 has a real tool template
+    fallback: deepseek                # Ollama down? continue on the API
+    optional: true
+    description: Free local worker (hermes3) for bulk work; falls back to DeepSeek.
 
   hermes-big:
     provider: openai-compatible
@@ -66,24 +138,23 @@ agents:
     timeout: 600
     supports_tools: true
     tool_mode: native
-    fallback: hermes
+    fallback: deepseek-pro
+    optional: true
     description: Bigger local Hermes when you have the VRAM.
 
-  # ── Uncensored local models — pentesting / OSINT / red-team research ───────
-  # dolphin-mixtral has NO tool template in Ollama, so tool_mode: text makes
-  # Nexus inject a JSON tool contract into the prompt and parse the reply.
-  ollama-uncensored:
+  ollama-uncensored:                  # local uncensored model, text-mode tools
     provider: openai-compatible
-    model: dolphin-mixtral:latest
+    model: ${OLLAMA_UNCENSORED_MODEL:-dolphin-mixtral:latest}
     base_url: ${OLLAMA_HOST:-http://localhost:11434}/v1
     api_key: ollama
     max_tokens: 4096
     temperature: 0.7
     timeout: 420
     supports_tools: true
-    tool_mode: text
-    fallback: ollama
-    description: Authorized offensive-security / OSINT work without over-refusals.
+    tool_mode: text                   # dolphin has NO tool template -> JSON contract
+    fallback: openrouter-uncensored   # no local model? use the hosted uncensored one
+    optional: true
+    description: Local uncensored model for authorized offensive-security / OSINT work.
 
   ollama:
     provider: openai-compatible
@@ -94,21 +165,17 @@ agents:
     timeout: 300
     supports_tools: true
     tool_mode: native
-    fallback: hermes
-    description: Generic local model for offline drafting and quick questions.
+    fallback: gemini
+    optional: true
+    description: Generic local model - offline drafting, quick questions.
 
-  # ── Any other OpenAI-compatible endpoint (vLLM, llama.cpp, OpenRouter, ...) ─
-  openrouter:
-    provider: openai-compatible
-    model: ${OPENROUTER_MODEL:-nousresearch/hermes-3-llama-3.1-405b}
-    base_url: https://openrouter.ai/api/v1
-    api_key_env: OPENROUTER_API_KEY
-    max_tokens: 4096
-    timeout: 240
-    supports_tools: true
-    tool_mode: native
-    fallback: claude
-    description: Optional hosted route to open models when the local box is off.
+  # ── Anything else OpenAI-compatible (vLLM, llama.cpp, LM Studio, ...) ─────
+  # box:
+  #   provider: openai-compatible
+  #   model: qwen2.5-coder:32b
+  #   base_url: http://gpu-box:8000/v1
+  #   api_key: ${LOCAL_API_KEY:-local}
+  #   optional: true                  # unreachable is a warning, not a failure
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Behaviour knobs (all overridable with NEXUS_* environment variables)
@@ -117,7 +184,8 @@ settings:
   auto_route: true              # router decides the role for every task
   router_min_score: 1.0         # keyword score needed to skip the LLM classifier
   router_llm_fallback: true     # ask a model when no keyword matched
-  router_agent: claude-cheap    # which agent runs the classifier (empty = default)
+  router_agent: gemini-flash    # which agent runs the classifier (empty = default)
+  prefer_local: false           # true = try the matching local agent first, then the API
   max_turns: 24                 # hard stop for the tool loop
   auto_yes: false               # true = never ask (dangerous calls still blocked)
   allow_dangerous: false        # true = deny-listed commands become "ask" instead of "refuse"

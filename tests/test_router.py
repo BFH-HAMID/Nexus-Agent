@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from nexus.router import CLASSIFIER_PROMPT, Router, _extract_role, explain
+from nexus.router import Router, _extract_role, explain
 from nexus.types import sanitize_role_name
 
 from .conftest import FakeProvider, fake_registry, text_completion
@@ -103,8 +103,8 @@ def test_alias_resolution(config):
 
 
 def test_llm_fallback_uses_the_roadmap_prompt(config):
-    provider = FakeProvider("claude-cheap", [text_completion("blockchain")])
-    config.settings.router_agent = "claude-cheap"
+    provider = FakeProvider("gemini-flash", [text_completion("blockchain")])
+    config.settings.router_agent = "gemini-flash"
     router = Router(config, providers=fake_registry(provider))
     decision = router.route("build a thing that does something unspecified")
     assert decision.role.name == "blockchain"
@@ -122,8 +122,8 @@ def test_classifier_narrows_a_big_team_to_one_bounded_call(config):
     # A big roster is narrowed to <=40 relevant candidates and asked ONCE,
     # instead of chunking every role (which cost O(roster/40) calls). The
     # classifier's answer is still validated against the full registry.
-    provider = FakeProvider("claude-cheap", [text_completion("frontend")])
-    config.settings.router_agent = "claude-cheap"
+    provider = FakeProvider("gemini-flash", [text_completion("frontend")])
+    config.settings.router_agent = "gemini-flash"
     router = Router(config, providers=fake_registry(provider))
     decision = router.route("something vague")
     assert len(provider.calls) == 1
@@ -143,14 +143,14 @@ def test_narrow_candidates_is_bounded_and_relevance_ordered(config):
 
 
 def test_classifier_output_is_sanitized(config):
-    provider = FakeProvider("claude-cheap", [text_completion("`Data-Science` — because ML.")])
+    provider = FakeProvider("gemini-flash", [text_completion("`Data-Science` — because ML.")])
     router = Router(config, providers=fake_registry(provider))
     decision = router.llm_route("predict churn")
     assert decision.role.name == "data-science"
 
 
 def test_unknown_classifier_output_falls_back_to_general(config):
-    provider = FakeProvider("claude-cheap", [text_completion("wizard")] * 5)
+    provider = FakeProvider("gemini-flash", [text_completion("wizard")] * 5)
     router = Router(config, providers=fake_registry(provider))
     decision = router.llm_route("do magic")
     assert decision.role.name == "general"
@@ -158,7 +158,7 @@ def test_unknown_classifier_output_falls_back_to_general(config):
 
 
 def test_llm_fallback_can_be_disabled(config):
-    provider = FakeProvider("claude-cheap", [text_completion("qa")])
+    provider = FakeProvider("gemini-flash", [text_completion("qa")])
     config.settings.router_llm_fallback = False
     router = Router(config, providers=fake_registry(provider))
     decision = router.route("something vague")
@@ -172,7 +172,7 @@ def test_tie_is_broken_by_the_classifier(config):
 
     config.roles.add(Role(name="twin-a", persona="a", keywords=[Keyword.parse("zzzunique")]))
     config.roles.add(Role(name="twin-b", persona="b", keywords=[Keyword.parse("zzzunique")]))
-    provider = FakeProvider("claude-cheap", [text_completion("twin-b")])
+    provider = FakeProvider("gemini-flash", [text_completion("twin-b")])
     router = Router(config, providers=fake_registry(provider))
     decision = router.route("zzzunique please")
     assert decision.role.name == "twin-b"
@@ -183,7 +183,7 @@ def test_tie_is_broken_by_the_classifier(config):
 def test_router_survives_a_dead_classifier(config):
     from nexus.types import ProviderError
 
-    provider = FakeProvider("claude-cheap", [ProviderError("boom", retryable=False)])
+    provider = FakeProvider("gemini-flash", [ProviderError("boom", retryable=False)])
     router = Router(config, providers=fake_registry(provider))
     decision = router.route("something vague")
     assert decision.role.name == "general"
@@ -228,10 +228,10 @@ def test_explain_mentions_role_and_agent(config):
     decision = Router(config).route("write a react component")
     line = explain(decision)
     assert "role: frontend" in line
-    assert "agent: claude" in line
+    assert "agent: gemini" in line
 
 
 def test_classic_roadmap_example_switches_to_uncensored(config):
     decision = Router(config).route("scan my lab network with nmap and try a privilege escalation exploit")
     assert decision.role.name == "pentesting"
-    assert config.agent_for_role(decision.role).name == "ollama-uncensored"
+    assert config.agent_for_role(decision.role).name == "openrouter-uncensored"

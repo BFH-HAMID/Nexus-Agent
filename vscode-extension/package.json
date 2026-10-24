@@ -17,9 +17,9 @@
   "keywords": [
     "agent",
     "llm",
-    "claude",
-    "ollama",
-    "hermes",
+    "gemini",
+    "deepseek",
+    "openrouter",
     "multi-agent"
   ],
   "main": "./out/extension.js",

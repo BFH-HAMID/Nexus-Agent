@@ -10,8 +10,11 @@ agents    list configured model agents
 pipeline  run a multi-role handoff pipeline
 doctor    health check: keys, endpoints, models, tools, repo
 serve     local HTTP + SSE server for the VS Code sidebar
-panel     open the built-in browser panel
-init      write .env.example / .nexus config into a project
+gui       open the GUI dashboard (same as `panel`)
+panel     open the GUI dashboard in a browser
+keys      set / list / test API keys (no .env file needed)
+models    list the model ids a provider actually offers
+init      write .nexus / .vscode scaffolding into a project
 prompt    print the system prompt a role would get
 version   version info
 """
@@ -23,24 +26,22 @@ import json
 import os
 import shutil
 import sys
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any
 
 import yaml
 
 from . import __version__
-from .env import load_dotenv_files
+from . import keys as keyring
 from .agent import NexusAgent, RunResult, render_system_prompt
-from .config import ConfigError, load_config
-from .router import explain
+from .config import AgentConfig, ConfigError, load_config
+from .env import load_dotenv_files
 from .tools import (
     ApprovalDecision,
-    PathGuard,
     RoleMemory,
     find_blocked_pattern,
     gh_available,
-    memory_for,
-    preview_args,
     run_git,
 )
 from .types import Event, EventType, Risk, ToolSpec
@@ -99,6 +100,13 @@ def emit_console(event: Event) -> None:
                 + (f" ({d.get('note')})" if d.get("note") else "")
             )
         )
+    elif t is EventType.THINK:
+        turn = d.get("turn")
+        total = d.get("max_turns")
+        print(COLORS.dim(
+            f"◉ thinking [{d.get('agent')}/{d.get('model')}]"
+            + (f"  turn {turn}/{total}" if turn else "")
+        ))
     elif t is EventType.AGENT:
         level = d.get("level", "info")
         color = COLORS.yellow if level == "warn" else COLORS.blue
@@ -206,6 +214,231 @@ def print_result(result: RunResult, *, verbose: bool = True, as_json: bool = Fal
     return 0 if result.ok else 1
 
 
+
+# --------------------------------------------------------------------------- #
+# API keys - entered in the terminal, no .env file required
+# --------------------------------------------------------------------------- #
+
+KEY_FAMILIES: tuple[str, ...] = tuple(keyring.PROVIDERS)
+_CHOICE_INDEX = {str(i): fam for i, fam in enumerate(KEY_FAMILIES, 1)}
+_CHOICE_INDEX.update({fam: fam for fam in KEY_FAMILIES})
+_CHOICE_INDEX.update({"g": "gemini", "google": "gemini", "d": "deepseek", "ds": "deepseek",
+                      "or": "openrouter", "o": "openrouter"})
+
+
+def _ask(prompt: str) -> str:
+    try:
+        return input(prompt).strip()
+    except (EOFError, KeyboardInterrupt):
+        print()
+        return ""
+
+
+def _resolve_family(raw: str | None) -> str | None:
+    """Accept a name or a menu number; None when it cannot be resolved."""
+    if not raw:
+        return None
+    token = str(raw).strip().lower()
+    if token in _CHOICE_INDEX:
+        return _CHOICE_INDEX[token]
+    return keyring.canonical(token)
+
+
+def _key_row(family: str) -> dict[str, Any]:
+    spec = keyring.PROVIDERS[family]
+    value, origin = keyring.key_from_env(family)
+    if not value:
+        stored = keyring.stored_key(family)
+        if stored:
+            value, origin = stored, str(keyring.store_path())
+    return {
+        "provider": family,
+        "label": spec.label,
+        "configured": bool(value),
+        "masked": keyring.mask(value),
+        "source": origin,
+        "env": spec.env[0],
+        "console": spec.console_url,
+        "command": spec.command,
+        "default_model": spec.default_model,
+    }
+
+
+def _choose_provider(prompt: str = "  provider > ") -> str | None:
+    print(COLORS.bold("Which provider?"))
+    for index, family in enumerate(KEY_FAMILIES, 1):
+        spec = keyring.PROVIDERS[family]
+        print(f"  [{index}] {spec.label:<14} {COLORS.dim(spec.console_url)}")
+    choice = _ask(prompt)
+    if not choice or choice.lower() in {"s", "skip", "q", "n"}:
+        return None
+    family = _resolve_family(choice)
+    if family is None:
+        print(COLORS.red(f"unknown provider '{choice}' (choose {', '.join(KEY_FAMILIES)})"))
+    return family
+
+
+def _prompt_and_save_key(family: str, *, value: str = "", session_only: bool = False) -> str:
+    """Ask for one key in the terminal and (by default) persist it."""
+    spec = keyring.PROVIDERS[family]
+    print(COLORS.bold(f"{spec.label} API key") + COLORS.dim(f"  - get one at {spec.console_url}"))
+    if not value:
+        if sys.stdin.isatty():
+            value = keyring.read_secret("  paste key (hidden) > ")
+        else:
+            value = keyring.normalize_key(sys.stdin.readline())
+    value = keyring.normalize_key(value)
+    if not value:
+        print(COLORS.red("  no key entered - nothing saved"))
+        return ""
+    warning = keyring.looks_like_key(family, value)
+    if warning:
+        print(COLORS.yellow(f"  ! {warning}"))
+    if session_only:
+        os.environ.setdefault(spec.env[0], value)
+        print(COLORS.green(f"✓ {family} key {keyring.mask(value)} set for this session only"))
+        return value
+    path = keyring.save_key(family, value)
+    print(COLORS.green(f"✓ saved {family} key {keyring.mask(value)}"))
+    print(COLORS.dim(f"  store: {path} (chmod 600, outside the repo)"))
+    return value
+
+
+def maybe_prompt_for_keys(config, args: argparse.Namespace) -> None:
+    """First-run helper: offer to paste a key instead of making a .env file."""
+    if getattr(args, "no_key_prompt", False) or getattr(args, "json", False):
+        return
+    if os.environ.get("NEXUS_NO_PROMPT") or not sys.stdin.isatty():
+        return
+    families = config.key_families()
+    if not families or any(keyring.get_key(f) for f in families):
+        return
+    print()
+    print(COLORS.yellow("No API key found.") + COLORS.dim(" Nexus runs on Gemini, DeepSeek or OpenRouter."))
+    family = _choose_provider("  set a key now? [1-3, s = skip] > ")
+    if family is None:
+        print(COLORS.dim("  skipped - later: nexus keys set gemini   (or export GEMINI_API_KEY=...)"))
+        print()
+        return
+    _prompt_and_save_key(family)
+    default_cfg = config.agents.get(config.default_agent)
+    if default_cfg is not None and default_cfg.key_family and default_cfg.key_family != family:
+        print(COLORS.dim(
+            f"  note: default agent '{default_cfg.name}' uses {default_cfg.key_family}; "
+            f"agents without a key fall back to {family}"
+        ))
+    print()
+
+
+def cmd_keys(args: argparse.Namespace) -> int:
+    action = (args.action or "list").lower()
+    if action in {"list", "ls", "show"}:
+        return cmd_keys_list(args)
+    if action in {"set", "add", "login"}:
+        return cmd_keys_set(args)
+    if action in {"remove", "rm", "delete", "unset"}:
+        return cmd_keys_remove(args)
+    if action in {"test", "check", "verify"}:
+        return cmd_keys_test(args)
+    if action == "path":
+        print(keyring.store_path())
+        return 0
+    print(COLORS.red(f"unknown action '{action}' (list | set | remove | test | path)"))
+    return 2
+
+
+def cmd_keys_list(args: argparse.Namespace) -> int:
+    rows = [_key_row(family) for family in KEY_FAMILIES]
+    if getattr(args, "json", False):
+        print(json.dumps({
+            "store": str(keyring.store_path()),
+            "providers": rows,
+        }, ensure_ascii=False, indent=2))
+        return 0
+
+    print(COLORS.bold("Nexus API keys") + COLORS.dim("   (no .env file needed)"))
+    for row in rows:
+        if row["configured"]:
+            mark = COLORS.green("✓")
+            detail = f"{row['masked']:<18} {COLORS.dim(row['source'])}"
+        else:
+            mark = COLORS.dim("·")
+            detail = f"{'not set':<18} {COLORS.dim('run: ' + row['command'])}"
+        print(f"  {mark} {row['provider']:<11} {detail}")
+        if not row["configured"]:
+            print(COLORS.dim(f"      key: {row['console']}"))
+    print()
+    print(COLORS.dim(f"store: {keyring.store_path()}"
+                     + ("" if keyring.store_is_private() else "  ⚠ readable by other users - chmod 600 it")))
+    print(COLORS.dim("env:   "
+                     + "  ".join(spec.env[0] for spec in keyring.PROVIDERS.values())
+                     + "   (exported variables win over the store)"))
+    return 0
+
+
+def cmd_keys_set(args: argparse.Namespace) -> int:
+    family = _resolve_family(getattr(args, "provider", None))
+    if getattr(args, "provider", None) and family is None:
+        print(COLORS.red(f"unknown provider '{args.provider}' (choose {', '.join(KEY_FAMILIES)})"))
+        return 2
+    if family is None:
+        if not sys.stdin.isatty():
+            print(COLORS.red("usage: nexus keys set gemini|deepseek|openrouter "
+                             "[--key ... | --session]"), file=sys.stderr)
+            return 2
+        family = _choose_provider()
+        if family is None:
+            print(COLORS.dim("nothing to do"))
+            return 0
+    value = _prompt_and_save_key(family, value=getattr(args, "key", "") or "",
+                                 session_only=bool(getattr(args, "session", False)))
+    if not value:
+        return 1
+    print(COLORS.dim(f"next: nexus keys test {family}   ·   nexus agents   ·   nexus task '...'"))
+    return 0
+
+
+def cmd_keys_remove(args: argparse.Namespace) -> int:
+    family = _resolve_family(getattr(args, "provider", None))
+    if family is None:
+        print(COLORS.red(f"usage: nexus keys remove {'|'.join(KEY_FAMILIES)}"), file=sys.stderr)
+        return 2
+    if keyring.delete_key(family):
+        print(COLORS.green(f"✓ removed the stored {family} key"))
+    else:
+        print(COLORS.dim(f"no stored {family} key (an exported {keyring.PROVIDERS[family].env[0]} "
+                         "still takes precedence)"))
+    return 0
+
+
+def cmd_keys_test(args: argparse.Namespace) -> int:
+    from .providers import OpenAICompatProvider
+
+    requested = _resolve_family(getattr(args, "provider", None))
+    if getattr(args, "provider", None) and requested is None:
+        print(COLORS.red(f"unknown provider '{args.provider}' (choose {', '.join(KEY_FAMILIES)})"))
+        return 2
+    families = [requested] if requested else [f for f in KEY_FAMILIES if keyring.get_key(f)]
+    if not families:
+        print(COLORS.yellow("no keys configured yet - run `nexus keys set gemini`"))
+        return 1
+    failures = 0
+    for family in families:
+        spec = keyring.PROVIDERS[family]
+        cfg = AgentConfig(name=family, provider=family, model=spec.default_model,
+                          api_key_env=spec.env[0], timeout=30.0)
+        try:
+            ok, detail = OpenAICompatProvider(cfg).health()
+        except Exception as exc:  # noqa: BLE001
+            ok, detail = False, f"{exc.__class__.__name__}: {exc}"
+        if ok:
+            print(f"  {COLORS.green('✓')} {family:<11} {detail}")
+        else:
+            failures += 1
+            print(f"  {COLORS.red('✗')} {family:<11} {detail}")
+    return 1 if failures else 0
+
+
 # --------------------------------------------------------------------------- #
 # shared agent factory
 # --------------------------------------------------------------------------- #
@@ -217,8 +450,10 @@ def build_agent(args: argparse.Namespace) -> NexusAgent:
         config = load_config(workspace)
     except ConfigError as exc:
         print(COLORS.red(f"config error: {exc}"), file=sys.stderr)
-        raise SystemExit(2)
+        raise SystemExit(2) from None
     factory = getattr(args, "providers_factory", None)  # test/extension hook
+    if factory is None:
+        maybe_prompt_for_keys(config, args)
     quiet = bool(getattr(args, "json", False))           # --json prints JSON only
     agent = NexusAgent(
         config,
@@ -266,6 +501,8 @@ Nexus REPL commands
   /roles [needle]           list / search the team
   /addagent <github-url>    import agents from a GitHub repo (then auto-reloads)
   /agents                   list configured agents + models
+  /keys [set <provider>]    show or set API keys (no .env file needed)
+  /models [agent]           list model ids the provider serves
   /memory [role]            show saved role memory
   /remember <text>          save a note for the active role
   /system [role]            print the exact system prompt in use
@@ -290,6 +527,7 @@ def cmd_chat(args: argparse.Namespace) -> int:
         COLORS.dim(
             f"default agent: {agent.config.default_agent} | roles: {len(agent.config.roles)} | "
             f"auto-route: {'on' if agent.auto_route else 'off'} | approval: {agent.gate.mode}"
+            + (" | local-first" if agent.config.settings.prefer_local else "")
         )
     )
     print(COLORS.dim("type /help for commands, /exit to quit\n"))
@@ -387,6 +625,20 @@ def handle_slash(agent: NexusAgent, line: str) -> bool:
         print_roles(agent.config, arg)  # return code ignored inside the REPL
     elif cmd == "addagent":
         _slash_addagent(agent, arg)
+    elif cmd == "keys":
+        bits = arg.split(maxsplit=1)
+        if bits and bits[0].lower() in {"set", "add", "login"}:
+            family = _resolve_family(bits[1] if len(bits) > 1 else None) or _choose_provider()
+            if family:
+                _prompt_and_save_key(family)
+        elif bits and bits[0].lower() in {"remove", "rm", "delete"}:
+            cmd_keys_remove(argparse.Namespace(provider=bits[1] if len(bits) > 1 else None))
+        elif bits and bits[0].lower() in {"test", "check"}:
+            cmd_keys_test(argparse.Namespace(provider=bits[1] if len(bits) > 1 else None))
+        else:
+            cmd_keys_list(argparse.Namespace(json=False))
+    elif cmd == "models":
+        cmd_models(argparse.Namespace(agent=arg or None, workspace=str(agent.ws), json=False))
     elif cmd == "agents":
         for name, cfg in sorted(agent.config.agents.items()):
             marker = "*" if name == agent.config.default_agent else " "
@@ -629,11 +881,59 @@ def cmd_agents(args: argparse.Namespace) -> int:
         print(f"{marker} {COLORS.bold(name)}")
         print(f"    provider : {cfg.provider}")
         print(f"    model    : {cfg.model}")
-        print(f"    base_url : {cfg.base_url or '(sdk default)'}")
-        print(f"    api key  : {cfg.api_key_env or '(inline)'} {'✓ set' if cfg.resolved_api_key else '✗ missing'}")
+        print(f"    base_url : {cfg.effective_base_url or '(sdk default)'}")
+        if cfg.key_family:
+            if cfg.resolved_api_key:
+                source = cfg.key_source or ("inline" if cfg.api_key else "?")
+                print(f"    api key  : ✓ {keyring.mask(cfg.resolved_api_key)}  ({source})")
+            else:
+                print(f"    api key  : ✗ missing - {cfg.missing_key_hint()}")
+        else:
+            print("    api key  : (not needed - keyless local/self-hosted endpoint)")
         print(f"    tools    : {cfg.tool_mode}{' (supports_tools=false)' if not cfg.supports_tools else ''}")
+        if cfg.optional:
+            print("    optional : yes - offline is fine, roles fall back to a hosted agent")
         print(f"    fallback : {cfg.fallback or '-'}")
         print(f"    roles    : {len(roles)} ({', '.join(roles[:6])}{'…' if len(roles) > 6 else ''})")
+    return 0
+
+
+def cmd_models(args: argparse.Namespace) -> int:
+    """Ask the provider which model ids it actually serves right now."""
+    from .providers import build_providers
+
+    workspace = Path(args.workspace).resolve() if args.workspace else Path.cwd()
+    config = load_config(workspace)
+    try:
+        cfg = config.agent(args.agent)
+    except ConfigError as exc:
+        print(COLORS.red(f"config error: {exc}"), file=sys.stderr)
+        return 2
+    if cfg.key_family and not cfg.resolved_api_key:
+        print(COLORS.red(f"agent '{cfg.name}' has no API key - {cfg.missing_key_hint()}"))
+        return 1
+    provider = build_providers(config.agents).get(cfg.name)
+    try:
+        models = provider.list_models()
+    except Exception as exc:  # noqa: BLE001
+        print(COLORS.red(f"✗ {cfg.name} ({cfg.effective_base_url}): {exc}"))
+        return 1
+    if args.json:
+        print(json.dumps({"agent": cfg.name, "current": cfg.model, "models": models}, indent=2))
+        return 0
+    if not models:
+        if cfg.optional:
+            print(COLORS.yellow(f"no models listed by {cfg.effective_base_url}"))
+            print(COLORS.dim(f"  optional endpoint - start it (`ollama serve`) and pull one: "
+                             f"`ollama pull {cfg.model}`"))
+        else:
+            print(COLORS.yellow(f"no models listed by {cfg.effective_base_url}"))
+        return 1
+    print(COLORS.bold(f"{cfg.name} ({cfg.provider}) - {len(models)} models, current: {cfg.model}"))
+    for name in models:
+        mark = COLORS.green("*") if name == cfg.model else " "
+        print(f" {mark} {name}")
+    print(COLORS.dim(f"switch: NEXUS model override in agents.yaml, or {cfg.name}.model"))
     return 0
 
 
@@ -806,6 +1106,26 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     add("gh cli", gh_available(), shutil.which("gh") or "not installed",
         "install from https://cli.github.com - needed for PR tools")
 
+    # -- API keys (terminal store, env vars; .env is optional/legacy) ------- #
+    families = config.key_families()
+    for family in families:
+        key = keyring.get_key(family)
+        spec = keyring.PROVIDERS.get(family)
+        if key:
+            origin = keyring.key_source(family) or str(keyring.store_path())
+            add(f"key:{family}", True, f"{keyring.mask(key)} ({origin})")
+        else:
+            add(
+                f"key:{family}",
+                False,
+                "not configured",
+                (spec.command if spec else f"nexus keys set {family}")
+                + (f"  -  {spec.console_url}" if spec else ""),
+            )
+    if not families:
+        add("api keys", None, "no hosted provider configured (local/OpenAI-compatible endpoint)",
+            "nexus keys set gemini|deepseek|openrouter")
+
     from .providers import build_providers
 
     providers = build_providers(config.agents)
@@ -818,19 +1138,24 @@ def cmd_doctor(args: argparse.Namespace) -> int:
             ok, detail = False, str(exc)
         hint = ""
         if not ok:
-            if cfg.provider == "anthropic":
-                hint = f"export {cfg.api_key_env or 'ANTHROPIC_API_KEY'}=sk-ant-..."
-            elif (cfg.base_url or "").startswith(("http://localhost", "http://127.0.0.1")):
-                hint = f"start the local server (e.g. `ollama serve`) and pull the model: `ollama pull {cfg.model}`"
+            if cfg.key_family and not cfg.resolved_api_key:
+                hint = ""   # the health detail already says how to set the key
+            elif (cfg.effective_base_url or "").startswith(("http://localhost", "http://127.0.0.1")):
+                hint = f"optional local endpoint - start it and pull the model: `ollama pull {cfg.model}`"
             else:
-                hint = f"endpoint {cfg.base_url} unreachable - check the URL, the key ({cfg.api_key_env or 'inline'}) and your network"
-        add(f"agent:{name}", ok, f"{cfg.provider} {cfg.model} - {detail}", hint)
+                hint = (f"endpoint {cfg.effective_base_url} unreachable - check the URL, "
+                        f"the key ({cfg.key_env_names[0] if cfg.key_env_names else 'inline'}) and your network")
+        if not ok and cfg.optional:
+            # local/extra endpoints are allowed to be offline: warn, do not fail
+            add(f"agent:{name}", None, f"{cfg.provider} {cfg.model} - {detail}",
+                hint or "optional agent - Nexus falls back to the hosted ones when it is down")
+        else:
+            add(f"agent:{name}", ok, f"{cfg.provider} {cfg.model} - {detail}", hint)
 
     token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
     add("github token", bool(token), "GITHUB_TOKEN set" if token else "GITHUB_TOKEN not set",
         "only needed for the REST fallback when `gh` is missing")
 
-    guard = PathGuard(workspace)
     add("memory dir", True, str(workspace / config.settings.memory_dir),
         "created on first `remember` call")
 
@@ -881,38 +1206,25 @@ def cmd_serve(args: argparse.Namespace) -> int:
 
 
 def cmd_panel(args: argparse.Namespace) -> int:
-    """Serve the built-in web panel (same UI the VS Code sidebar loads)."""
+    """Serve the GUI dashboard (`nexus gui` / `nexus panel`)."""
     from .server import serve
 
     workspace = Path(args.workspace).resolve() if args.workspace else Path.cwd().resolve()
-    print(COLORS.dim(f"panel: http://{args.host}:{args.port}/panel  (workspace {workspace})"))
+    host = "127.0.0.1" if args.host == "0.0.0.0" else args.host
+    print(COLORS.bold(f"dashboard: http://{host}:{args.port}/dashboard") + COLORS.dim(f"  (workspace {workspace})"))
+    if args.host == "0.0.0.0":
+        print(COLORS.dim("  bound to 0.0.0.0 so a remote browser can reach it - "
+                         "set --token/NEXUS_SERVE_TOKEN before exposing the port"))
     return serve(host=args.host, port=args.port, workspace=workspace, token=args.token,
                  auto_yes=args.yes, quiet=args.quiet, demo=getattr(args, "demo", False),
-                 open_panel=True)
+                 open_panel=getattr(args, "open", True))
 
 
 def cmd_init(args: argparse.Namespace) -> int:
+    """Scaffold project-local config. Deliberately writes NO .env file - API
+    keys live in the terminal store (``nexus keys set``) or in your shell."""
     workspace = Path(args.workspace).resolve() if args.workspace else Path.cwd().resolve()
     created: list[str] = []
-    env_example = workspace / ".env.example"
-    if not env_example.exists() or args.force:
-        env_example.write_text(
-            "# Nexus Agent configuration\n"
-            "ANTHROPIC_API_KEY=\n"
-            "GITHUB_TOKEN=\n"
-            "# optional overrides\n"
-            "# NEXUS_DEFAULT_AGENT=claude\n"
-            "# NEXUS_ROUTER_AGENT=claude-cheap\n"
-            "# NEXUS_AUTO_ROUTE=true\n"
-            "# NEXUS_YES=false\n"
-            "# OLLAMA_HOST=http://localhost:11434\n",
-            encoding="utf-8",
-        )
-        created.append(".env.example")
-    env_file = workspace / ".env"
-    if not env_file.exists():
-        env_file.write_text("ANTHROPIC_API_KEY=\nGITHUB_TOKEN=\n", encoding="utf-8")
-        created.append(".env")
     nexus_dir = workspace / ".nexus"
     (nexus_dir / "memory").mkdir(parents=True, exist_ok=True)
     roles_local = nexus_dir / "roles.yaml"
@@ -923,7 +1235,7 @@ def cmd_init(args: argparse.Namespace) -> int:
             "  repo-historian:\n"
             "    title: Repository Historian\n"
             "    category: docs\n"
-            "    agent: hermes\n"
+            "    agent: deepseek\n"
             "    persona: >-\n"
             "      You know this repository's conventions by heart. Answer from the actual\n"
             "      files and git history, never from generic advice.\n"
@@ -950,6 +1262,11 @@ def cmd_init(args: argparse.Namespace) -> int:
     print(COLORS.green(f"initialized nexus in {workspace}") if created else COLORS.dim("nothing to do"))
     for item in created:
         print(f"  + {item}")
+    configured = [family for family in keyring.PROVIDERS if keyring.get_key(family)]
+    if configured:
+        print(COLORS.dim(f"api keys already configured: {', '.join(configured)}"))
+    else:
+        print(COLORS.dim("next: nexus keys set gemini   (no .env file needed)"))
     return 0
 
 
@@ -984,6 +1301,8 @@ def add_common(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--json", action="store_true", help="machine readable output")
     parser.add_argument("--demo", action="store_true",
                         help="scripted offline run (no API key, no local model needed)")
+    parser.add_argument("--no-key-prompt", action="store_true",
+                        help="never ask for an API key interactively (CI / scripts)")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -993,12 +1312,14 @@ def build_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "examples:\n"
+            "  nexus keys set gemini        # paste a key once, no .env file\n"
             "  nexus chat\n"
             "  nexus task 'add pagination to the /users API endpoint and write tests'\n"
             "  nexus ask 'explain how auth works in this repo' --role backend\n"
             "  nexus pipeline ship-feature 'add a rate limiter to the public API'\n"
             "  nexus roles --search security\n"
             "  nexus doctor\n"
+            "  nexus gui                    # live GUI dashboard (localhost:8787)\n"
         ),
     )
     parser.add_argument("--version", action="store_true", help="print version and exit")
@@ -1077,17 +1398,40 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--demo", action="store_true", help="scripted runs (no API key needed)")
     p.set_defaults(func=cmd_serve)
 
-    p = sub.add_parser("panel", help="serve the built-in browser panel")
-    p.add_argument("--workspace", "-C")
-    p.add_argument("--host", default="127.0.0.1")
-    p.add_argument("--port", type=int, default=8787)
-    p.add_argument("--token", default=os.environ.get("NEXUS_SERVE_TOKEN", ""))
-    p.add_argument("--yes", "-y", action="store_true")
-    p.add_argument("--quiet", action="store_true")
-    p.add_argument("--demo", action="store_true", help="scripted runs (no API key needed)")
-    p.set_defaults(func=cmd_panel)
+    for sub_name, sub_help in (
+        ("panel", "serve + open the GUI dashboard"),
+        ("gui", "serve + open the GUI dashboard (alias of panel)"),
+    ):
+        p = sub.add_parser(sub_name, help=sub_help)
+        p.add_argument("--workspace", "-C")
+        p.add_argument("--host", default="127.0.0.1")
+        p.add_argument("--port", type=int, default=8787)
+        p.add_argument("--token", default=os.environ.get("NEXUS_SERVE_TOKEN", ""))
+        p.add_argument("--yes", "-y", action="store_true")
+        p.add_argument("--quiet", action="store_true")
+        p.add_argument("--demo", action="store_true", help="scripted runs (no API key needed)")
+        p.add_argument("--no-open", dest="open", action="store_false",
+                       help="serve only - do not launch a browser")
+        p.set_defaults(func=cmd_panel, open=True)
 
-    p = sub.add_parser("init", help="write .env / .nexus / .vscode scaffolding into a project")
+    p = sub.add_parser("keys", help="set / list / test API keys (no .env file needed)")
+    p.add_argument("action", nargs="?", default="list",
+                   choices=["list", "set", "remove", "test", "path"],
+                   help="list (default) | set | remove | test | path")
+    p.add_argument("provider", nargs="?", help="gemini | deepseek | openrouter")
+    p.add_argument("--key", default="", help="paste the key non-interactively (it lands in shell history)")
+    p.add_argument("--session", action="store_true",
+                   help="use the key for this process only - do not write it to disk")
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(func=cmd_keys)
+
+    p = sub.add_parser("models", help="list the model ids a provider serves")
+    p.add_argument("agent", nargs="?", help="agent name from agents.yaml (default: the default agent)")
+    p.add_argument("--workspace", "-C")
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(func=cmd_models)
+
+    p = sub.add_parser("init", help="write .nexus / .vscode scaffolding into a project")
     p.add_argument("--workspace", "-C")
     p.add_argument("--force", action="store_true")
     p.set_defaults(func=cmd_init)
@@ -1119,6 +1463,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     workspace = _workspace_from_argv(argv)
     load_dotenv_files(workspace)
     parser = build_parser()
+    if len(argv) == 1 and argv[0] in {"-h", "--help"}:
+        # top-level help: list the subcommands instead of chat's flags
+        parser.print_help()
+        raise SystemExit(0)
     if not argv or argv[0].startswith("-") and argv[0] not in {"--version"}:
         argv = ["chat", *argv]
     if "--version" in argv and len(argv) == 1:

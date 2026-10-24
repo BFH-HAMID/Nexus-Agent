@@ -1,0 +1,1444 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="color-scheme" content="dark" />
+<title>NEXUS AGENT — console</title>
+<meta name="description" content="NEXUS AGENT console: the live agent roster, role→agent map and event stream, read from the local Nexus server." />
+<style>
+/* ─────────────────────────────────────────────────────────────────────────
+   NEXUS AGENT · console
+   One self-contained file (inline HTML/CSS/JS, no libraries, no CDN, no
+   images). Every number, name and line on screen comes from the local Nexus
+   server: /health, /api/stats, /api/roles, /api/pipelines, /api/memory/<role>
+   and the SSE stream /api/events/<task>. Nothing is hardcoded; if the server
+   cannot be reached the console says so instead of inventing values.
+   ───────────────────────────────────────────────────────────────────────── */
+:root{
+  --bg:#03070a;
+  --green:#00ffa3;
+  --green-soft:rgba(0,255,163,.72);
+  --cyan:#22e3ff;
+  --amber:#ffb020;
+  --red:#ff4d63;
+  --violet:#b47bff;
+  --fg:#d5f7ec;
+  --fg-dim:#8fb8ae;
+  --dim:#4f7a72;
+  --line:rgba(0,255,163,.16);
+  --card:rgba(5,18,20,.55);
+  --mono:ui-monospace,"SF Mono","Cascadia Mono","JetBrains Mono",Menlo,Consolas,"Liberation Mono",monospace;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+html{background:#05090b}
+body{
+  min-height:100svh;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:clamp(10px,1.4vw,18px);
+  padding:clamp(10px,2vw,34px);
+  font-family:var(--mono);color:var(--fg);
+  background:radial-gradient(1100px 620px at 50% 38%,#071519 0%,#040a0d 46%,#020506 100%),#020506;
+  overflow-x:hidden;
+}
+button{font:inherit;color:inherit}
+
+/* ── monitor ─────────────────────────────────────────────────────────── */
+.monitor{
+  position:relative;width:min(1580px,100%);
+  border-radius:clamp(14px,1.5vw,26px);
+  padding:clamp(7px,.9vw,15px);
+  background:linear-gradient(155deg,#39454c 0%,#1b252b 14%,#0c1215 38%,#080d10 62%,#1f2a30 84%,#3b474e 100%);
+  box-shadow:0 1px 0 rgba(255,255,255,.14) inset,0 -1px 0 rgba(0,0,0,.7) inset,
+    0 0 0 1px rgba(0,255,163,.10),0 34px 90px -20px rgba(0,0,0,.95),0 0 120px -30px rgba(0,255,163,.18);
+}
+.monitor::after{
+  content:"";position:absolute;inset:1px 6% auto 6%;height:38%;pointer-events:none;
+  background:linear-gradient(180deg,rgba(255,255,255,.07),transparent 70%);
+  border-radius:24px 24px 0 0;opacity:.6;
+}
+.screw{position:absolute;width:clamp(7px,.7vw,11px);height:clamp(7px,.7vw,11px);border-radius:50%;
+  background:radial-gradient(circle at 34% 30%,#7b8b92,#2a353a 62%,#111a1e);
+  box-shadow:0 0 0 1px rgba(0,0,0,.6),0 1px 1px rgba(255,255,255,.10);z-index:4}
+.screw.tl{left:.9%;top:4%}.screw.tr{right:.9%;top:4%}
+.screw.bl{left:.9%;bottom:4%}.screw.br{right:.9%;bottom:4%}
+
+.screen{
+  position:relative;aspect-ratio:16/9;min-height:min(560px,72svh);
+  border-radius:clamp(8px,1vw,14px);overflow:hidden;
+  display:flex;flex-direction:column;
+  background:radial-gradient(ellipse 62% 58% at 50% 42%,rgba(0,60,52,.42) 0%,rgba(2,10,12,.2) 52%,rgba(1,4,6,.9) 100%),
+    linear-gradient(180deg,#050d11,#020608 62%,#04090b);
+  box-shadow:0 0 0 1px rgba(0,0,0,.85),0 0 34px rgba(0,255,163,.06) inset,0 0 90px rgba(0,0,0,.7) inset;
+  font-size:clamp(9.5px,.86vw,13px);isolation:isolate;
+}
+.fx{position:absolute;inset:0;pointer-events:none;z-index:3}
+.fx.scanlines{background:repeating-linear-gradient(180deg,rgba(0,0,0,.24) 0 1px,transparent 1px 3px);opacity:.5;mix-blend-mode:multiply}
+.fx.vignette{background:radial-gradient(ellipse 78% 70% at 50% 46%,transparent 52%,rgba(0,0,0,.55) 100%)}
+.fx.glass{background:linear-gradient(118deg,rgba(255,255,255,.055) 0%,transparent 26%,transparent 72%,rgba(255,255,255,.028) 100%)}
+.fx.flicker{animation:flicker 7.3s steps(1,end) infinite;opacity:0}
+@keyframes flicker{0%,96%,100%{opacity:0}97%{opacity:.05;background:rgba(34,227,255,.5)}98%{opacity:0}98.6%{opacity:.03;background:rgba(0,255,163,.4)}}
+
+/* ── top bar ─────────────────────────────────────────────────────────── */
+.topbar{
+  position:relative;z-index:2;display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);
+  align-items:center;gap:clamp(6px,1vw,18px);
+  padding:clamp(8px,1.1vw,18px) clamp(10px,1.4vw,24px);
+  border-bottom:1px solid var(--line);background:linear-gradient(180deg,rgba(0,255,163,.05),transparent);
+}
+.brand{display:flex;align-items:center;gap:clamp(6px,.8vw,13px);min-width:0}
+.hex{width:clamp(26px,2.9vw,44px);height:auto;flex:0 0 auto;filter:drop-shadow(0 0 8px rgba(0,255,163,.55))}
+.hex polygon{fill:rgba(0,255,163,.06);stroke:var(--green);stroke-width:2}
+.hex .n-path{fill:none;stroke:var(--green);stroke-width:3.4;stroke-linecap:square;stroke-linejoin:miter}
+.brand-txt{display:flex;flex-direction:column;gap:2px;min-width:0}
+.wordmark{position:relative;display:inline-block;font-size:clamp(15px,1.85vw,29px);font-weight:700;
+  letter-spacing:.24em;color:#eafff7;line-height:1;white-space:nowrap;
+  text-shadow:0 0 14px rgba(0,255,163,.55),0 0 40px rgba(0,255,163,.25)}
+.wordmark::before,.wordmark::after{content:attr(data-text);position:absolute;inset:0;opacity:0;pointer-events:none}
+.wordmark::before{color:var(--cyan);transform:translate(-2px,0)}
+.wordmark::after{color:var(--red);transform:translate(2px,0)}
+.wordmark.glitch::before{opacity:.85;animation:glitchA .19s steps(2,end) 2}
+.wordmark.glitch::after{opacity:.7;animation:glitchB .19s steps(2,end) 2}
+@keyframes glitchA{0%{clip-path:inset(12% 0 62% 0);transform:translate(-3px,-1px)}50%{clip-path:inset(58% 0 22% 0);transform:translate(3px,1px)}100%{clip-path:inset(0 0 0 0);transform:translate(-1px,0)}}
+@keyframes glitchB{0%{clip-path:inset(66% 0 8% 0);transform:translate(3px,1px)}50%{clip-path:inset(18% 0 58% 0);transform:translate(-2px,-1px)}100%{clip-path:inset(0 0 0 0);transform:translate(1px,0)}}
+.label{font-size:clamp(7px,.68vw,10px);letter-spacing:.3em;color:var(--cyan);text-transform:uppercase;opacity:.9;white-space:nowrap}
+.label .sep{color:var(--dim);margin:0 .4em}
+.headline{display:flex;flex-direction:column;align-items:center;gap:3px;text-align:center}
+.hl-a{display:flex;align-items:center;gap:.55em;font-size:clamp(8px,.8vw,12px);letter-spacing:.2em;color:var(--fg)}
+.hl-a .dot{width:.62em;height:.62em;border-radius:50%;background:var(--dim);box-shadow:0 0 8px var(--dim)}
+.hl-a .dot.on{background:var(--green);box-shadow:0 0 8px var(--green);animation:breathe 1.6s ease-in-out infinite}
+.hl-a .dot.bad{background:var(--red);box-shadow:0 0 8px var(--red)}
+.hl-b{font-size:clamp(8px,.78vw,11.5px);letter-spacing:.16em;color:var(--cyan)}
+.hl-b b{color:var(--green);font-weight:600}
+.src-chip{margin-top:2px;padding:2px .7em;border:1px solid rgba(0,255,163,.28);border-radius:999px;
+  font-size:clamp(6.5px,.62vw,9px);letter-spacing:.2em;color:var(--green-soft);background:rgba(0,255,163,.06);white-space:nowrap}
+.src-chip.bad{border-color:rgba(255,77,99,.45);color:#ff9aa8;background:rgba(255,77,99,.08)}
+.hud-meta{display:flex;align-items:center;justify-content:flex-end;gap:clamp(8px,1.2vw,20px)}
+.hud-meta>div{display:flex;flex-direction:column;gap:2px;align-items:flex-end}
+.hud-meta span{font-size:clamp(6.5px,.6vw,9px);letter-spacing:.22em;color:var(--dim)}
+.hud-meta b{font-size:clamp(9px,.82vw,12.5px);letter-spacing:.12em;color:var(--fg);font-variant-numeric:tabular-nums}
+.ctrl-row{flex-direction:row!important;gap:6px!important}
+.ctrl-row button{padding:.42em .8em;border-radius:4px;cursor:pointer;border:1px solid rgba(0,255,163,.35);
+  background:rgba(0,255,163,.07);color:var(--green);font-size:clamp(7px,.66vw,10px);letter-spacing:.18em;
+  transition:background .16s,border-color .16s,color .16s,transform .12s}
+.ctrl-row button:hover{background:rgba(0,255,163,.18);border-color:var(--green);transform:translateY(-1px)}
+.ctrl-row button:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
+.ctrl-row button.paused{color:var(--amber);border-color:rgba(255,176,32,.5);background:rgba(255,176,32,.1)}
+
+/* ── deck ────────────────────────────────────────────────────────────── */
+.deck{position:relative;z-index:2;flex:1 1 auto;min-height:0;display:grid;
+  grid-template-columns:minmax(150px,.95fr) minmax(0,2.5fr) minmax(150px,.95fr);
+  gap:clamp(6px,.9vw,16px);padding:clamp(7px,.9vw,16px) clamp(9px,1.3vw,22px)}
+.col{display:flex;flex-direction:column;gap:clamp(5px,.7vw,11px);min-height:0}
+.card{position:relative;border:1px solid var(--line);border-radius:6px;background:var(--card);
+  padding:clamp(5px,.62vw,11px);display:flex;flex-direction:column;gap:clamp(3px,.35vw,6px);
+  min-height:0;backdrop-filter:blur(2px)}
+.card::before,.card::after{content:"";position:absolute;width:8px;height:8px;border:1px solid rgba(0,255,163,.55)}
+.card::before{left:-1px;top:-1px;border-right:0;border-bottom:0}
+.card::after{right:-1px;bottom:-1px;border-left:0;border-top:0}
+.card h2{margin:0 0 2px;font-size:clamp(6.8px,.64vw,9.5px);font-weight:500;letter-spacing:.26em;
+  color:var(--cyan);text-transform:uppercase;display:flex;align-items:baseline;gap:.6em}
+.card h2 em{font-style:normal;color:var(--dim);letter-spacing:.12em;font-size:.9em;text-transform:none;margin-left:auto}
+
+.stat{display:flex;align-items:baseline;justify-content:space-between;gap:.5em;padding:.2em 0}
+.stat span{font-size:clamp(6.5px,.62vw,9.5px);letter-spacing:.16em;color:var(--fg-dim)}
+.stat b{font-size:clamp(9.5px,1.05vw,16px);color:var(--green);letter-spacing:.04em;font-weight:600;
+  text-shadow:0 0 10px rgba(0,255,163,.4);font-variant-numeric:tabular-nums}
+.stat b small{font-size:.58em;color:var(--dim);margin-left:.25em;letter-spacing:.08em}
+.meter{height:3px;border-radius:2px;background:rgba(0,255,163,.12);overflow:hidden;margin-top:2px}
+.meter i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--green),var(--cyan));
+  box-shadow:0 0 10px var(--green);transition:width .3s linear}
+
+.index-card{flex:1 1 auto;min-height:0;overflow:hidden}
+.index{margin:0;flex:1 1 auto;min-height:0;overflow:hidden;font-size:clamp(6.5px,.6vw,9px);line-height:1.55;
+  letter-spacing:.08em;color:var(--green-soft);opacity:.78;white-space:pre;
+  -webkit-mask-image:linear-gradient(180deg,transparent,#000 12%,#000 88%,transparent);
+  mask-image:linear-gradient(180deg,transparent,#000 12%,#000 88%,transparent)}
+
+/* ── map ─────────────────────────────────────────────────────────────── */
+.map-wrap{position:relative;min-height:0;min-width:0;display:flex;flex-direction:column;border-radius:8px;
+  border:1px solid rgba(0,255,163,.10);
+  background:radial-gradient(ellipse 58% 52% at 50% 46%,rgba(0,255,163,.055),transparent 70%),
+    repeating-linear-gradient(0deg,rgba(0,255,163,.035) 0 1px,transparent 1px 34px),
+    repeating-linear-gradient(90deg,rgba(34,227,255,.03) 0 1px,transparent 1px 34px);
+  overflow:hidden}
+.map-stage{position:relative;flex:1 1 auto;min-height:0;min-width:0}
+#map{position:absolute;inset:0;display:block;width:100%;height:100%}
+.labels{position:absolute;inset:0;pointer-events:none}
+.hub-label{position:absolute;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;
+  gap:2px;padding:1px .5em;border-radius:3px;font-size:clamp(6.5px,.6vw,9px);letter-spacing:.16em;color:var(--cyan);
+  background:rgba(4,18,20,.82);border:1px solid rgba(34,227,255,.25);white-space:nowrap;
+  box-shadow:0 0 14px rgba(34,227,255,.12);transition:border-color .2s,color .2s}
+.hub-label b{font-weight:600;letter-spacing:.18em;color:var(--fg)}
+.hub-label small{font-size:.82em;color:var(--dim);letter-spacing:.08em}
+.hub-label.hot{border-color:var(--green);color:var(--green)}
+.hub-label.hot b{color:var(--green)}
+.role-pin{position:absolute;transform:translate(-50%,-50%);padding:1px .45em;border-radius:2px;
+  font-size:clamp(6px,.55vw,8.5px);letter-spacing:.12em;color:#04120e;background:var(--green);
+  box-shadow:0 0 14px rgba(0,255,163,.6);white-space:nowrap;opacity:0;transition:opacity .2s}
+.role-pin.show{opacity:1}
+.map-caption{display:flex;align-items:center;justify-content:space-between;gap:1em;
+  padding:0 clamp(6px,.8vw,14px) 2px;font-size:clamp(6.5px,.6vw,9px);letter-spacing:.2em;color:var(--dim)}
+.map-caption span:first-child{color:var(--cyan);opacity:.85}
+.progress{display:flex;align-items:center;gap:clamp(6px,.8vw,14px);padding:clamp(4px,.5vw,9px) clamp(6px,.8vw,14px) clamp(6px,.7vw,12px)}
+.pbar{position:relative;flex:1 1 auto;height:clamp(4px,.5vw,8px);border-radius:2px;
+  background:rgba(0,255,163,.10);border:1px solid rgba(0,255,163,.18);overflow:hidden}
+.pbar i{position:absolute;inset:0 auto 0 0;width:0;background:linear-gradient(90deg,rgba(0,255,163,.85),var(--cyan));
+  box-shadow:0 0 14px var(--green);transition:width .25s linear}
+.pbar i::after{content:"";position:absolute;inset:0;
+  background:repeating-linear-gradient(115deg,rgba(255,255,255,.25) 0 5px,transparent 5px 11px);
+  animation:stripes 1.1s linear infinite;opacity:.5}
+@keyframes stripes{to{transform:translateX(22px)}}
+.pmeta{display:flex;align-items:baseline;gap:.7em;white-space:nowrap}
+.pmeta span{font-size:clamp(6.5px,.6vw,9px);letter-spacing:.2em;color:var(--dim)}
+.pmeta b{font-size:clamp(9px,.9vw,13px);color:var(--green);text-shadow:0 0 12px rgba(0,255,163,.5);font-variant-numeric:tabular-nums}
+
+/* ── agent cards / stream ────────────────────────────────────────────── */
+.agent-card{border:1px solid rgba(0,255,163,.12);border-radius:4px;padding:clamp(3px,.4vw,7px);
+  display:flex;flex-direction:column;gap:3px}
+.a-head{display:flex;align-items:baseline;justify-content:space-between;gap:.5em}
+.a-head b{font-size:clamp(7.5px,.72vw,11px);letter-spacing:.12em;color:var(--fg)}
+.a-state{font-size:clamp(6px,.56vw,8.5px);letter-spacing:.16em;color:var(--dim)}
+.a-state.ok{color:var(--green)}
+.a-state.warn{color:var(--amber)}
+.a-meta{display:flex;justify-content:space-between;gap:.4em;font-size:clamp(6px,.56vw,8.5px);letter-spacing:.1em;color:var(--dim)}
+.a-meta b{color:var(--fg-dim);font-weight:500}
+.a-model{font-size:clamp(5.8px,.54vw,8px);letter-spacing:.06em;color:rgba(34,227,255,.65);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.a-bar{height:3px;background:rgba(0,255,163,.12);border-radius:2px;overflow:hidden}
+.a-bar i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--green),var(--cyan));
+  box-shadow:0 0 8px var(--green);transition:width .35s linear}
+.stream-card{flex:1 1 auto;min-height:0;overflow:hidden}
+.stream{flex:1 1 auto;min-height:0;overflow:hidden;display:flex;flex-direction:column;gap:1px;
+  font-size:clamp(6px,.56vw,8.5px);letter-spacing:.04em;color:rgba(0,255,163,.62);
+  -webkit-mask-image:linear-gradient(180deg,#000 60%,transparent);mask-image:linear-gradient(180deg,#000 60%,transparent)}
+.stream div{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.stream div b{color:#eafff7;font-weight:400}
+.stream div .t{color:var(--dim)}
+.stream div .k{color:var(--cyan)}
+.stream div.err{color:#ff9aa8}
+
+/* ── console ─────────────────────────────────────────────────────────── */
+.console{position:relative;z-index:2;flex:0 0 auto;display:flex;flex-direction:column;min-height:0;
+  height:clamp(160px,27%,300px);margin:0 clamp(9px,1.3vw,22px) clamp(8px,1vw,16px);
+  border:1px solid var(--line);border-radius:6px;
+  background:linear-gradient(180deg,rgba(3,14,14,.9),rgba(2,8,9,.94));
+  box-shadow:0 0 40px rgba(0,255,163,.05) inset;overflow:hidden}
+.console-head{display:flex;align-items:center;justify-content:space-between;gap:1em;flex-wrap:wrap;
+  padding:.4em .8em;border-bottom:1px solid rgba(0,255,163,.12);background:rgba(0,255,163,.045);
+  font-size:clamp(6.8px,.62vw,9.5px);letter-spacing:.2em;color:var(--cyan);text-transform:uppercase}
+.console-head .ctx{color:var(--fg-dim);letter-spacing:.12em;text-transform:none}
+.console-head .ctx b{color:var(--green);font-weight:500}
+.console-head .hint{color:var(--dim);letter-spacing:.12em;text-transform:none}
+.console-head .hint b{color:var(--fg-dim)}
+.log{flex:1 1 auto;min-height:0;overflow-y:auto;padding:.55em .8em;
+  font-size:clamp(8px,.74vw,11.5px);line-height:1.6;
+  scrollbar-width:thin;scrollbar-color:rgba(0,255,163,.3) transparent}
+.log::-webkit-scrollbar{width:6px}
+.log::-webkit-scrollbar-thumb{background:rgba(0,255,163,.3);border-radius:3px}
+.log p{margin:0;white-space:pre-wrap;word-break:break-word;animation:lineIn .18s ease-out}
+@keyframes lineIn{from{opacity:0;transform:translateX(-3px)}to{opacity:1;transform:none}}
+.log .ok{color:var(--green)}
+.log .info{color:var(--fg-dim)}
+.log .dim{color:var(--dim)}
+.log .warn{color:#ffce7a}
+.log .err{color:var(--red)}
+.log .cyan{color:var(--cyan)}
+.log .cmd{color:#eafff7}
+.log .cmd::before{content:"› ";color:var(--green)}
+.log p b{color:#eafff7;font-weight:600}
+.prompt{display:flex;align-items:center;gap:.5em;padding:.42em .8em .5em;border-top:1px solid rgba(0,255,163,.12);
+  background:rgba(0,255,163,.03)}
+.ps1{font-size:clamp(8px,.74vw,11.5px);letter-spacing:.06em;color:var(--green);white-space:nowrap;
+  text-shadow:0 0 10px rgba(0,255,163,.4)}
+#cmd{flex:1 1 auto;min-width:0;background:transparent;border:0;outline:0;color:#eafff7;font:inherit;
+  font-size:clamp(8px,.74vw,11.5px);letter-spacing:.05em;caret-color:var(--green)}
+#cmd::placeholder{color:rgba(79,122,114,.85)}
+#cmd:disabled{color:var(--dim)}
+
+.standby{position:absolute;inset:0;z-index:6;display:flex;flex-direction:column;align-items:center;
+  justify-content:center;gap:.8em;text-align:center;padding:1.5em;
+  background:radial-gradient(ellipse at 50% 50%,rgba(2,10,12,.86),rgba(1,4,6,.97));backdrop-filter:blur(3px)}
+.standby[hidden]{display:none}
+.standby .big{font-size:clamp(13px,1.5vw,22px);letter-spacing:.32em;color:var(--green);
+  text-shadow:0 0 24px rgba(0,255,163,.5)}
+.standby p{margin:0;font-size:clamp(7.5px,.7vw,11px);letter-spacing:.1em;color:var(--fg-dim);max-width:52ch;line-height:1.7}
+.standby button{margin-top:.4em;padding:.6em 1.3em;border-radius:4px;cursor:pointer;border:1px solid var(--green);
+  background:rgba(0,255,163,.1);color:var(--green);letter-spacing:.24em;font-size:clamp(7.5px,.7vw,10.5px)}
+.standby button:hover{background:rgba(0,255,163,.2)}
+
+.disclaimer{margin:0;text-align:center;max-width:96ch;font-size:clamp(8px,.72vw,11px);line-height:1.7;
+  letter-spacing:.04em;color:#6d918a}
+.disclaimer b{color:#a8d9cd;font-weight:500}
+.disclaimer code{color:#a8d9cd;background:rgba(0,255,163,.07);padding:0 .35em;border-radius:3px;white-space:nowrap}
+
+@keyframes breathe{0%,100%{opacity:1}50%{opacity:.35}}
+
+/* ── responsive ──────────────────────────────────────────────────────── */
+@media (max-width:1120px){
+  .screen{font-size:11px}
+  .deck{grid-template-columns:minmax(130px,.9fr) minmax(0,2.2fr) minmax(130px,.9fr)}
+}
+@media (max-width:920px){
+  .screen{min-height:auto}
+  .topbar{grid-template-columns:1fr auto;gap:8px}
+  .headline{order:3;grid-column:1/-1;align-items:flex-start;text-align:left;flex-flow:row wrap;gap:.6em}
+  .hud-meta{gap:10px}
+  .deck{grid-template-columns:1fr 1fr;grid-auto-rows:minmax(0,1fr)}
+  .map-wrap{grid-column:1/-1;order:-1;min-height:clamp(240px,44svh,360px)}
+  .col.telemetry{grid-column:1;grid-row:2}
+  .col.agents{grid-column:2;grid-row:2}
+  .console{height:clamp(170px,34svh,250px)}
+}
+@media (max-width:620px){
+  body{padding:6px;gap:8px}
+  .monitor{padding:5px;border-radius:12px}
+  .screen{aspect-ratio:auto;min-height:0;border-radius:8px;font-size:12px}
+  .deck{grid-template-columns:1fr;gap:8px;padding:8px}
+  .map-wrap{min-height:clamp(250px,50svh,400px)}
+  .col.telemetry,.col.agents{grid-column:1;grid-row:auto}
+  .col.telemetry{flex-direction:row}
+  .col.telemetry .card{flex:1 1 0}
+  .index-card{display:none}
+  .console{height:clamp(190px,38svh,280px);margin:0 8px 8px}
+  .log{font-size:11px}
+  .screw{display:none}
+}
+@media (max-width:420px){.wordmark{letter-spacing:.16em}.hl-a,.hl-b{font-size:8px}}
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important}
+  .fx.scanlines{opacity:.32}
+}
+</style>
+</head>
+<body>
+
+<div class="monitor">
+  <i class="screw tl"></i><i class="screw tr"></i><i class="screw bl"></i><i class="screw br"></i>
+
+  <div class="screen" id="screen">
+    <div class="fx scanlines"></div>
+    <div class="fx vignette"></div>
+    <div class="fx glass"></div>
+    <div class="fx flicker"></div>
+
+    <header class="topbar">
+      <div class="brand">
+        <svg class="hex" viewBox="0 0 48 52" role="img" aria-label="Nexus hexagonal N mark">
+          <polygon points="24,2 44,13.5 44,38.5 24,50 4,38.5 4,13.5" />
+          <path class="n-path" d="M16.5 36.5 V16 L31.5 36.5 V16" />
+        </svg>
+        <div class="brand-txt">
+          <span class="wordmark" id="wordmark" data-text="NEXUS">NEXUS</span>
+          <span class="label">AGENT<span class="sep">/</span>console</span>
+        </div>
+      </div>
+
+      <div class="headline">
+        <div class="hl-a"><span class="dot" id="liveDot"></span><span id="headlineCounts">connecting to the local server…</span></div>
+        <div class="hl-b">[STATUS: <b id="statusMode">CONNECTING</b>]</div>
+        <div class="src-chip" id="srcChip">/api/stats · /api/roles · SSE /api/events</div>
+      </div>
+
+      <div class="hud-meta">
+        <div><span>SESSION</span><b id="clock">00:00</b></div>
+        <div><span>RENDER</span><b id="fps">— fps</b></div>
+        <div class="ctrl-row">
+          <button id="pauseBtn" type="button" aria-pressed="false">PAUSE</button>
+          <button id="reloadBtn" type="button">RELOAD</button>
+        </div>
+      </div>
+    </header>
+
+    <div class="deck">
+      <aside class="col telemetry">
+        <div class="card">
+          <h2>TELEMETRY <em>/api/stats</em></h2>
+          <div class="stat"><span>MODEL AGENTS</span><b id="tAgents">—</b></div>
+          <div class="stat"><span>ROLES</span><b id="tRoles">—</b></div>
+          <div class="stat"><span>PIPELINES</span><b id="tPipelines">—</b></div>
+          <div class="stat"><span>KEYS</span><b id="tKeys">—</b></div>
+          <div class="stat"><span>TOKENS IN / OUT</span><b id="tTokens">—</b></div>
+          <div class="stat"><span>RUN TURNS</span><b id="tTurns">—</b></div>
+          <div class="stat"><span>SESSIONS done/err</span><b id="tSessions">—</b></div>
+          <div class="stat"><span>UPTIME</span><b id="tUptime">—</b></div>
+          <div class="meter"><i id="uptimeBar"></i></div>
+        </div>
+        <div class="card index-card">
+          <h2>CONFIG INDEX <em>real roster</em></h2>
+          <pre class="index" id="index" aria-hidden="true"></pre>
+        </div>
+      </aside>
+
+      <section class="map-wrap" aria-label="Role to agent map, built from the live configuration">
+        <div class="map-stage" id="mapStage">
+          <canvas id="map"></canvas>
+          <div class="labels" id="labels"></div>
+        </div>
+        <div class="map-caption">
+          <span id="mapTitle">ROLE → AGENT MAP</span>
+          <span id="mapMeta">waiting for /api/roles…</span>
+        </div>
+        <div class="progress">
+          <div class="pbar"><i id="pfill"></i></div>
+          <div class="pmeta"><span id="plabel">LOADING</span><b id="pct">0%</b></div>
+        </div>
+      </section>
+
+      <aside class="col agents">
+        <div class="card">
+          <h2>AGENTS <em>/api/agents</em></h2>
+          <div id="agentCards"><div class="a-model">loading…</div></div>
+        </div>
+        <div class="card stream-card">
+          <h2>EVENT STREAM</h2>
+          <div class="stream" id="datastream"></div>
+        </div>
+      </aside>
+    </div>
+
+    <section class="console" aria-label="Nexus console">
+      <div class="console-head">
+        <span id="ctxLine" class="ctx">role <b>auto</b> · pipeline <b>none</b> · read-only <b>off</b></span>
+        <span class="hint">type <b>help</b> · <b>status</b> · <b>agents</b> · <b>roles &lt;text&gt;</b> · a task to run</span>
+      </div>
+      <div class="log" id="log" role="log" aria-live="polite" aria-label="console output"></div>
+      <form class="prompt" id="promptForm" autocomplete="off">
+        <label class="ps1" for="cmd">nexus@<span id="wsName">workspace</span>:~$</label>
+        <input id="cmd" name="cmd" type="text" autocomplete="off" autocapitalize="off"
+               spellcheck="false" placeholder="run help, or type a task for the agent…" aria-label="command input" />
+      </form>
+    </section>
+
+    <div class="standby" id="standby" hidden>
+      <div class="big">CONSOLE CLOSED</div>
+      <p id="standbyText">The event stream is closed and the prompt is off. Reload to reconnect to the local server.</p>
+      <button id="standbyReload" type="button">RECONNECT</button>
+    </div>
+  </div>
+</div>
+
+<p class="disclaimer">
+  <b>Everything here is read from your local Nexus server</b> — <code>/health</code>, <code>/api/stats</code>,
+  <code>/api/roles</code>, <code>/api/pipelines</code>, <code>/api/memory/&lt;role&gt;</code> and the
+  <code>/api/events/&lt;task&gt;</code> stream. No number is hardcoded and nothing is invented: when the server
+  cannot be reached the console says so and shows dashes. The brain outline behind the map is a decorative
+  backdrop; every dot on it is a real role from <code>roles.yaml</code> plus its real agent.
+</p>
+
+<script>
+(function () {
+  "use strict";
+
+  /* ── helpers ───────────────────────────────────────────────────────── */
+  function $(id) { return document.getElementById(id); }
+  function pad(n) { return String(n).padStart(2, "0"); }
+  function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
+  function num(n) { return (typeof n === "number" && isFinite(n)) ? n.toLocaleString("en-US") : "—"; }
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  }
+  function dur(sec) {
+    sec = Math.max(0, Math.floor(Number(sec) || 0));
+    if (sec < 60) return sec + "s";
+    if (sec < 3600) return Math.floor(sec / 60) + "m " + pad(sec % 60) + "s";
+    return Math.floor(sec / 3600) + "h " + pad(Math.floor((sec % 3600) / 60)) + "m";
+  }
+  function timeNow() {
+    var d = new Date();
+    return pad(d.getHours()) + ":" + pad(d.getMinutes()) + ":" + pad(d.getSeconds());
+  }
+  function providerColor(p) {
+    return { gemini: "#00ffa3", deepseek: "#22e3ff", openrouter: "#ffb020" }[p] || "#b47bff";
+  }
+
+  var TOKEN = new URLSearchParams(location.search).get("token") || "";
+  var REDUCED = window.matchMedia ? window.matchMedia("(prefers-reduced-motion: reduce)").matches : false;
+  var FINE_POINTER = window.matchMedia ? window.matchMedia("(pointer:fine)").matches : true;
+
+  var S = {
+    online: false,
+    health: null,
+    stats: null,
+    roles: [],
+    agents: {},
+    pipelines: {},
+    ctx: { role: null, pipeline: null, readOnly: false },
+    taskId: null,
+    es: null,
+    running: false,
+    pending: false,
+    turn: 0,
+    maxTurns: 0,
+    tokens: { in: 0, out: 0 },
+    tools: 0,
+    activeAgent: null,
+    activeRole: null,
+    graph: null,
+    labels: {},
+    pulses: [],
+    flashes: [],
+    paused: false,
+    exited: false,
+    loadedAt: 0,
+    history: [],
+    histIdx: -1,
+    boot: { done: 0, total: 0 },
+    fps: 0,
+    fpsFrames: 0,
+    fpsLast: 0,
+    demoNoted: false
+  };
+
+  /* ── http ──────────────────────────────────────────────────────────── */
+  async function api(path, options) {
+    var opts = Object.assign({ headers: {} }, options || {});
+    opts.headers["Accept"] = "application/json";
+    if (opts.body) opts.headers["Content-Type"] = "application/json";
+    if (TOKEN) opts.headers["X-Nexus-Token"] = TOKEN;
+    var res, body = null;
+    try {
+      res = await fetch(path, opts);
+    } catch (err) {
+      return { ok: false, status: 0, body: null, error: String(err) };
+    }
+    try { body = await res.json(); } catch (_) { body = null; }
+    if (!res.ok) {
+      return { ok: false, status: res.status, body: body,
+        error: (body && (body.error || body.message)) || ("HTTP " + res.status) };
+    }
+    return { ok: true, status: res.status, body: body };
+  }
+
+  /* ── console printing ──────────────────────────────────────────────── */
+  var logEl = $("log"), cmdEl = $("cmd");
+
+  function push(html, cls) {
+    var p = document.createElement("p");
+    if (cls) p.className = cls;
+    if (html.indexOf("<b>") === -1 && html.indexOf("<code>") === -1) p.textContent = html;
+    else p.innerHTML = html;
+    logEl.appendChild(p);
+    while (logEl.children.length > 500) logEl.removeChild(logEl.firstChild);
+    logEl.scrollTop = logEl.scrollHeight;
+  }
+  function line(text, cls) {
+    var p = document.createElement("p");
+    if (cls) p.className = cls;
+    p.textContent = text;
+    logEl.appendChild(p);
+    while (logEl.children.length > 500) logEl.removeChild(logEl.firstChild);
+    logEl.scrollTop = logEl.scrollHeight;
+  }
+
+  /* ── progress / status ─────────────────────────────────────────────── */
+  function setProgress(phase, pct, value) {
+    $("pfill").style.width = clamp(pct, 0, 100).toFixed(1) + "%";
+    $("plabel").textContent = phase;
+    $("pct").textContent = value != null ? value : Math.round(pct) + "%";
+  }
+  function setStatus(mode) {
+    $("statusMode").textContent = mode;
+    var dot = $("liveDot");
+    dot.className = "dot" + (mode === "LIVE" || mode === "RUNNING" ? " on" : mode === "OFFLINE" ? " bad" : "");
+  }
+
+  /* ── config index (real roster text) ───────────────────────────────── */
+  var indexEl = $("index"), indexLines = [], indexPos = 0, indexTimer = 0;
+
+  function buildIndex() {
+    indexLines = [];
+    var names = Object.keys(S.agents);
+    names.forEach(function (name) {
+      var a = S.agents[name] || {};
+      indexLines.push(name + " · " + (a.model || "?") + (a.optional ? " · local" : ""));
+    });
+    S.roles.slice(0, 400).forEach(function (r) {
+      indexLines.push(r.name + " · " + r.agent);
+    });
+    Object.keys(S.pipelines).forEach(function (p) {
+      indexLines.push("pipeline " + p + " · " + ((S.pipelines[p].steps || []).join(" → ") || "single"));
+    });
+    indexPos = 0;
+    indexEl.textContent = "";
+    clearInterval(indexTimer);
+    indexTimer = setInterval(function () {
+      if (S.paused || !indexLines.length) return;
+      indexEl.textContent = indexLines.slice(indexPos, indexPos + 22).join("\n");
+      indexPos = (indexPos + 1) % indexLines.length;
+    }, 420);
+  }
+
+  /* ── agent cards (real agents) ─────────────────────────────────────── */
+  function roleCountByAgent() {
+    var counts = {};
+    S.roles.forEach(function (r) { counts[r.agent] = (counts[r.agent] || 0) + 1; });
+    return counts;
+  }
+
+  function renderAgentCards() {
+    var counts = roleCountByAgent();
+    var names = Object.keys(S.agents).sort(function (a, b) { return (counts[b] || 0) - (counts[a] || 0); });
+    var top = names.slice(0, 3);
+    if (S.activeAgent && top.indexOf(S.activeAgent) === -1) top = [S.activeAgent].concat(top.slice(0, 2));
+    var totalRoles = S.roles.length || 1;
+    var html = top.map(function (name) {
+      var a = S.agents[name] || {};
+      var count = counts[name] || 0;
+      var percent = (count / totalRoles) * 100;
+      var keyState = a.optional ? "no key" : (a.key_present ? "key ✓" : "key ✗");
+      var stateCls = a.key_present || a.optional ? "ok" : "warn";
+      return '<div class="agent-card" data-agent="' + esc(name) + '">' +
+        '<div class="a-head"><b>' + esc(name) + '</b><span class="a-state ' + stateCls + '">' + esc(keyState) + '</span></div>' +
+        '<div class="a-model">' + esc(a.model || "?") + ' · ' + esc(a.provider || "?") + '</div>' +
+        '<div class="a-bar"><i style="width:' + percent.toFixed(1) + '%"></i></div>' +
+        '<div class="a-meta"><span>roles <b>' + num(count) + '</b></span>' +
+        '<span>fallback <b>' + esc(a.fallback || "—") + '</b></span></div>' +
+        '</div>';
+    }).join("");
+    $("agentCards").innerHTML = html || '<div class="a-model">no agents configured</div>';
+  }
+
+  /* ── event stream rows ─────────────────────────────────────────────── */
+  function streamRow(kind, text, isErr) {
+    var el = document.createElement("div");
+    if (isErr) el.className = "err";
+    el.innerHTML = '<span class="t">' + timeNow() + '</span> <span class="k">' + esc(kind) + '</span> ' + esc(text);
+    var box = $("datastream");
+    box.appendChild(el);
+    while (box.children.length > 18) box.removeChild(box.firstChild);
+  }
+
+  /* ── the map: real roles → real agents ─────────────────────────────── */
+  var canvas = $("map");
+  var ctx = canvas.getContext("2d");
+  var staticLayer = document.createElement("canvas");
+  var sctx = staticLayer.getContext("2d");
+  var DPR = Math.min(window.devicePixelRatio || 1, 2);
+
+  function brainPath(path, cx, cy, s) {
+    path.moveTo(cx, cy - 0.46 * s);
+    path.bezierCurveTo(cx - 0.16 * s, cy - 0.50 * s, cx - 0.35 * s, cy - 0.40 * s, cx - 0.41 * s, cy - 0.21 * s);
+    path.bezierCurveTo(cx - 0.46 * s, cy - 0.02 * s, cx - 0.43 * s, cy + 0.17 * s, cx - 0.31 * s, cy + 0.31 * s);
+    path.bezierCurveTo(cx - 0.22 * s, cy + 0.41 * s, cx - 0.09 * s, cy + 0.46 * s, cx, cy + 0.39 * s);
+    path.bezierCurveTo(cx + 0.09 * s, cy + 0.46 * s, cx + 0.22 * s, cy + 0.41 * s, cx + 0.31 * s, cy + 0.31 * s);
+    path.bezierCurveTo(cx + 0.43 * s, cy + 0.17 * s, cx + 0.46 * s, cy - 0.02 * s, cx + 0.41 * s, cy - 0.21 * s);
+    path.bezierCurveTo(cx + 0.35 * s, cy - 0.40 * s, cx + 0.16 * s, cy - 0.50 * s, cx, cy - 0.46 * s);
+    path.closePath();
+    return path;
+  }
+
+  function buildGraph() {
+    var stage = $("mapStage");
+    var w = Math.max(160, stage.clientWidth);
+    var h = Math.max(140, stage.clientHeight);
+    canvas.width = Math.round(w * DPR);
+    canvas.height = Math.round(h * DPR);
+
+    var cx = w / 2, cy = h * 0.5;
+    var s = Math.min(w * 0.92, h * 1.06);
+    var outline = brainPath(new Path2D(), cx, cy, s);
+
+    var counts = roleCountByAgent();
+    var agentNames = Object.keys(S.agents);
+    var hubs = {};
+    agentNames.forEach(function (name, i) {
+      var a = Math.PI / 2 + (i * 2 * Math.PI) / Math.max(agentNames.length, 1);
+      hubs[name] = {
+        name: name,
+        x: cx + Math.cos(a) * s * 0.26,
+        y: cy + Math.sin(a) * s * 0.19,
+        color: providerColor((S.agents[name] || {}).provider),
+        count: counts[name] || 0,
+        phase: i * 0.7
+      };
+    });
+
+    // one dot per real role, clustered around its real agent
+    var nodes = [];
+    var maxCount = Math.max.apply(null, agentNames.map(function (n) { return counts[n] || 0; }).concat([1]));
+    S.roles.forEach(function (role, idx) {
+      var hub = hubs[role.agent] || hubs[agentNames[0]];
+      if (!hub) return;
+      var weight = Math.sqrt((hub.count || 1) / maxCount);
+      var lobe = s * (0.07 + 0.15 * weight);
+      var placed = null;
+      for (var t = 0; t < 24 && !placed; t++) {
+        var ang = Math.random() * Math.PI * 2;
+        var rad = lobe * Math.sqrt(Math.random());
+        var x = hub.x + Math.cos(ang) * rad * 1.35;
+        var y = hub.y + Math.sin(ang) * rad;
+        if (x < 6 || x > w - 6 || y < 6 || y > h - 6) continue;
+        if (!ctx.isPointInPath(outline, x, y)) continue;
+        placed = { x: x, y: y };
+      }
+      if (!placed) placed = { x: hub.x + (Math.random() - 0.5) * 8, y: hub.y + (Math.random() - 0.5) * 8 };
+      nodes.push({
+        role: role.name, agent: role.agent, category: role.category,
+        x: placed.x, y: placed.y, r: 0.9, hub: hub, idx: idx, heat: 0
+      });
+    });
+
+    S.graph = { w: w, h: h, cx: cx, cy: cy, s: s, outline: outline, hubs: hubs, nodes: nodes, agentNames: agentNames };
+    drawStatic();
+    layoutLabels();
+    $("mapMeta").textContent = num(nodes.length) + " roles · " + num(agentNames.length) + " agents · " + num(nodes.length) + " links";
+    $("mapTitle").textContent = "ROLE → AGENT MAP · live config";
+  }
+
+  function drawStatic() {
+    var g = S.graph;
+    if (!g) return;
+    staticLayer.width = Math.round(g.w * DPR);
+    staticLayer.height = Math.round(g.h * DPR);
+    sctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    sctx.clearRect(0, 0, g.w, g.h);
+
+    // decorative silhouette (labelled as such in the footer)
+    var glow = sctx.createRadialGradient(g.cx, g.cy, g.s * 0.05, g.cx, g.cy, g.s * 0.6);
+    glow.addColorStop(0, "rgba(0,255,163,.07)");
+    glow.addColorStop(1, "rgba(0,40,45,0)");
+    sctx.fillStyle = glow;
+    sctx.fill(g.outline);
+    sctx.save();
+    sctx.strokeStyle = "rgba(0,255,163,.20)";
+    sctx.lineWidth = 1;
+    sctx.stroke(g.outline);
+    sctx.restore();
+
+    // real links: role → its agent
+    sctx.save();
+    g.agentNames.forEach(function (name) {
+      var hub = g.hubs[name];
+      if (!hub) return;
+      sctx.beginPath();
+      g.nodes.forEach(function (n) {
+        if (n.agent !== name) return;
+        sctx.moveTo(n.x, n.y);
+        sctx.lineTo(hub.x, hub.y);
+      });
+      sctx.strokeStyle = hub.color + "22";
+      sctx.lineWidth = 0.6;
+      sctx.stroke();
+    });
+    sctx.restore();
+
+    // real roles as dots, coloured by the agent that serves them
+    sctx.save();
+    g.agentNames.forEach(function (name) {
+      var hub = g.hubs[name];
+      if (!hub) return;
+      sctx.beginPath();
+      g.nodes.forEach(function (n) {
+        if (n.agent !== name) return;
+        sctx.moveTo(n.x + n.r, n.y);
+        sctx.arc(n.x, n.y, n.r, 0, Math.PI * 2);
+      });
+      sctx.fillStyle = hub.color + "cc";
+      sctx.fill();
+    });
+    sctx.restore();
+
+    // agent hubs
+    sctx.save();
+    g.agentNames.forEach(function (name) {
+      var hub = g.hubs[name];
+      if (!hub) return;
+      sctx.beginPath();
+      sctx.arc(hub.x, hub.y, 5, 0, Math.PI * 2);
+      sctx.fillStyle = "rgba(3,14,12,.95)";
+      sctx.fill();
+      sctx.strokeStyle = hub.color;
+      sctx.lineWidth = 1.4;
+      sctx.stroke();
+      sctx.beginPath();
+      sctx.arc(hub.x, hub.y, 9, 0, Math.PI * 2);
+      sctx.strokeStyle = hub.color + "44";
+      sctx.stroke();
+    });
+    sctx.restore();
+  }
+
+  function layoutLabels() {
+    var box = $("labels");
+    box.innerHTML = "";
+    S.labels = {};
+    var g = S.graph;
+    if (!g) return;
+    g.agentNames.forEach(function (name) {
+      var hub = g.hubs[name];
+      var a = S.agents[name] || {};
+      var el = document.createElement("div");
+      el.className = "hub-label" + (S.activeAgent === name ? " hot" : "");
+      el.innerHTML = "<b>" + esc(name) + "</b><small>" + esc(a.model || "") + " · " + num(hub.count) + " roles</small>";
+      el.style.left = clamp((hub.x / g.w) * 100, 6, 94) + "%";
+      el.style.top = clamp((hub.y / g.h) * 100, 4, 96) + "%";
+      box.appendChild(el);
+      S.labels[name] = el;
+    });
+    var pin = document.createElement("div");
+    pin.className = "role-pin";
+    pin.id = "rolePin";
+    box.appendChild(pin);
+  }
+
+  function highlightAgent(name) {
+    if (!name) return;
+    S.activeAgent = name;
+    Object.keys(S.labels).forEach(function (key) {
+      S.labels[key].classList.toggle("hot", key === name);
+    });
+  }
+
+  function flashRole(roleName) {
+    if (!S.graph) return;
+    var node = null;
+    for (var i = 0; i < S.graph.nodes.length; i++) {
+      if (S.graph.nodes[i].role === roleName) { node = S.graph.nodes[i]; break; }
+    }
+    if (!node) return;
+    node.heat = 1;
+    var pin = $("rolePin");
+    if (pin && S.graph) {
+      pin.textContent = roleName + " → " + node.agent;
+      pin.style.left = clamp((node.x / S.graph.w) * 100, 8, 92) + "%";
+      pin.style.top = clamp((node.y / S.graph.h) * 100, 8, 92) + "%";
+      pin.classList.add("show");
+      clearTimeout(flashRole.timer);
+      flashRole.timer = setTimeout(function () { pin.classList.remove("show"); }, 3200);
+    }
+    spawnPulse(node);
+  }
+
+  function spawnPulse(node) {
+    if (!node || !node.hub || S.pulses.length > 40) return;
+    S.pulses.push({ a: node, b: node.hub, t: 0, speed: 0.9 + Math.random() * 0.5, color: node.hub.color });
+  }
+
+  function drawFrame() {
+    var g = S.graph;
+    if (!g) return;
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    ctx.clearRect(0, 0, g.w, g.h);
+    ctx.drawImage(staticLayer, 0, 0, g.w, g.h);
+
+    // hub breathing (no invented activity: this is only the live-agent highlight)
+    ctx.save();
+    g.agentNames.forEach(function (name) {
+      var hub = g.hubs[name];
+      if (!hub) return;
+      if (S.activeAgent === name) {
+        var t = (performance.now() / 900) % 1;
+        ctx.beginPath();
+        ctx.arc(hub.x, hub.y, 9 + t * 22, 0, Math.PI * 2);
+        ctx.strokeStyle = hub.color + Math.round((1 - t) * 90).toString(16).padStart(2, "0");
+        ctx.lineWidth = 1;
+        ctx.stroke();
+      }
+    });
+    ctx.restore();
+
+    // flashes on roles that the run actually touched
+    ctx.save();
+    g.nodes.forEach(function (n) {
+      if (n.heat <= 0) return;
+      ctx.beginPath();
+      ctx.arc(n.x, n.y, 2 + n.heat * 7, 0, Math.PI * 2);
+      ctx.fillStyle = n.hub.color + Math.round(n.heat * 120).toString(16).padStart(2, "0");
+      ctx.fill();
+      n.heat = Math.max(0, n.heat - 0.02);
+    });
+    ctx.restore();
+
+    // pulses = real events on real links
+    ctx.save();
+    for (var i = S.pulses.length - 1; i >= 0; i--) {
+      var p = S.pulses[i];
+      p.t += p.speed * 0.03;
+      if (p.t >= 1) { S.pulses.splice(i, 1); continue; }
+      var x = p.a.x + (p.b.x - p.a.x) * p.t;
+      var y = p.a.y + (p.b.y - p.a.y) * p.t;
+      ctx.beginPath();
+      ctx.arc(x, y, 2.4, 0, Math.PI * 2);
+      ctx.fillStyle = "rgba(235,255,250,.95)";
+      ctx.shadowColor = p.color;
+      ctx.shadowBlur = 10;
+      ctx.fill();
+      ctx.shadowBlur = 0;
+    }
+    ctx.restore();
+  }
+
+  /* ── animation loop ────────────────────────────────────────────────── */
+  function tick(now) {
+    if (!S.paused && !S.exited) {
+      drawFrame();
+      S.fpsFrames++;
+      if (!S.fpsLast) S.fpsLast = now;
+      if (now - S.fpsLast >= 800) {
+        S.fps = Math.round((S.fpsFrames * 1000) / (now - S.fpsLast));
+        S.fpsFrames = 0;
+        S.fpsLast = now;
+        $("fps").textContent = S.fps + " fps";
+      }
+      if (S.stats) {
+        var up = (S.stats.uptime_s || 0) + (Date.now() - S.loadedAt) / 1000;
+        $("tUptime").textContent = dur(up);
+        $("uptimeBar").style.width = clamp((up % 60) / 60 * 100, 2, 100) + "%";
+        $("clock").textContent = pad(Math.floor(up / 60)) + ":" + pad(Math.floor(up % 60));
+      }
+    }
+    requestAnimationFrame(tick);
+  }
+
+  /* ── stats → screen ────────────────────────────────────────────────── */
+  function applyStats(stats) {
+    S.stats = stats;
+    S.agents = stats.agents || {};
+    S.pipelines = stats.pipelines || {};
+    S.loadedAt = Date.now();
+
+    $("tAgents").textContent = num(Object.keys(S.agents).length);
+    $("tRoles").textContent = num(stats.roles);
+    $("tPipelines").textContent = num(Object.keys(S.pipelines).length);
+    var keys = stats.keys || {};
+    var configured = Object.keys(keys).filter(function (k) { return keys[k] && keys[k].configured; });
+    $("tKeys").innerHTML = configured.length + "<small>/" + Object.keys(keys).length + "</small>";
+    $("tTokens").textContent = num(stats.tokens && stats.tokens.in) + " / " + num(stats.tokens && stats.tokens.out);
+    $("tSessions").textContent = num(stats.sessions && stats.sessions.done) + " / " + num(stats.sessions && stats.sessions.error);
+    $("tTurns").textContent = S.running || S.taskId ? String(S.turn) + (S.maxTurns ? "/" + S.maxTurns : "") : "—";
+
+    $("headlineCounts").textContent = num(stats.roles) + " ROLES · " + num(Object.keys(S.agents).length) +
+      " MODEL AGENTS · " + num(Object.keys(S.pipelines).length) + " PIPELINES";
+    $("wsName").textContent = (stats.workspace || "workspace").split("/").filter(Boolean).pop() || "workspace";
+    $("srcChip").textContent = "/api/stats · /api/roles · SSE /api/events";
+    $("srcChip").className = "src-chip";
+    if (stats.demo && !S.demoNoted) {
+      S.demoNoted = true;
+      line("server runs in --demo mode: runs are scripted, the tools are real", "warn");
+    }
+
+    renderAgentCards();
+    buildIndex();
+  }
+
+  function offline(reason) {
+    S.online = false;
+    setStatus("OFFLINE");
+    $("srcChip").textContent = "OFFLINE — local server unreachable";
+    $("srcChip").className = "src-chip bad";
+    $("headlineCounts").textContent = "no data — server unreachable";
+    ["tAgents", "tRoles", "tPipelines", "tKeys", "tTokens", "tSessions", "tUptime"].forEach(function (id) {
+      $(id).textContent = "—";
+    });
+    $("mapMeta").textContent = "no server";
+    $("agentCards").innerHTML = '<div class="a-model">no data — start `nexus gui` and reload</div>';
+    setProgress("OFFLINE", 0, "—");
+    line("cannot reach the local server: " + reason, "err");
+    line("start it with `nexus gui` (or `nexus serve`) and press RELOAD — nothing is faked here.", "dim");
+  }
+
+  /* ── boot: real requests, real progress ────────────────────────────── */
+  async function boot() {
+    S.boot = { done: 0, total: 4 };
+    setProgress("LOADING", 0, "0%");
+
+    var health = await api("/health");
+    S.boot.done++;
+    setProgress("LOADING", (S.boot.done / S.boot.total) * 100, Math.round((S.boot.done / S.boot.total) * 100) + "%");
+    if (!health.ok) {
+      offline(health.error || "no /health");
+      return;
+    }
+    S.health = health.body;
+    S.online = true;
+    line("nexus " + health.body.version + " · workspace " + health.body.workspace, "ok");
+
+    var stats = await api("/api/stats");
+    S.boot.done++;
+    setProgress("LOADING", (S.boot.done / S.boot.total) * 100, Math.round((S.boot.done / S.boot.total) * 100) + "%");
+    if (!stats.ok) { offline(stats.error || "no /api/stats"); return; }
+    applyStats(stats.body);
+
+    var roles = await api("/api/roles");
+    S.boot.done++;
+    setProgress("LOADING", (S.boot.done / S.boot.total) * 100, Math.round((S.boot.done / S.boot.total) * 100) + "%");
+    if (roles.ok && Array.isArray(roles.body)) S.roles = roles.body;
+    else line("roles unavailable: " + (roles.error || "invalid payload"), "err");
+
+    var pipelines = await api("/api/pipelines");
+    S.boot.done++;
+    setProgress("LOADING", 100, "100%");
+    if (pipelines.ok) S.pipelines = pipelines.body || S.pipelines;
+
+    buildGraph();
+    renderAgentCards();
+    buildIndex();
+    setStatus("LIVE");
+    setProgress("READY", 100, "100%");
+    line("loaded " + num(S.roles.length) + " roles · " + num(Object.keys(S.agents).length) + " agents · " +
+      num(Object.keys(S.pipelines).length) + " pipelines from the server", "ok");
+    line("", "dim");
+    line("type `help` for commands, or a task to hand to the agent.", "info");
+    line("", "dim");
+  }
+
+  /* ── running a task (real POST /api/task) ──────────────────────────── */
+  async function runTask(task) {
+    if (S.running) { line("a run is already in progress — `cancel` first", "warn"); return; }
+    var payload = {
+      task: task,
+      role: S.ctx.role || null,
+      read_only: !!S.ctx.readOnly,
+      pipeline: S.ctx.pipeline || null
+    };
+    line("→ POST /api/task " + (payload.pipeline ? "pipeline=" + payload.pipeline + " " : "") +
+      (payload.role ? "role=" + payload.role + " " : "") + "…", "dim");
+    var res = await api("/api/task", { method: "POST", body: JSON.stringify(payload) });
+    if (!res.ok || !res.body || !res.body.task_id) {
+      line("task rejected: " + (res.error || "no task id"), "err");
+      setStatus("LIVE");
+      return;
+    }
+    S.taskId = res.body.task_id;
+    S.running = true;
+    S.pending = false;
+    S.turn = 0;
+    S.maxTurns = 0;
+    S.tools = 0;
+    S.tokens = { in: 0, out: 0 };
+    setStatus("RUNNING");
+    setProgress("STARTING", 0, "0%");
+    $("tTurns").textContent = "0";
+    line("task " + S.taskId + " accepted", "ok");
+    openStream(S.taskId);
+  }
+
+  function openStream(taskId) {
+    if (S.es) { S.es.close(); S.es = null; }
+    var url = "/api/events/" + taskId + (TOKEN ? "?token=" + encodeURIComponent(TOKEN) : "");
+    var es = new EventSource(url);
+    S.es = es;
+    es.onopen = function () { line("SSE connected · /api/events/" + taskId, "dim"); };
+    es.onmessage = function (msg) {
+      var ev;
+      try { ev = JSON.parse(msg.data); } catch (_) { return; }
+      handleEvent(ev);
+    };
+    es.onerror = function () {
+      if (es.readyState === EventSource.CLOSED && S.running) {
+        line("event stream closed before the run finished", "warn");
+      }
+    };
+  }
+
+  function handleEvent(ev) {
+    switch (ev.type) {
+      case "role":
+        S.activeRole = ev.role;
+        highlightAgent(ev.agent);
+        flashRole(ev.role);
+        streamRow("role", ev.role + " → " + ev.agent + " (" + (ev.method || "?") + ")");
+        line("route: " + ev.role + " → " + ev.agent + " · " + (ev.method || "?") +
+          (ev.hits && ev.hits.length ? " · hits: " + ev.hits.join(", ") : ""), "cyan");
+        break;
+      case "agent":
+        if (ev.agent) {
+          highlightAgent(ev.agent);
+          streamRow("agent", ev.agent + (ev.model ? " · " + ev.model : "") + (ev.error ? " ✗ " + ev.error : ""));
+          if (ev.error) line("agent " + ev.agent + " failed: " + ev.error, "err");
+          else if (ev.message) line(ev.message, "info");
+        }
+        break;
+      case "think":
+        S.turn = ev.turn || S.turn;
+        S.maxTurns = ev.max_turns || S.maxTurns;
+        if (ev.agent) highlightAgent(ev.agent);
+        setProgress("TURN", S.maxTurns ? (S.turn / S.maxTurns) * 100 : 0,
+          S.maxTurns ? S.turn + "/" + S.maxTurns : String(S.turn));
+        $("tTurns").textContent = S.maxTurns ? S.turn + "/" + S.maxTurns : String(S.turn);
+        streamRow("think", (ev.agent || "") + " turn " + (ev.turn || "?") + "/" + (ev.max_turns || "?"));
+        break;
+      case "usage":
+        if (typeof ev.input_tokens === "number") S.tokens.in = ev.input_tokens;
+        if (typeof ev.output_tokens === "number") S.tokens.out = ev.output_tokens;
+        $("tTokens").textContent = num(S.tokens.in) + " / " + num(S.tokens.out);
+        streamRow("usage", num(S.tokens.in) + " in / " + num(S.tokens.out) + " out");
+        break;
+      case "tool_call":
+        S.tools++;
+        streamRow("tool", ev.tool + " · " + String(ev.preview || "").slice(0, 60));
+        line("tool: " + ev.tool + (ev.preview ? "  " + String(ev.preview).slice(0, 300) : ""), "info");
+        break;
+      case "tool_result":
+        streamRow(ev.is_error ? "fail" : "ok", String(ev.preview || "").slice(0, 60), !!ev.is_error);
+        line((ev.is_error ? "✗ " : "✓ ") + String(ev.preview || "").slice(0, 400), ev.is_error ? "err" : "dim");
+        break;
+      case "text":
+        if (ev.text) line(String(ev.text), "cyan");
+        break;
+      case "status":
+        if (ev.message) { line(ev.message, "info"); streamRow("status", String(ev.message).slice(0, 60)); }
+        break;
+      case "memory":
+        line("memory saved for " + ev.role + " → " + ev.path, "ok");
+        break;
+      case "approval_request":
+        S.pending = true;
+        line("approval needed: " + ev.tool + " (" + (ev.risk || "write") + ")", "warn");
+        line("  " + String(ev.preview || "").slice(0, 400), "dim");
+        line("  type `approve`, `approve always`, or `deny`", "warn");
+        streamRow("approval", ev.tool + " waiting", false);
+        break;
+      case "approval_response":
+        S.pending = false;
+        line("approval " + (ev.approved ? "granted" : "denied") + ": " + (ev.tool || ""), ev.approved ? "ok" : "warn");
+        break;
+      case "error":
+        line("error: " + (ev.message || "unknown"), "err");
+        streamRow("error", String(ev.message || "").slice(0, 60), true);
+        break;
+      case "done":
+        finish(ev);
+        break;
+      default:
+        break;
+    }
+  }
+
+  function finish(ev) {
+    S.running = false;
+    S.pending = false;
+    if (S.es) { S.es.close(); S.es = null; }
+    var r = ev.result || {};
+    setStatus("LIVE");
+    if (r.ok === false || ev.status === "error") {
+      setProgress("FAILED", 100, "error");
+      line("run failed: " + (r.error || r.stopped_reason || "unknown"), "err");
+    } else {
+      setProgress("COMPLETE", 100, (r.turns != null ? r.turns + " turns" : "done"));
+      line("run complete · " + (r.role || "?") + " · " + (r.agent || "?") +
+        " · " + (r.turns != null ? r.turns + " turns" : "?") + " · " +
+        (r.tool_calls != null ? r.tool_calls + " tools" : "?") + " · " +
+        (r.duration_s != null ? r.duration_s + "s" : "?"), "ok");
+      if (r.summary) line(r.summary, "cyan");
+      if (r.changed_files && r.changed_files.length) line("changed: " + r.changed_files.join(", "), "info");
+      if (r.followups && r.followups.length) r.followups.forEach(function (f) { line("↳ " + f, "dim"); });
+    }
+    if (r.input_tokens != null) S.tokens.in = r.input_tokens;
+    if (r.output_tokens != null) S.tokens.out = r.output_tokens;
+    $("tTokens").textContent = num(S.tokens.in) + " / " + num(S.tokens.out);
+    line("", "dim");
+    api("/api/stats").then(function (res) { if (res.ok) applyStats(res.body); });
+  }
+
+  /* ── commands ──────────────────────────────────────────────────────── */
+  function helpText() {
+    line("commands", "ok");
+    line("  help                  this list", "info");
+    line("  status                server + run state (/health, /api/stats)", "info");
+    line("  agents                agents from /api/agents (model, key, fallback)", "info");
+    line("  roles <text>          search the real role list (empty → count)", "info");
+    line("  pipelines             pipelines from /api/pipelines", "info");
+    line("  keys                  key state from /api/stats (masked, never printed)", "info");
+    line("  memory <role>         /api/memory/<role> notes", "info");
+    line("  /role <name|auto>     force a role for the next run", "info");
+    line("  /pipeline <name|none> run a pipeline next", "info");
+    line("  /plan on|off          read-only mode", "info");
+    line("  <any other text>      POST /api/task and stream the real run", "info");
+    line("  approve | approve always | deny | cancel", "info");
+    line("  clear · exit · pause · reload", "info");
+  }
+
+  function statusText() {
+    if (!S.online || !S.stats) { line("server unreachable — no status to show", "err"); return; }
+    var st = S.stats;
+    line("nexus " + (S.health ? S.health.version : st.version) + " · " + st.workspace, "ok");
+    line("  agents ......... " + Object.keys(S.agents).length, "info");
+    line("  roles .......... " + st.roles + "  (" + num(S.roles.length) + " loaded in the map)", "info");
+    line("  pipelines ...... " + Object.keys(S.pipelines).length + "  " + Object.keys(S.pipelines).join(", "), "info");
+    line("  default agent .. " + st.default_agent + (st.prefer_local ? "  (local-first)" : ""), "info");
+    line("  router ......... " + (st.settings && st.settings.router_agent) +
+      " · auto_route " + (st.settings && st.settings.auto_route), "info");
+    line("  max turns ...... " + (st.settings && st.settings.max_turns), "info");
+    line("  sessions ....... " + st.sessions.total + " total · " + st.sessions.running + " running · " +
+      st.sessions.done + " done · " + st.sessions.error + " error", "info");
+    line("  tokens ......... " + num(st.tokens.in) + " in / " + num(st.tokens.out) + " out (server totals)", "info");
+    line("  run state ...... " + (S.running ? "RUNNING task " + S.taskId : "idle") +
+      (S.pending ? " · waiting for approval" : ""), "info");
+    line("  context ........ role " + (S.ctx.role || "auto") + " · pipeline " + (S.ctx.pipeline || "none") +
+      " · read-only " + (S.ctx.readOnly ? "on" : "off"), "info");
+    line("  render ......... " + (S.fps || "—") + " fps (measured)", "dim");
+  }
+
+  function agentsText() {
+    var names = Object.keys(S.agents);
+    if (!names.length) { line("no agents loaded", "err"); return; }
+    var counts = roleCountByAgent();
+    names.forEach(function (name) {
+      var a = S.agents[name] || {};
+      var key = a.optional ? "no key needed" : (a.key_present ? "key ✓ " + (a.key_source || "") : "key ✗");
+      line("  " + name.padEnd(20) + (a.model || "?").padEnd(30) + (a.provider || "").padEnd(12) +
+        (counts[name] || 0) + " roles  " + key, "info");
+    });
+    line("fallbacks: " + names.map(function (n) { return n + "→" + (S.agents[n].fallback || "none"); }).join("  "), "dim");
+  }
+
+  function rolesText(needle) {
+    if (!S.roles.length) { line("role list not loaded", "err"); return; }
+    if (!needle) {
+      var byCat = {};
+      S.roles.forEach(function (r) { byCat[r.category] = (byCat[r.category] || 0) + 1; });
+      line(S.roles.length + " roles across " + Object.keys(byCat).length + " categories:", "ok");
+      Object.keys(byCat).sort().forEach(function (c) { line("  " + c.padEnd(22) + byCat[c], "info"); });
+      return;
+    }
+    var q = needle.toLowerCase();
+    var hits = S.roles.filter(function (r) {
+      return r.name.toLowerCase().indexOf(q) !== -1 || (r.title || "").toLowerCase().indexOf(q) !== -1 ||
+        (r.keywords || []).some(function (k) { return String(k).toLowerCase().indexOf(q) !== -1; });
+    });
+    line(hits.length + " role(s) matching “" + needle + "”:", "ok");
+    hits.slice(0, 14).forEach(function (r) {
+      line("  " + r.name.padEnd(28) + r.agent.padEnd(22) + r.category, "info");
+    });
+    if (hits.length > 14) line("  … " + (hits.length - 14) + " more", "dim");
+  }
+
+  function pipelinesText() {
+    var names = Object.keys(S.pipelines);
+    if (!names.length) { line("no pipelines configured", "err"); return; }
+    names.forEach(function (n) {
+      var p = S.pipelines[n] || {};
+      line("  " + n.padEnd(18) + (p.steps || []).join(" → "), "info");
+      if (p.description) line("    " + p.description, "dim");
+    });
+  }
+
+  function keysText() {
+    if (!S.stats || !S.stats.keys) { line("no key data", "err"); return; }
+    var keys = S.stats.keys;
+    Object.keys(keys).forEach(function (fam) {
+      var k = keys[fam] || {};
+      line("  " + fam.padEnd(12) + (k.configured ? "set " + (k.masked || "") + "  (" + (k.source || "") + ")" : "not configured"),
+        k.configured ? "ok" : "warn");
+    });
+    line("set one with: nexus keys set <gemini|deepseek|openrouter>", "dim");
+  }
+
+  async function memoryText(role) {
+    if (!role) { line("usage: memory <role>", "warn"); return; }
+    var res = await api("/api/memory/" + encodeURIComponent(role));
+    if (!res.ok) { line("memory error: " + (res.error || "unknown"), "err"); return; }
+    line("memory for " + res.body.role + " → " + res.body.path, "ok");
+    var text = (res.body.text || "").trim();
+    line(text || "(empty)", text ? "info" : "dim");
+  }
+
+  function updateCtx() {
+    $("ctxLine").innerHTML = "role <b>" + esc(S.ctx.role || "auto") + "</b> · pipeline <b>" +
+      esc(S.ctx.pipeline || "none") + "</b> · read-only <b>" + (S.ctx.readOnly ? "on" : "off") + "</b>";
+  }
+
+  async function decide(approved, scope) {
+    if (!S.taskId) { line("no task to approve", "warn"); return; }
+    var res = await api("/api/approve/" + S.taskId, {
+      method: "POST", body: JSON.stringify({ approved: approved, scope: scope })
+    });
+    line(res.ok ? "approval sent" : "approval failed: " + res.error, res.ok ? "ok" : "err");
+  }
+
+  async function cancelRun() {
+    if (!S.taskId) { line("no task running", "dim"); return; }
+    var res = await api("/api/cancel/" + S.taskId, { method: "POST", body: "{}" });
+    line(res.ok ? "cancel requested" : "cancel failed: " + res.error, res.ok ? "warn" : "err");
+  }
+
+  function runCommand(raw) {
+    var text = raw.trim();
+    if (!text) return;
+    S.history.push(text);
+    S.histIdx = S.history.length;
+    line(text, "cmd");
+    var parts = text.split(/\s+/);
+    var head = parts[0].toLowerCase();
+    var rest = text.slice(parts[0].length).trim();
+
+    if (head === "help" || head === "?") return helpText();
+    if (head === "status") return statusText();
+    if (head === "agents") return agentsText();
+    if (head === "roles") return rolesText(rest);
+    if (head === "pipelines") return pipelinesText();
+    if (head === "keys") return keysText();
+    if (head === "memory") { memoryText(rest); return; }
+    if (head === "clear" || head === "cls") {
+      logEl.innerHTML = "";
+      line("console cleared", "dim");
+      return;
+    }
+    if (head === "exit" || head === "quit") {
+      if (S.es) { S.es.close(); S.es = null; }
+      S.exited = true;
+      cmdEl.disabled = true;
+      setStatus("CLOSED");
+      $("standbyText").textContent = "The event stream is closed and the prompt is off. " +
+        "The server is still running — press RECONNECT to load it again.";
+      $("standby").hidden = false;
+      line("console closed — SSE stream closed", "warn");
+      return;
+    }
+    if (head === "pause") { setPaused(true); return; }
+    if (head === "resume") { setPaused(false); return; }
+    if (head === "reload") { reloadAll(); return; }
+    if (head === "approve") {
+      if (!S.pending) { line("nothing is waiting for approval", "dim"); return; }
+      return decide(true, rest.indexOf("always") !== -1 ? "session" : "once");
+    }
+    if (head === "deny") {
+      if (!S.pending) { line("nothing is waiting for approval", "dim"); return; }
+      return decide(false, "once");
+    }
+    if (head === "cancel") { cancelRun(); return; }
+
+    if (head === "/role") {
+      var roleName = rest || null;
+      if (roleName && roleName !== "auto" && S.roles.length &&
+        !S.roles.some(function (r) { return r.name === roleName; })) {
+        line("unknown role “" + roleName + "” — `roles " + roleName + "` to search", "err");
+        return;
+      }
+      S.ctx.role = roleName === "auto" ? null : roleName;
+      updateCtx();
+      line("role → " + (S.ctx.role || "auto"), "ok");
+      return;
+    }
+    if (head === "/pipeline") {
+      if (rest && rest !== "none" && !S.pipelines[rest]) {
+        line("unknown pipeline “" + rest + "” — `pipelines` lists them", "err");
+        return;
+      }
+      S.ctx.pipeline = rest === "none" ? null : rest;
+      updateCtx();
+      line("pipeline → " + (S.ctx.pipeline || "none"), "ok");
+      return;
+    }
+    if (head === "/plan") {
+      S.ctx.readOnly = rest === "on" ? true : rest === "off" ? false : !S.ctx.readOnly;
+      updateCtx();
+      line("read-only → " + (S.ctx.readOnly ? "on" : "off"), "ok");
+      return;
+    }
+
+    if (head === "run") {
+      if (!rest) { line("usage: run <task>", "warn"); return; }
+      return runTask(rest);
+    }
+
+    // everything else is a real task for the agent
+    if (!S.online) { line("server unreachable — cannot run a task", "err"); return; }
+    runTask(text);
+  }
+
+  /* ── pause / reload ────────────────────────────────────────────────── */
+  var pauseBtn = $("pauseBtn");
+  function setPaused(next) {
+    S.paused = next;
+    pauseBtn.textContent = next ? "RESUME" : "PAUSE";
+    pauseBtn.classList.toggle("paused", next);
+    pauseBtn.setAttribute("aria-pressed", String(next));
+  }
+  pauseBtn.addEventListener("click", function () {
+    setPaused(!S.paused);
+    line(S.paused ? "rendering paused (the run keeps going)" : "rendering resumed", "dim");
+  });
+  $("reloadBtn").addEventListener("click", function () { reloadAll(); });
+  $("standbyReload").addEventListener("click", function () { reloadAll(); });
+
+  function reloadAll() {
+    if (S.es) { S.es.close(); S.es = null; }
+    S.exited = false;
+    S.running = false;
+    S.pending = false;
+    S.activeAgent = null;
+    S.activeRole = null;
+    S.pulses = [];
+    S.taskId = null;
+    cmdEl.disabled = false;
+    $("standby").hidden = true;
+    setStatus("CONNECTING");
+    logEl.innerHTML = "";
+    line("reloading configuration from the local server…", "dim");
+    boot();
+  }
+
+  /* ── input wiring ──────────────────────────────────────────────────── */
+  $("promptForm").addEventListener("submit", function (e) {
+    e.preventDefault();
+    var v = cmdEl.value;
+    cmdEl.value = "";
+    runCommand(v);
+  });
+  cmdEl.addEventListener("keydown", function (e) {
+    if (e.key === "ArrowUp") {
+      if (!S.history.length) return;
+      e.preventDefault();
+      S.histIdx = Math.max(0, S.histIdx - 1);
+      cmdEl.value = S.history[S.histIdx] || "";
+    } else if (e.key === "ArrowDown") {
+      e.preventDefault();
+      S.histIdx = Math.min(S.history.length, S.histIdx + 1);
+      cmdEl.value = S.history[S.histIdx] || "";
+    } else if (e.key === "Escape") {
+      cmdEl.value = "";
+      cmdEl.blur();
+    }
+  });
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "/" && document.activeElement !== cmdEl && !e.metaKey && !e.ctrlKey && !e.altKey) {
+      e.preventDefault();
+      cmdEl.focus();
+    }
+  });
+  document.addEventListener("click", function (e) {
+    if (!FINE_POINTER) return;
+    if (e.target.closest("button,input,a,label")) return;
+    if (window.getSelection && String(window.getSelection())) return;
+    cmdEl.focus({ preventScroll: true });
+  });
+
+  /* ── resize ────────────────────────────────────────────────────────── */
+  var resizeTimer = 0;
+  function onResize() {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(function () {
+      if (!S.roles.length && !Object.keys(S.agents).length) return;
+      buildGraph();
+    }, 160);
+  }
+  window.addEventListener("resize", onResize);
+  if (window.ResizeObserver) new ResizeObserver(onResize).observe($("mapStage"));
+
+  /* ── occasional wordmark glitch (decorative, never constant) ────────── */
+  var wordmark = $("wordmark");
+  (function glitchLoop() {
+    setTimeout(function () {
+      if (!S.paused && !S.exited && !REDUCED) {
+        wordmark.classList.add("glitch");
+        setTimeout(function () { wordmark.classList.remove("glitch"); }, 380);
+      }
+      glitchLoop();
+    }, 5600 + Math.random() * 6400);
+  })();
+
+  /* ── go ────────────────────────────────────────────────────────────── */
+  updateCtx();
+  requestAnimationFrame(tick);
+  if (REDUCED) { setPaused(true); }
+  boot();
+  cmdEl.focus({ preventScroll: true });
+})();
+</script>
+</body>
+</html>

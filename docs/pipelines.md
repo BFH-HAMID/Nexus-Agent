@@ -73,7 +73,7 @@ question mid-run:
 Rules: one question, one answer, **no tools** in the consulted turn, no recursion
 (`ask_agent_depth >= 1` disables the tool), answer clipped to the tool-output limit, and the
 consulted role runs on its own agent — so `backend` (Claude) asking `pentesting` really does hit
-the uncensored local model, and you see `⇄ asked 'pentesting' via ollama-uncensored` in the log.
+the uncensored model, and you see `⇄ asked 'pentesting' via openrouter-uncensored` in the log.
 
 ## Patterns that work well
 

@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="color-scheme" content="dark" />
+<title>Nexus Agent · Control Deck</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M16 2l12 7v14l-12 7L4 23V9z' fill='none' stroke='%2300ffa3' stroke-width='2'/%3E%3Cpath d='M11 21V11l10 10V11' fill='none' stroke='%2322e3ff' stroke-width='2'/%3E%3C/svg%3E" />
+<link rel="stylesheet" href="/dashboard/dashboard.css" />
+</head>
+<body>
+
+<!-- ── ambient layers ───────────────────────────────────────────────── -->
+<canvas id="rain" class="fx-rain" aria-hidden="true"></canvas>
+<div class="fx-grid" aria-hidden="true"></div>
+<div class="fx-mesh"><canvas id="mesh" aria-hidden="true"></canvas></div>
+<div class="fx-scan" aria-hidden="true"></div>
+<div class="fx-vignette" aria-hidden="true"></div>
+
+<!-- ── top bar ──────────────────────────────────────────────────────── -->
+<header class="topbar">
+  <div class="brand">
+    <svg class="brand-mark" viewBox="0 0 44 44" aria-hidden="true">
+      <path d="M22 2.5 40 12.7v18.6L22 41.5 4 31.3V12.7z" fill="none" stroke="var(--neon)" stroke-width="1.4" opacity=".85"/>
+      <path d="M22 8 34.5 15v14L22 36 9.5 29V15z" fill="none" stroke="var(--cyan)" stroke-width=".8" opacity=".45"/>
+      <path d="M15.5 29V15l13 14V15" fill="none" stroke="var(--neon)" stroke-width="2.2" stroke-linejoin="round"/>
+      <circle cx="22" cy="22" r="2" fill="var(--amber)"/>
+    </svg>
+    <div class="brand-txt">
+      <h1>NEXUS<span>AGENT</span></h1>
+      <p class="tagline">autonomous orchestration deck</p>
+    </div>
+  </div>
+
+  <div class="topbar-meta">
+    <div class="chip" title="workspace the agent is operating in"><span class="k">workspace</span><b id="metaWs">…</b></div>
+    <div class="chip" title="specialist roles registered"><span class="k">roles</span><b id="metaRoles">–</b></div>
+    <div class="chip" title="model agents configured"><span class="k">agents</span><b id="metaAgents">–</b></div>
+    <div class="chip" id="chipMode" title="demo = scripted run, no model called"><span class="k">mode</span><b id="metaMode">live</b></div>
+    <div class="chip" id="chipLocal" title="NEXUS_PREFER_LOCAL"><span class="k">routing</span><b id="metaRouting">hosted</b></div>
+    <div class="chip live" id="chipUplink"><i class="dot" id="uplinkDot"></i><b id="metaUplink">connecting</b></div>
+  </div>
+
+  <div class="topbar-clock">
+    <div class="clock" id="clock">--:--:--</div>
+    <div class="clock-sub"><span id="clockDate">—</span> · <span id="metaUptime">up 0s</span></div>
+  </div>
+</header>
+
+<!-- ── deck ─────────────────────────────────────────────────────────── -->
+<main class="deck">
+
+  <!-- ══ left ══════════════════════════════════════════════════════════ -->
+  <aside class="col col-left">
+
+    <section class="card globe-card">
+      <div class="card-head"><span class="sq"></span>GLOBAL DATA ACCESS<span class="spacer"></span><span class="micro" id="globeNodes">— nodes</span></div>
+      <div class="globe-wrap">
+        <canvas id="globe" width="440" height="440" aria-label="rotating holographic globe"></canvas>
+        <div class="globe-ring"></div>
+        <div class="globe-labels">
+          <span class="globe-label l1">UPLINK · TLS 1.3</span>
+          <span class="globe-label l2">GEO MESH · 12</span>
+        </div>
+      </div>
+      <div class="stat-row">
+        <div class="stat"><span class="stat-k">latency</span><b id="statLatency">—</b></div>
+        <div class="stat"><span class="stat-k">calls</span><b id="statCalls">0</b></div>
+        <div class="stat"><span class="stat-k">regions</span><b id="statRegions">12</b></div>
+      </div>
+    </section>
+
+    <section class="card orch-card">
+      <div class="card-head"><span class="sq"></span>AI ORCHESTRATION<span class="spacer"></span><span class="micro" id="orchCount">0/0</span></div>
+      <div class="orch-list" id="orchList"></div>
+      <div class="orch-legend">
+        <span><i class="sw sw-neon"></i>gemini</span><span><i class="sw sw-green"></i>deepseek</span>
+        <span><i class="sw sw-amber"></i>openrouter</span><span><i class="sw sw-violet"></i>local</span>
+      </div>
+    </section>
+
+    <section class="card sec-card">
+      <div class="card-head"><span class="sq"></span>SECURITY AUDIT<span class="spacer"></span><span class="micro" id="secLevel">secure</span></div>
+      <div class="sec-grid">
+        <div class="sec-stat"><b id="secToolCalls">0</b><span>tool calls</span></div>
+        <div class="sec-stat"><b id="secDanger">0</b><span>danger risk</span></div>
+        <div class="sec-stat"><b id="secDenied">0</b><span>denied</span></div>
+        <div class="sec-stat"><b id="secErrors">0</b><span>errors</span></div>
+      </div>
+      <div class="sec-log" id="secLog"></div>
+    </section>
+  </aside>
+
+  <!-- ══ center ════════════════════════════════════════════════════════ -->
+  <section class="col col-center">
+
+    <section class="card map-card">
+      <div class="card-head">
+        <span class="sq"></span>COGNITION MAP
+        <span class="pill" id="mapActive">idle</span>
+        <span class="spacer"></span>
+        <span class="micro">click a node · click empty space to clear</span>
+      </div>
+      <div class="map-wrap">
+        <svg id="map" viewBox="0 0 920 440" preserveAspectRatio="xMidYMid meet" role="img"
+             aria-label="map of the model agents connected to the Nexus core"></svg>
+        <div class="map-foot">
+          <div class="route-box">
+            <span class="micro">ROUTER PREDICTION</span>
+            <div class="route-main"><b id="routeRole">—</b><span class="pill" id="routeMethod">—</span></div>
+            <div class="route-hits" id="routeHits">waiting for a task…</div>
+          </div>
+          <div class="route-box" id="nodeDetail">
+            <span class="micro">NODE</span>
+            <div class="route-main"><b id="ndName">—</b><span class="pill" id="ndProvider">—</span></div>
+            <div class="route-hits" id="ndBody">select a node on the map</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="card process-card">
+      <div class="card-head">
+        <span class="sq"></span>LIVE PROCESS
+        <span class="pill phase" id="phaseChip">idle</span>
+        <span class="spacer"></span>
+        <div class="filters" id="filters">
+          <button class="filter on" data-f="all">all</button>
+          <button class="filter" data-f="model">model</button>
+          <button class="filter" data-f="tools">tools</button>
+          <button class="filter" data-f="system">system</button>
+        </div>
+      </div>
+
+      <div class="phase-banner idle" id="phaseBanner">
+        <span class="pulse"><i></i><i></i><i></i></span>
+        <span class="phase-text" id="phaseText">idle · describe a task below and press run</span>
+        <span class="phase-meta" id="phaseMeta"></span>
+      </div>
+
+      <div class="stream" id="stream" aria-live="polite">
+        <div class="stream-empty" id="streamEmpty">
+          <span class="big">◈</span>
+          <p>No run yet. The agent's process — routing, thinking, exploring, tool calls — streams here live.</p>
+        </div>
+      </div>
+
+      <div class="composer">
+        <div class="composer-row">
+          <label class="field"><span>role</span>
+            <select id="roleSelect"><option value="">auto-route</option></select>
+          </label>
+          <label class="field"><span>pipeline</span>
+            <select id="pipelineSelect"><option value="">none</option></select>
+          </label>
+          <label class="toggle"><input type="checkbox" id="readOnly" /><i></i><span>read-only</span></label>
+          <label class="toggle"><input type="checkbox" id="autoYes" /><i></i><span>auto-approve</span></label>
+          <span class="spacer"></span>
+          <span class="task-id" id="taskId">—</span>
+        </div>
+        <div class="composer-row main-row">
+          <textarea id="taskInput" rows="2" spellcheck="false"
+            placeholder="Describe the task…  e.g. add cursor pagination to /api/users and cover it with tests   (Ctrl+Enter to run)"></textarea>
+          <div class="composer-actions">
+            <button class="btn primary" id="runBtn">▶ run</button>
+            <button class="btn danger" id="cancelBtn" disabled>■ stop</button>
+            <button class="btn ghost" id="clearBtn">clear</button>
+          </div>
+        </div>
+      </div>
+    </section>
+  </section>
+
+  <!-- ══ right ═════════════════════════════════════════════════════════ -->
+  <aside class="col col-right">
+
+    <section class="card monitor-card">
+      <div class="card-head"><span class="sq"></span>SYSTEM MONITOR<span class="spacer"></span><span class="micro">live</span></div>
+      <div class="mon">
+        <div class="mon-head"><span>EVENTS / MIN</span><b id="monEvents">0</b></div>
+        <canvas class="spark" id="sparkEvents" height="46"></canvas>
+      </div>
+      <div class="mon">
+        <div class="mon-head"><span>TOKENS (in/out)</span><b id="monTokens">0 / 0</b></div>
+        <canvas class="spark" id="sparkTokens" height="46"></canvas>
+      </div>
+      <div class="mon">
+        <div class="mon-head"><span>TOOL LATENCY</span><b id="monLatency">—</b></div>
+        <canvas class="spark" id="sparkLatency" height="46"></canvas>
+      </div>
+    </section>
+
+    <section class="card telemetry-card">
+      <div class="card-head"><span class="sq"></span>RUN TELEMETRY<span class="spacer"></span><span class="pill" id="telState">idle</span></div>
+      <div class="tel-grid">
+        <div class="tel"><b id="telTurns">0</b><span>turns</span></div>
+        <div class="tel"><b id="telTools">0</b><span>tools</span></div>
+        <div class="tel"><b id="telIn">0</b><span>tok in</span></div>
+        <div class="tel"><b id="telOut">0</b><span>tok out</span></div>
+        <div class="tel"><b id="telTime">0.0s</b><span>elapsed</span></div>
+        <div class="tel"><b id="telRole">—</b><span>role</span></div>
+      </div>
+      <div class="bar"><i id="turnBar"></i></div>
+      <div class="tel-foot"><span id="telAgent">agent —</span><span id="telRoute">route —</span></div>
+    </section>
+
+    <section class="card approval-card hidden" id="approvalCard">
+      <div class="card-head warn"><span class="sq"></span>APPROVAL GATE<span class="spacer"></span><span class="pill danger" id="apRisk">write</span></div>
+      <div class="ap-tool"><b id="apTool">—</b></div>
+      <pre class="ap-preview" id="apPreview"></pre>
+      <div class="ap-actions">
+        <button class="btn primary" id="apYes">approve</button>
+        <button class="btn" id="apAlways">always</button>
+        <button class="btn danger" id="apNo">deny</button>
+      </div>
+    </section>
+
+    <section class="card pipes-card">
+      <div class="card-head"><span class="sq"></span>PIPELINES<span class="spacer"></span><span class="micro" id="pipeCount">0</span></div>
+      <div class="pipes" id="pipeList"></div>
+    </section>
+
+    <section class="card mem-card">
+      <div class="card-head"><span class="sq"></span>SEMANTIC INDEX<span class="spacer"></span><span class="micro" id="memRole">general</span></div>
+      <div class="mem-body" id="memBody">no memory notes for this role yet.</div>
+      <div class="mem-foot" id="memPath">—</div>
+    </section>
+
+    <section class="card keys-card">
+      <div class="card-head"><span class="sq"></span>API KEYS<span class="spacer"></span><span class="micro">store · ~/.config/nexus/keys.json</span></div>
+      <div class="keys" id="keyList"></div>
+    </section>
+  </aside>
+</main>
+
+<footer class="statusbar">
+  <span class="sb-item"><i class="dot ok"></i><span id="sbState">idle</span></span>
+  <span class="sb-sep">/</span>
+  <span class="sb-item" id="sbTask">no task</span>
+  <span class="sb-sep">/</span>
+  <span class="sb-item" id="sbRole">role —</span>
+  <span class="sb-sep">/</span>
+  <span class="sb-item" id="sbAgent">agent —</span>
+  <span class="spacer"></span>
+  <span class="sb-item micro" id="sbTicker">SSE · /api/events · POST /api/task · POST /api/approve</span>
+  <span class="sb-item micro" id="sbVersion">nexus —</span>
+</footer>
+
+<script src="/dashboard/dashboard.js"></script>
+</body>
+</html>

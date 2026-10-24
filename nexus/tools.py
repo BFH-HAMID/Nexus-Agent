@@ -19,9 +19,10 @@ import re
 import shlex
 import subprocess
 import time
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Sequence
+from typing import Any
 
 from .types import Event, EventHandler, EventType, Risk, ToolSpec
 
@@ -507,8 +508,6 @@ class RoleMemory:
 
 def build_tools(ctx: ToolContext, *, role: str = "general", include_ask_agent: bool = True) -> ToolRegistry:
     reg = ToolRegistry(ctx)
-    ws = ctx.workspace
-    guard = ctx.guard
 
     # -- files ------------------------------------------------------------- #
     reg.register(

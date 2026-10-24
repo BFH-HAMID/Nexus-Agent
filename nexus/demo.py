@@ -15,8 +15,9 @@ Why it exists:
 from __future__ import annotations
 
 import time
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any
 
 from .config import NexusConfig
 from .providers import ProviderRegistry
@@ -28,7 +29,6 @@ from .types import (
     Message,
     Provider,
     TextBlock,
-    ToolSpec,
     Usage,
 )
 
@@ -118,8 +118,16 @@ class DemoRunner:
         turns = 0
         last_text = ""
 
-        for kind, payload in script_for(task, active_role.name, agent_cfg.name, self.workspace):
+        script = script_for(task, active_role.name, agent_cfg.name, self.workspace)
+        max_turns = max(int(getattr(self.config.settings, "max_turns", 24) or 24), len(script))
+        for kind, payload in script:
             turns += 1
+            self.emit(Event(EventType.THINK, {
+                "phase": "think", "turn": turns, "max_turns": max_turns,
+                "role": active_role.name, "agent": agent_cfg.name,
+                "model": agent_cfg.model, "provider": agent_cfg.provider,
+                "pending_tools": 0, "demo": True,
+            }))
             if kind == "read":
                 name, args = "read_file", {"path": payload["path"], "start_line": 1, "end_line": 12}
                 prose = f"Reading `{payload['path']}` before changing anything."
@@ -144,7 +152,7 @@ class DemoRunner:
                 registry.call("finish", {
                     "summary": summary,
                     "followups": [
-                        "run the same task without --demo once ANTHROPIC_API_KEY or Ollama is available",
+                        "run the same task without --demo once a Gemini/DeepSeek/OpenRouter key is set (nexus keys set)",
                         "run `nexus doctor` to check every configured agent endpoint",
                     ],
                 })
@@ -159,6 +167,11 @@ class DemoRunner:
             _result, is_error = registry.call(name, args)
             tool_calls += 1
             usage.add(Usage(120, 40, 1))
+            self.emit(Event(EventType.USAGE, {
+                "input_tokens": usage.input_tokens, "output_tokens": usage.output_tokens,
+                "call_input_tokens": 120, "call_output_tokens": 40,
+                "calls": usage.calls, "model": agent_cfg.model, "demo": True,
+            }))
             if is_error:
                 self.emit(Event(EventType.STATUS, {"message": f"demo step '{name}' was denied or failed"}))
 
@@ -188,6 +201,10 @@ class _DemoConsultRegistry(ProviderRegistry):
         self.config = config
 
     def call_with_fallback(self, name: str, system: str, messages, tools=None, **kwargs):
+        self.emit(Event(EventType.USAGE, {
+            "input_tokens": 120, "output_tokens": 40, "call_input_tokens": 120,
+            "call_output_tokens": 40, "model": f"(demo consult: {name})", "demo": True,
+        }))
         question = ""
         for message in messages:
             if isinstance(message.content, str):

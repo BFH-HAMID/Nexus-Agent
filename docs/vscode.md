@@ -30,8 +30,14 @@ Two levels, both working:
 
 `F5` → **Nexus: chat (debug)**, **Nexus: task (debug)**, **Nexus: ask (read-only, debug)**,
 **Nexus: pipeline ship-feature (debug)**, **Nexus: serve sidebar (debug)**, **Nexus: doctor**,
-**Pytest: nexus tests**. All of them load `${workspaceFolder}/.env` and run with
-`justMyCode: false`, so you can step into `router.py` and `agent.py`.
+**Pytest: nexus tests**. They run with `justMyCode: false`, so you can step into `router.py` and
+`agent.py`. No `.env` file is needed: API keys come from `nexus keys set` (or your shell
+environment). Set them once from the integrated terminal:
+
+```bash
+nexus keys set gemini
+nexus doctor
+```
 
 ## 2. Sidebar extension
 

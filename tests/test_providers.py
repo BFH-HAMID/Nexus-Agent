@@ -295,7 +295,8 @@ def test_openai_health_reports_missing_model():
 def test_openai_health_reports_dead_server():
     provider = openai_compat([ConnectionError("refused")])
     ok, detail = provider.health()
-    assert not ok and "unreachable" in detail
+    assert not ok
+    assert "ollama serve" in detail or "unreachable" in detail
 
 
 def test_openai_empty_response_is_an_error():

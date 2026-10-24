@@ -17,7 +17,6 @@ import nexus.importers as imp
 from nexus.config import load_config
 from nexus.types import sanitize_role_name
 
-
 # --------------------------------------------------------------------------- #
 # URL parsing
 # --------------------------------------------------------------------------- #
@@ -221,7 +220,7 @@ def test_convert_maps_security_to_uncensored():
         source="security/pentest-helper.md", kind="persona", repo="r",
     )
     roles, _ = imp.convert([raw], taken=set(), repo_slug="r")
-    assert roles[0]["agent"] == "ollama-uncensored"
+    assert roles[0]["agent"] == "openrouter-uncensored"
 
 
 def test_convert_forced_agent_overrides():
@@ -229,8 +228,8 @@ def test_convert_forced_agent_overrides():
         slug="x", title="X", description="d", persona="You are X " * 20,
         category="security", source="x.md", kind="persona", repo="r",
     )
-    roles, _ = imp.convert([raw], taken=set(), repo_slug="r", forced_agent="hermes")
-    assert roles[0]["agent"] == "hermes"
+    roles, _ = imp.convert([raw], taken=set(), repo_slug="r", forced_agent="deepseek")
+    assert roles[0]["agent"] == "deepseek"
 
 
 def test_convert_limit_skips_excess():

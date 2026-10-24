@@ -54,7 +54,7 @@ Quality filters keep the roster clean:
 | `persona` | frontmatter `description` + the markdown body (capped at 6000 chars) |
 | `keywords` | auto-derived from name + title + description (weighted, de-stopworded) so **keyword routing works without an LLM call** |
 | `aliases` | the original slug / title when the name was disambiguated |
-| `agent` | `""` (inherits `default_agent` → Claude), **except** security/pentest/OSINT/reverse-engineering categories which map to `ollama-uncensored`, matching the core roster |
+| `agent` | `""` (inherits `default_agent` → `gemini`), **except** security/pentest/OSINT/reverse-engineering categories which map to `openrouter-uncensored`, matching the core roster |
 
 Names never clobber a curated core role: on collision the import is suffixed
 (`api-design` → `api-design-ecc`), then `-2`, `-3`, … Cross-repo collisions are

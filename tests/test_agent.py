@@ -13,7 +13,7 @@ from .conftest import FakeProvider, emit_to, fake_registry, finish_completion, t
 
 def make_agent(repo, script, *, gate_mode="auto", config=None, extra_providers=(), **kwargs):
     cfg = config or load_config(repo)
-    provider = FakeProvider("claude", script)
+    provider = FakeProvider("gemini", script)
     providers = fake_registry(provider, *extra_providers, config=cfg)
     bucket: list[dict] = []
     agent = NexusAgent(
@@ -41,7 +41,7 @@ def test_persona_and_agent_are_injected_per_role(repo):
     agent = make_agent(repo, [finish_completion("done")])
     result = agent.run("write a react component with tailwind")
     assert result.role == "frontend"
-    assert result.agent == "claude"
+    assert result.agent == "gemini"
     system = agent.fake.calls[0]["system"]
     assert "senior Frontend Engineer" in system
     assert "# Active role: frontend" in system
@@ -50,17 +50,17 @@ def test_persona_and_agent_are_injected_per_role(repo):
 
 
 def test_uncensored_role_switches_agent(repo):
-    uncensored = FakeProvider("ollama-uncensored", [finish_completion("scan planned")], tool_mode="text")
+    uncensored = FakeProvider("openrouter-uncensored", [finish_completion("scan planned")], tool_mode="text")
     agent = make_agent(repo, [finish_completion("unused")], extra_providers=[uncensored])
     result = agent.run("run nmap against my own lab and escalate privileges")
     assert result.role == "pentesting"
-    assert result.agent == "ollama-uncensored"
+    assert result.agent == "openrouter-uncensored"
     assert uncensored.calls, "the uncensored provider was never used"
     system = uncensored.calls[0]["system"]
     assert "offensive-security specialist" in system
     assert "authorized penetration testing" in system
     events = [e for e in agent.events if e["type"] == "agent"]  # type: ignore[attr-defined]
-    assert any(e.get("agent") == "ollama-uncensored" and e.get("role") == "pentesting" for e in events)
+    assert any(e.get("agent") == "openrouter-uncensored" and e.get("role") == "pentesting" for e in events)
     assert any(e.get("tool_mode") == "text" for e in events)  # no native tool template on dolphin
 
 
@@ -157,17 +157,16 @@ def test_provider_error_is_reported_not_raised(repo):
 
 
 def test_fallback_provider_completes_the_run(repo):
-    from nexus.config import AgentConfig
 
     cfg = load_config(repo)
-    cfg.agents["claude"].fallback = "hermes"
-    claude = FakeProvider("claude", [ProviderError("claude is down", retryable=True)], fallback="hermes")
-    hermes = FakeProvider("hermes", [finish_completion("hermes finished it")])
+    cfg.agents["gemini"].fallback = "deepseek"
+    claude = FakeProvider("gemini", [ProviderError("claude is down", retryable=True)], fallback="deepseek")
+    hermes = FakeProvider("deepseek", [finish_completion("hermes finished it")])
     agent = NexusAgent(cfg, workspace=repo, providers=fake_registry(claude, hermes, config=cfg),
                        auto_yes=True, emit=lambda e: None)
     result = agent.run("write a README section")
     assert result.ok
-    assert result.agent == "hermes"
+    assert result.agent == "deepseek"
     assert result.summary == "hermes finished it"
 
 
@@ -184,7 +183,7 @@ def test_plan_mode_denies_writes(repo):
         tool_completion([("write_file", {"path": "x.py", "content": "x"})]),
         finish_completion("planned instead"),
     ], gate_mode="plan")
-    result = agent.run("change the code", read_only=True)
+    agent.run("change the code", read_only=True)
     assert not (repo / "x.py").exists()
     denied = [e for e in agent.events if e["type"] == "tool_result" and e.get("is_error")]  # type: ignore[attr-defined]
     assert denied
@@ -193,7 +192,7 @@ def test_plan_mode_denies_writes(repo):
 def test_role_tool_whitelist_is_honoured(repo):
     cfg = load_config(repo)
     cfg.roles.get("docs").tools = ["read_file", "list_files", "finish"]
-    cfg.roles.get("docs").agent = "claude"
+    cfg.roles.get("docs").agent = "gemini"
     agent = make_agent(repo, [finish_completion("ok")], config=cfg)
     agent.run("write docs", role="docs")
     tools = agent.fake.calls[0]["tools"]
@@ -270,7 +269,7 @@ def test_ask_agent_consults_another_specialist(repo):
 
 
 def test_ask_agent_cannot_recurse(repo):
-    hermes = FakeProvider("hermes", [text_completion("answer")])
+    hermes = FakeProvider("deepseek", [text_completion("answer")])
     agent = make_agent(repo, [finish_completion("ok")], extra_providers=[hermes])
     ctx = agent.build_context(agent.active_role, depth=1)
     from nexus.tools import build_tools
@@ -351,7 +350,7 @@ def test_render_system_prompt_sections(repo, config):
     role = config.role("pentesting")
     prompt = render_system_prompt(
         role=role,
-        agent_label="ollama-uncensored / dolphin-mixtral:latest",
+        agent_label="openrouter-uncensored / dolphin-mistral-24b-venice-edition",
         workspace=repo,
         memory_text="- lab host is 10.0.0.5",
         tools_hint="- read_file: read a file",
@@ -361,7 +360,7 @@ def test_render_system_prompt_sections(repo, config):
     assert "You are Nexus" in prompt
     assert "# Active role: pentesting" in prompt
     assert "offensive-security specialist" in prompt
-    assert "dolphin-mixtral" in prompt
+    assert "dolphin-mistral-24b-venice-edition" in prompt
     assert "lab host is 10.0.0.5" in prompt
     assert "PLAN MODE" in prompt
     assert "Extra rule." in prompt
@@ -387,15 +386,15 @@ def test_events_are_emitted_in_order(repo):
 def test_ship_feature_pipeline_hands_off_between_roles(repo):
     cfg = load_config(repo)
     cfg.pipelines["ship-feature"].steps = cfg.pipelines["ship-feature"].steps[:3]  # build -> test -> review
-    backend = FakeProvider("claude", [
-        # step 1: backend (claude) writes the code, then finishes
+    backend = FakeProvider("gemini", [
+        # step 1: backend (gemini) writes the code, then finishes
         tool_completion([("write_file", {"path": "app/api.py", "content": "# new api\n"})]),
         finish_completion("implemented /users rate limiting"),
-        # step 3: security-audit (also claude) reviews and finishes
+        # step 3: security-audit (also gemini) reviews and finishes
         finish_completion("security review clean"),
     ])
-    hermes = FakeProvider("hermes", [finish_completion("tests written: 12 passed")])
-    cfg.roles.get("qa").agent = "hermes"
+    hermes = FakeProvider("deepseek", [finish_completion("tests written: 12 passed")])
+    cfg.roles.get("qa").agent = "deepseek"
     agent = NexusAgent(cfg, workspace=repo, providers=fake_registry(backend, hermes, config=cfg),
                        auto_yes=True, emit=lambda e: None)
     results = agent.run_pipeline("ship-feature", "add rate limiting to the public API")
@@ -418,8 +417,8 @@ def test_pipeline_stops_when_a_step_fails(repo):
         {"role": "backend", "instruction": "build"},
         {"role": "qa", "instruction": "test"},
     ])
-    failing = FakeProvider("claude", [ProviderError("down", retryable=False)])
-    hermes = FakeProvider("hermes", [finish_completion("should not run")])
+    failing = FakeProvider("gemini", [ProviderError("down", retryable=False)])
+    hermes = FakeProvider("deepseek", [finish_completion("should not run")])
     agent = NexusAgent(cfg, workspace=repo, providers=fake_registry(failing, hermes, config=cfg),
                        auto_yes=True, emit=lambda e: None)
     results = agent.run_pipeline("mini", "task")
@@ -441,7 +440,7 @@ def test_read_only_pipeline_step_cannot_write(repo):
     cfg.pipelines["audit"] = Pipeline(name="audit", steps=[
         {"role": "security-audit", "instruction": "look, do not touch", "read_only": True},
     ])
-    provider = FakeProvider("claude", [
+    provider = FakeProvider("gemini", [
         tool_completion([("write_file", {"path": "evil.py", "content": "x"})]),
         finish_completion("reported findings"),
     ])
