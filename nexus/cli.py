@@ -26,6 +26,7 @@ import json
 import os
 import shutil
 import sys
+import time
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
@@ -45,6 +46,8 @@ from .tools import (
     run_git,
 )
 from .types import Event, EventType, Risk, ToolSpec
+from .ui import TerminalUI, help_text, print_footer
+from .ui import banner as render_banner
 
 # --------------------------------------------------------------------------- #
 # tiny ansi renderer
@@ -306,7 +309,11 @@ def _prompt_and_save_key(family: str, *, value: str = "", session_only: bool = F
 
 def maybe_prompt_for_keys(config, args: argparse.Namespace) -> None:
     """First-run helper: offer to paste a key instead of making a .env file."""
-    if getattr(args, "no_key_prompt", False) or getattr(args, "json", False):
+    if (
+        getattr(args, "no_key_prompt", False)
+        or getattr(args, "json", False)
+        or getattr(args, "demo", False)      # demo is offline by design - never ask
+    ):
         return
     if os.environ.get("NEXUS_NO_PROMPT") or not sys.stdin.isatty():
         return
@@ -452,7 +459,7 @@ def build_agent(args: argparse.Namespace) -> NexusAgent:
         print(COLORS.red(f"config error: {exc}"), file=sys.stderr)
         raise SystemExit(2) from None
     factory = getattr(args, "providers_factory", None)  # test/extension hook
-    if factory is None:
+    if factory is None and not getattr(args, "defer_key_prompt", False):
         maybe_prompt_for_keys(config, args)
     quiet = bool(getattr(args, "json", False))           # --json prints JSON only
     agent = NexusAgent(
@@ -487,61 +494,34 @@ def build_agent(args: argparse.Namespace) -> NexusAgent:
 # --------------------------------------------------------------------------- #
 
 
-HELP_TEXT = """\
-Nexus REPL commands
-  /help                     this help
-  /role <name>              pin the active role (turns auto-routing off)
-  /auto [on|off]            toggle automatic role routing
-  /agent <name>             point the active role at another agent
-  /model <id>               override the model for this session
-  /ask <question>           read-only answer (no writes, no shell mutations)
-  /plan <task>              same as /ask but framed as an implementation plan
-  /task <task>              full autonomous run (tools enabled)
-  /pipeline <name> <task>   run a multi-role handoff pipeline
-  /roles [needle]           list / search the team
-  /addagent <github-url>    import agents from a GitHub repo (then auto-reloads)
-  /agents                   list configured agents + models
-  /keys [set <provider>]    show or set API keys (no .env file needed)
-  /models [agent]           list model ids the provider serves
-  /memory [role]            show saved role memory
-  /remember <text>          save a note for the active role
-  /system [role]            print the exact system prompt in use
-  /tools                    list tools available to the active role
-  /doctor                   health check
-  /stats                    session stats (turns, tokens, tools)
-  /compact                  trim old tool output from the context
-  /clear                    clear conversation history
-  /new                      clear history + role pin (fresh session)
-  /save [file]              dump the transcript to a file
-  /exit                     quit (also /quit, Ctrl-D)
-
-Anything that does not start with '/' is sent to the agent as a chat turn.
-"""
 
 
 def cmd_chat(args: argparse.Namespace) -> int:
+    # one renderer for the whole session: streaming + spinner + footers
+    ui = TerminalUI(COLORS, stream=True)
+    if getattr(args, "emit", None) is None:
+        args.emit = ui
+    args.defer_key_prompt = True          # banner first, key prompt after it
     agent = build_agent(args)
-    print(COLORS.bold("Nexus Agent") + COLORS.dim(f" v{__version__}"))
-    print(COLORS.dim(f"workspace: {agent.ws}"))
-    print(
-        COLORS.dim(
-            f"default agent: {agent.config.default_agent} | roles: {len(agent.config.roles)} | "
-            f"auto-route: {'on' if agent.auto_route else 'off'} | approval: {agent.gate.mode}"
-            + (" | local-first" if agent.config.settings.prefer_local else "")
-        )
-    )
-    print(COLORS.dim("type /help for commands, /exit to quit\n"))
+    if getattr(args, "json", False):
+        agent.emit = lambda _event: None
+
+    if not getattr(args, "json", False):
+        render_banner(COLORS, agent, version=__version__, workspace=str(agent.ws))
+    maybe_prompt_for_keys(agent.config, args)
 
     if args.message:
         result = agent.chat_turn(args.message, read_only=args.read_only)
-        print_result(result, verbose=False)
+        print_footer(COLORS, result)
         if not args.keep_open:
             return 0 if result.ok else 1
 
     while True:
         try:
-            role_hint = agent.sticky_role or (f"auto:{agent.active_role.name}" if agent.auto_route else agent.active_role.name)
-            line = input(COLORS.bold(f"nexus[{role_hint}] ❯ ")).strip()
+            role_hint = agent.sticky_role or (
+                f"auto:{agent.active_role.name}" if agent.auto_route else agent.active_role.name
+            )
+            line = input(ui.prompt(role_hint)).strip()
         except (EOFError, KeyboardInterrupt):
             print()
             break
@@ -550,13 +530,13 @@ def cmd_chat(args: argparse.Namespace) -> int:
         if line in {"/exit", "/quit", "/q"}:
             break
         if line.startswith("/"):
-            if not handle_slash(agent, line):
-                continue
+            handle_slash(agent, line)
             continue
         result = agent.chat_turn(line, read_only=args.read_only)
-        print_result(result, verbose=False)
+        print_footer(COLORS, result)
         if not result.ok:
-            print(COLORS.red(f"run failed: {result.stopped_reason}"))
+            print(COLORS.red(f"run stopped: {result.stopped_reason}"))
+    print(COLORS.dim("bye · nexus"))
     return 0
 
 
@@ -567,7 +547,7 @@ def handle_slash(agent: NexusAgent, line: str) -> bool:
     arg = parts[1].strip() if len(parts) > 1 else ""
 
     if cmd == "help":
-        print(HELP_TEXT)
+        print(help_text(COLORS))
     elif cmd == "role":
         if not arg:
             print(COLORS.dim(f"active role: {agent.active_role.name} (sticky={agent.sticky_role})"))
@@ -621,6 +601,16 @@ def handle_slash(agent: NexusAgent, line: str) -> bool:
             print_result(res, verbose=False)
             print(COLORS.dim(f"  ↳ step done: {res.role} ({res.tool_calls} tool calls)"))
         print_result(results[-1])
+    elif cmd in {"gui", "dashboard", "panel"}:
+        port = int(arg.strip() or 8787) if arg.strip().isdigit() else 8787
+        _start_dashboard(agent, port=port)
+    elif cmd in {"local", "ollama"}:
+        bits = arg.split()
+        pull = None
+        want = [b for b in bits if not b.startswith("-")]
+        if "--pull" in bits or "-p" in bits:
+            pull = want[0] if want else None
+        cmd_local(argparse.Namespace(host=None, pull=pull, json=False))
     elif cmd == "roles":
         print_roles(agent.config, arg)  # return code ignored inside the REPL
     elif cmd == "addagent":
@@ -713,6 +703,62 @@ def handle_slash(agent: NexusAgent, line: str) -> bool:
     else:
         print(COLORS.red(f"unknown command '/{cmd}' - try /help"))
     return True
+
+
+def _start_dashboard(agent: NexusAgent, *, port: int = 8787, host: str = "127.0.0.1") -> str:
+    """Serve the GUI dashboard from this process, without blocking the REPL.
+
+    ``/gui`` is the shortcut for people who live in the terminal: one command,
+    the URL appears, the browser opens if this machine has one.
+    """
+    import socket
+    import threading
+    import webbrowser
+
+    from .server import serve
+
+    existing = getattr(agent, "_nexus_gui_port", None)
+    if existing:
+        url = f"http://{host}:{existing}/dashboard"
+        print(COLORS.cyan(f"dashboard already running → {url}"))
+        return url
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+        probe.settimeout(0.3)
+        if probe.connect_ex((host, port)) == 0:
+            url = f"http://{host}:{port}/dashboard"
+            print(COLORS.yellow(f"port {port} is already serving something - opening {url}"))
+            print(COLORS.dim("  if that is not Nexus, run /gui 8790 with a free port"))
+            agent._nexus_gui_port = port
+            return url
+
+    def run() -> None:
+        try:
+            serve(host=host, port=port, workspace=agent.ws, quiet=True)
+        except Exception as exc:  # noqa: BLE001 - a bad port must not kill the REPL
+            print(COLORS.red(f"dashboard failed to start: {exc}"))
+
+    threading.Thread(target=run, name="nexus-dashboard", daemon=True).start()
+    url = f"http://{host}:{port}/dashboard"
+    for _ in range(40):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+            probe.settimeout(0.15)
+            if probe.connect_ex((host, port)) == 0:
+                break
+        time.sleep(0.05)
+    agent._nexus_gui_port = port
+    print()
+    print(COLORS.bold("GUI dashboard") + COLORS.green(f"  {url}"))
+    print(COLORS.dim(f"  live routing · streaming output · approvals · run history  (port {port})"))
+    try:
+        if webbrowser.open(url):
+            print(COLORS.dim("  opened in your browser"))
+        else:
+            print(COLORS.dim("  open the URL above in a browser (the server keeps running)"))
+    except Exception:  # noqa: BLE001 - headless box
+        print(COLORS.dim("  no browser on this machine - open the URL above from any device"))
+    print()
+    return url
 
 
 def _doctor_args(agent: NexusAgent) -> argparse.Namespace:
@@ -873,6 +919,21 @@ def cmd_roles(args: argparse.Namespace) -> int:
     return print_roles(config, args.search or "")
 
 
+def _local_status(base_url: str) -> str:
+    """Cheap TCP probe - `nexus agents` must not hang on a dead local box."""
+    import socket
+    from urllib.parse import urlparse
+
+    parsed = urlparse(base_url)
+    host = parsed.hostname or "localhost"
+    port = parsed.port or (443 if parsed.scheme == "https" else 80)
+    try:
+        with socket.create_connection((host, port), timeout=0.4):
+            return COLORS.green(f"reachable at {base_url}")
+    except OSError:
+        return COLORS.yellow(f"not running at {base_url} - `nexus local` to set it up")
+
+
 def cmd_agents(args: argparse.Namespace) -> int:
     config = load_config(Path(args.workspace).resolve() if args.workspace else Path.cwd())
     for name, cfg in sorted(config.agents.items()):
@@ -892,6 +953,8 @@ def cmd_agents(args: argparse.Namespace) -> int:
             print("    api key  : (not needed - keyless local/self-hosted endpoint)")
         print(f"    tools    : {cfg.tool_mode}{' (supports_tools=false)' if not cfg.supports_tools else ''}")
         if cfg.optional:
+            status = _local_status(cfg.effective_base_url or "")
+            print(f"    local    : {status}")
             print("    optional : yes - offline is fine, roles fall back to a hosted agent")
         print(f"    fallback : {cfg.fallback or '-'}")
         print(f"    roles    : {len(roles)} ({', '.join(roles[:6])}{'…' if len(roles) > 6 else ''})")
@@ -935,6 +998,116 @@ def cmd_models(args: argparse.Namespace) -> int:
         print(f" {mark} {name}")
     print(COLORS.dim(f"switch: NEXUS model override in agents.yaml, or {cfg.name}.model"))
     return 0
+
+
+# --------------------------------------------------------------------------- #
+# local models (Ollama) - Hermes, uncensored, everything free and offline
+# --------------------------------------------------------------------------- #
+
+LOCAL_MODELS: tuple[tuple[str, str, str], ...] = (
+    ("hermes3:8b", "hermes", "local Hermes worker (docs, QA, bulk edits)"),
+    ("hermes3:70b", "hermes-big", "bigger Hermes when you have the VRAM"),
+    ("dolphin-mixtral:latest", "ollama-uncensored", "uncensored local model (authorized research)"),
+    ("llama3.1:8b", "ollama", "generic local fallback"),
+)
+
+
+def ollama_base_url() -> str:
+    raw = os.environ.get("OLLAMA_HOST") or "http://localhost:11434"
+    raw = raw.rstrip("/")
+    return raw[: -len("/v1")] if raw.endswith("/v1") else raw
+
+
+def _ollama_models(base: str, timeout: float = 2.0) -> tuple[bool, list[str], str]:
+    """(running, model names, detail) - never raises, never hangs."""
+    try:
+        import httpx
+    except Exception:  # pragma: no cover - httpx is a hard dependency
+        return False, [], "httpx is not installed"
+    try:
+        response = httpx.get(f"{base}/api/tags", timeout=timeout)
+        if response.status_code != 200:
+            return False, [], f"HTTP {response.status_code}"
+        data = response.json()
+        names = [str(m.get("name") or "") for m in (data.get("models") or []) if m.get("name")]
+        return True, names, f"{len(names)} model(s)"
+    except Exception as exc:  # noqa: BLE001
+        return False, [], f"{exc.__class__.__name__}: {exc}"
+
+
+def cmd_local(args: argparse.Namespace) -> int:
+    base = getattr(args, "host", None) or ollama_base_url()
+    base = base.rstrip("/")
+    if base.endswith("/v1"):
+        base = base[: -len("/v1")]
+
+    if getattr(args, "pull", None):
+        model = args.pull
+        if not shutil.which("ollama"):
+            print(COLORS.red("ollama is not installed - https://ollama.com/download"))
+            return 1
+        print(COLORS.bold(f"ollama pull {model}") + COLORS.dim("  (this can take a while)"))
+        try:
+            import subprocess
+
+            code = subprocess.call(["ollama", "pull", model])
+        except Exception as exc:  # noqa: BLE001
+            print(COLORS.red(f"✗ {exc}"))
+            return 1
+        if code == 0:
+            print(COLORS.green(f"✓ {model} is ready - use it with /agent <agent> or a role that targets it"))
+        return code
+
+    running, models, detail = _ollama_models(base)
+    rows: list[dict[str, Any]] = []
+    for model, agent_name, purpose in LOCAL_MODELS:
+        present = any(name == model or name.startswith(model.split(":")[0] + ":") for name in models)             if running else False
+        rows.append({"model": model, "agent": agent_name, "purpose": purpose, "present": present})
+
+    if getattr(args, "json", False):
+        print(json.dumps({
+            "host": base,
+            "running": running,
+            "detail": detail,
+            "installed": models,
+            "agents": rows,
+        }, ensure_ascii=False, indent=2))
+        return 0 if running else 1
+
+    mark = COLORS.green("✓") if running else COLORS.red("✗")
+    print(COLORS.bold("Nexus local models") + COLORS.dim(f"  (Ollama at {base})"))
+    print(f"  {mark} {('running - ' + detail) if running else ('not running - ' + detail)}")
+    print()
+    print(COLORS.dim(f"  {'model':<24} {'agent':<20} status"))
+    for row in rows:
+        if running and row["present"]:
+            state = COLORS.green("pulled")
+        elif running:
+            state = COLORS.dim("not pulled")
+        else:
+            state = COLORS.dim("-")
+        print(f"  {row['model']:<24} {COLORS.cyan(row['agent']):<29} {state}  {COLORS.dim(row['purpose'])}")
+
+    print()
+    if not running:
+        print(COLORS.yellow("Start Ollama, then pull the models you want:"))
+        print(COLORS.dim("  ollama serve"))
+        for model, _agent, _purpose in LOCAL_MODELS[:3]:
+            print(COLORS.dim(f"  ollama pull {model}"))
+        print(COLORS.dim("  nexus local --pull hermes3:8b      # or let Nexus do it"))
+        print()
+        print(COLORS.dim("No Ollama? The same roles fall back to the hosted free agents: "
+                         "hermes-free, openrouter-uncensored."))
+    else:
+        missing = [row for row in rows if not row["present"]]
+        if missing:
+            print(COLORS.dim("Pull the missing ones:"))
+            for row in missing:
+                print(COLORS.dim(f"  ollama pull {row['model']}"))
+        else:
+            print(COLORS.green("All local workers are ready."))
+        print(COLORS.dim("Use one now:  /agent hermes   ·   /agent ollama-uncensored   ·   /local --pull <model>"))
+    return 0 if running else 1
 
 
 def _list_packs(workspace: Path) -> int:
@@ -1211,10 +1384,16 @@ def cmd_panel(args: argparse.Namespace) -> int:
 
     workspace = Path(args.workspace).resolve() if args.workspace else Path.cwd().resolve()
     host = "127.0.0.1" if args.host == "0.0.0.0" else args.host
-    print(COLORS.bold(f"dashboard: http://{host}:{args.port}/dashboard") + COLORS.dim(f"  (workspace {workspace})"))
+    url = f"http://{host}:{args.port}/dashboard"
+    print()
+    print(COLORS.bold("GUI dashboard") + COLORS.green(f"  {url}"))
+    print(COLORS.dim(f"  workspace {workspace} · Ctrl-C stops the server"))
+    if not getattr(args, "open", True):
+        print(COLORS.dim("  open that URL in a browser (--no-open was passed, so nothing was launched)"))
     if args.host == "0.0.0.0":
         print(COLORS.dim("  bound to 0.0.0.0 so a remote browser can reach it - "
                          "set --token/NEXUS_SERVE_TOKEN before exposing the port"))
+    print()
     return serve(host=args.host, port=args.port, workspace=workspace, token=args.token,
                  auto_yes=args.yes, quiet=args.quiet, demo=getattr(args, "demo", False),
                  open_panel=getattr(args, "open", True))
@@ -1424,6 +1603,12 @@ def build_parser() -> argparse.ArgumentParser:
                    help="use the key for this process only - do not write it to disk")
     p.add_argument("--json", action="store_true")
     p.set_defaults(func=cmd_keys)
+
+    p = sub.add_parser("local", help="Ollama status: Hermes / uncensored / local models")
+    p.add_argument("--host", help="Ollama base URL (default $OLLAMA_HOST or http://localhost:11434)")
+    p.add_argument("--pull", metavar="MODEL", help="pull a model now (e.g. hermes3:8b)")
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(func=cmd_local)
 
     p = sub.add_parser("models", help="list the model ids a provider serves")
     p.add_argument("agent", nargs="?", help="agent name from agents.yaml (default: the default agent)")

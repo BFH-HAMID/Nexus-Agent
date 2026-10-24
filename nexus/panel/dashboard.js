@@ -517,7 +517,28 @@
         setPhase("thinking", "thinking · " + (state.activeAgent || ""), "");
         break;
       }
+      case "text_delta": {
+        // live tokens: append into one growing "assistant" step
+        const piece = String(e.text || "");
+        if (!piece) break;
+        if (!state.streamEl || !state.streamEl.isConnected) {
+          state.streamEl = addStep("text", "assistant", "▸",
+            `<span class="txt"></span>`, ts() + (e.role || "") + " · streaming");
+          state.streamTxt = state.streamEl.querySelector(".txt");
+          state.streamChars = 0;
+        }
+        state.streamChars += piece.length;
+        if (state.streamChars < 8000) state.streamTxt.textContent += piece;
+        const stream = $("stream");
+        if (stream.scrollTop + stream.clientHeight >= stream.scrollHeight - 120) {
+          stream.scrollTop = stream.scrollHeight;
+        }
+        break;
+      }
       case "text": {
+        state.streamEl = null;
+        state.streamTxt = null;
+        state.streamChars = 0;
         const txt = String(e.text || "").trim();
         if (!txt) break;
         addStep("text", "assistant", "▸", `<span class="txt">${esc(trunc(txt, 4000))}</span>`, ts() + (e.role || ""));

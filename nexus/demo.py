@@ -100,7 +100,7 @@ class DemoRunner:
             guard=self.guard,
             gate=self.gate,
             config=self.config,
-            providers=_DemoConsultRegistry(self.config),
+            providers=_DemoConsultRegistry(self.config, emit=self.emit),
             emit=self.emit,
             max_output_chars=self.config.settings.max_output_chars,
             max_read_chars=self.config.settings.max_read_chars,
@@ -196,9 +196,10 @@ class DemoRunner:
 class _DemoConsultRegistry(ProviderRegistry):
     """Answers `ask_agent` locally so the demo never needs a live model."""
 
-    def __init__(self, config: NexusConfig):
+    def __init__(self, config: NexusConfig, emit=None):
         super().__init__(dict(config.agents))
         self.config = config
+        self.emit = emit or (lambda _event: None)
 
     def call_with_fallback(self, name: str, system: str, messages, tools=None, **kwargs):
         self.emit(Event(EventType.USAGE, {

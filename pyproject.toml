@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "nexus-agent"
-version = "0.1.0"
+version = "0.2.0"
 description = "Nexus - one CLI/VS Code agent that routes your task to a team of specialist agents (Gemini, DeepSeek, OpenRouter) and ships the result."
 readme = "README.md"
 requires-python = ">=3.10"

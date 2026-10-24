@@ -2,7 +2,7 @@ PY ?= .venv/bin/python
 PIP ?= .venv/bin/pip
 PORT ?= 8787
 
-.PHONY: help venv install test lint roles docs check smoke demo serve panel clean
+.PHONY: help venv install test lint roles docs check smoke demo serve panel gui local clean
 
 help:  ## show this help
 	@grep -hE '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}'
@@ -49,6 +49,12 @@ serve:  ## local HTTP + SSE server (VS Code sidebar backend)
 
 panel:  ## open the browser panel
 	$(PY) -m nexus panel --port $(PORT)
+
+gui:  ## open the GUI dashboard (same agent, in the browser)
+	$(PY) -m nexus gui --port $(PORT)
+
+local:  ## Ollama status: Hermes / uncensored / local models
+	$(PY) -m nexus local
 
 clean:  ## remove caches and build artifacts
 	rm -rf .pytest_cache .ruff_cache dist build *.egg-info

@@ -522,3 +522,14 @@ def test_gui_command_is_an_alias_of_panel(repo, monkeypatch, capsys):
     out = capsys.readouterr().out + capsys.readouterr().err
     assert "/dashboard" in out
     assert "0.0.0.0" in out  # warns about the exposed bind
+
+
+def test_demo_mode_never_prompts_for_api_keys(repo, monkeypatch):
+    """`nexus --demo` is offline by design - it must not block on a key prompt."""
+    from nexus.config import load_config
+
+    asked: list[str] = []
+    monkeypatch.setattr(cli, "_choose_provider", lambda *a, **k: asked.append("prompt"))
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True, raising=False)
+    cli.maybe_prompt_for_keys(load_config(repo), ns(demo=True))
+    assert asked == []

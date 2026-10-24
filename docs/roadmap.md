@@ -19,20 +19,20 @@ Where each phase from the original plan landed, and what is deliberately next.
 * Every run auto-detects the role, switches the active agent and injects the persona; the switch
   is printed: `⇄ role: pentesting -> agent: openrouter-uncensored`.
 
-## Phase 3 — 100+ roles ✅ (959)
+## Phase 3 — 111 curated roles ✅ (963)
 
-Shipped in `roles.yaml` (107 curated, generated and validated by `scripts/build_roles.py`)
+Shipped in `roles.yaml` (111 curated, generated and validated by `scripts/build_roles.py`)
 plus 852 imported from five public repos under `roles.d/` (see [`docs/addagent.md`](addagent.md)):
 
 | Source | Count |
 | --- | --- |
-| `roles.yaml` — curated core | 107 |
+| `roles.yaml` — curated core | 111 |
 | `roles.d/agency-agents.yaml` | 283 |
 | `roles.d/ecc.yaml` | 426 |
 | `roles.d/awesome-llm-apps.yaml` | 123 |
 | `roles.d/superpowers.yaml` | 15 |
 | `roles.d/rea.yaml` | 5 |
-| **Total** | **959** |
+| **Total** | **963** |
 
 Adding a role is a YAML block (or a dataclass entry in the generator) — no code change. Importing
 a whole repo of them is `nexus addagent <url>` (one command, no code change). See
@@ -82,8 +82,8 @@ importer.
 
 Roughly in order of leverage:
 
-1. **Token streaming.** `EventType.TEXT_DELTA` over `content_block_delta` / `stream: true`; the
-   SSE transport is already incremental, so the sidebar gets streaming for free.
+1. ~~**Token streaming.**~~ ✅ done — `EventType.TEXT_DELTA` over `stream: true`, rendered live by
+   `nexus/ui.py` and forwarded over the existing SSE stream to the dashboard/panel.
 2. **Sessions & resume.** Persist `RunResult.messages` to `.nexus/sessions/<id>.json`;
    `nexus resume <id>` and a sidebar "recent runs" list.
 3. **MCP tools.** An `MCPToolSource` that registers remote tools into `ToolRegistry` under the

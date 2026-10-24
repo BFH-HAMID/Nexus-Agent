@@ -2,7 +2,7 @@
   "name": "nexus-agent-sidebar",
   "displayName": "Nexus Agent",
   "description": "Sidebar chat panel for Nexus Agent: shows the active role/agent live and gives you approve/deny buttons instead of a terminal y/N.",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "publisher": "bfr-hamid",
   "license": "MIT",
   "private": true,

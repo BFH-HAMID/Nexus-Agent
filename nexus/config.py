@@ -193,6 +193,7 @@ class AgentConfig:
     tool_mode: str = "native"            # native | text | none
     fallback: str | None = None
     optional: bool = False               # local/extra endpoint: down = warning, not failure
+    stream: bool = True                  # stream tokens so the UI reacts immediately
     label: str = ""
     description: str = ""
     extra: dict[str, Any] = field(default_factory=dict)
@@ -262,7 +263,7 @@ DEFAULT_AGENT_YAML: dict[str, Any] = {
         },
         "openrouter": {
             "provider": "openrouter",
-            "model": "openrouter/auto",
+            "model": "openrouter/free",
             "api_key_env": "OPENROUTER_API_KEY",
             "max_tokens": 8192,
         },
@@ -281,7 +282,7 @@ def parse_agents(data: dict[str, Any]) -> dict[str, AgentConfig]:
         known = {
             "provider", "model", "base_url", "api_key_env", "api_key", "max_tokens",
             "temperature", "timeout", "supports_tools", "tool_mode", "fallback",
-            "optional", "label", "description",
+            "optional", "stream", "label", "description",
         }
         extra = {k: v for k, v in cfg.items() if k not in known}
         agents[str(name)] = AgentConfig(
@@ -298,6 +299,7 @@ def parse_agents(data: dict[str, Any]) -> dict[str, AgentConfig]:
             tool_mode=str(cfg.get("tool_mode", "native")),
             fallback=cfg.get("fallback"),
             optional=bool(cfg.get("optional", False)),
+            stream=bool(cfg.get("stream", True)),
             label=str(cfg.get("label", "")),
             description=str(cfg.get("description", "")),
             extra=extra,
@@ -457,6 +459,7 @@ class Settings:
     router_llm_fallback: bool = True
     router_agent: str = ""              # empty => use default_agent
     max_turns: int = 24
+    stream: bool = True                 # stream model output (instant feedback in CLI/GUI)
     auto_yes: bool = False
     allow_dangerous: bool = False
     command_timeout: float = 120.0
@@ -504,6 +507,7 @@ class Settings:
         self.memory_enabled = _bool("NEXUS_MEMORY", self.memory_enabled)
         self.prefer_local = _bool("NEXUS_PREFER_LOCAL", self.prefer_local)
         self.auto_branch = _bool("NEXUS_AUTO_BRANCH", self.auto_branch)
+        self.stream = _bool("NEXUS_STREAM", self.stream)
         for name, attr in (
             ("NEXUS_MAX_TURNS", "max_turns"),
             ("NEXUS_ROUTER_MIN_SCORE", "router_min_score"),

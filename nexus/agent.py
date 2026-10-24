@@ -323,6 +323,15 @@ class NexusAgent:
                 provider=agent_cfg.provider,
                 pending_tools=len(specs),
             )
+            streamed_parts: list[str] = []
+            use_stream = bool(self.config.settings.stream and getattr(agent_cfg, "stream", True))
+
+            def _on_text(piece: str, _role=active_role.name, _sink=streamed_parts) -> None:
+                if not piece:
+                    return
+                _sink.append(piece)
+                self.event(EventType.TEXT_DELTA, text=piece, role=_role)
+
             try:
                 provider, completion = self.providers.call_with_fallback(
                     agent_cfg.name,
@@ -333,6 +342,7 @@ class NexusAgent:
                     temperature=active_role.temperature,
                     model=active_role.model,
                     on_event=self.emit,
+                    on_text=_on_text if use_stream else None,
                 )
             except Exception as exc:  # noqa: BLE001
                 self.event(EventType.ERROR, message=str(exc))
@@ -366,9 +376,15 @@ class NexusAgent:
             )
             agent_cfg = self.config.agents.get(provider.name, agent_cfg)
 
-            if completion.text:
-                final_text = completion.text
-                self.event(EventType.TEXT, text=completion.text, role=active_role.name)
+            if completion.text or streamed_parts:
+                if completion.text:
+                    final_text = completion.text
+                self.event(
+                    EventType.TEXT,
+                    text=completion.text,
+                    role=active_role.name,
+                    streamed=bool(streamed_parts),
+                )
 
             assistant_blocks = list(completion.content)
             if not assistant_blocks:

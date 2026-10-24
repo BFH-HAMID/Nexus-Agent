@@ -7,6 +7,7 @@
   const token = new URLSearchParams(location.search).get("token") || "";
   let taskId = null;
   let es = null;
+  let streamEl = null;
 
   function api(path, options) {
     const opts = options || {};
@@ -28,6 +29,7 @@
     while (log.childNodes.length > 800) log.removeChild(log.firstChild);
     log.scrollTop = log.scrollHeight;
     window.scrollTo(0, document.body.scrollHeight);
+    return div;
   }
 
   function setStatus(text, live) {
@@ -120,7 +122,18 @@
     } else if (t === "agent") {
       if (data.error) ev("agent", "agent", "⚠ " + (data.agent || "") + " failed: " + data.error);
       else ev("agent", "agent", data.message || ((data.agent || "") + " " + (data.model || "")));
+    } else if (t === "text_delta") {
+      // stream tokens into one growing line instead of re-printing the answer
+      const piece = data.text || "";
+      if (!piece) return;
+      if (!streamEl || !streamEl.isConnected) {
+        streamEl = ev("text", "assistant", "");
+        streamEl.dataset.streaming = "1";
+      }
+      streamEl.appendChild(document.createTextNode(piece));
+      $("log").scrollTop = $("log").scrollHeight;
     } else if (t === "text") {
+      streamEl = null;
       ev("text", "assistant", (data.text || "").trim());
     } else if (t === "tool_call") {
       ev("tool_call", data.tool, data.preview || "");

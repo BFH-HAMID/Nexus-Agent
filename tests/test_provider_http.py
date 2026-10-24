@@ -44,7 +44,29 @@ class _OpenAIStub(BaseHTTPRequestHandler):
         type(self).requests.append(
             {"method": "POST", "path": self.path, "headers": dict(self.headers), "body": body}
         )
+        if body.get("stream"):
+            return self._send_stream()
         self._send(type(self).reply)
+
+    def _send_stream(self) -> None:
+        """Server-sent events, the way every OpenAI-dialect API streams."""
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream")
+        self.send_header("Connection", "close")
+        self.end_headers()
+        chunks = [
+            {"choices": [{"delta": {"content": "hel"}}]},
+            {"choices": [{"delta": {"content": "lo "}}]},
+            {"choices": [{"delta": {"content": "world"}}]},
+            {"choices": [{"delta": {}, "finish_reason": "stop"}],
+             "usage": {"prompt_tokens": 3, "completion_tokens": 2}},
+        ]
+        for chunk in chunks:
+            self.wfile.write(f"data: {json.dumps(chunk)}\n\n".encode())
+            self.wfile.flush()
+        self.wfile.write(b"data: [DONE]\n\n")
+        self.wfile.flush()
+        self.close_connection = True
 
 
 @pytest.fixture()
@@ -175,3 +197,27 @@ def test_models_endpoint_is_normalised(stub):
     provider = OpenAICompatProvider(_agent(f"{stub}/v1beta/openai", provider="gemini"))
     assert provider.models_url == f"{stub}/v1beta/openai/models"
     assert provider.list_models() == ["gemini-3.8-flash", "deepseek-flash"]
+
+
+def test_streaming_delivers_deltas_and_parses_the_final_completion(stub):
+    """`complete(on_text=...)` streams tokens instead of waiting for the full body."""
+    provider = OpenAICompatProvider(_agent(stub, provider="deepseek"))
+    pieces: list[str] = []
+    completion = provider.complete("system", [Message(role="user", content="hi")], None,
+                                   on_text=pieces.append)
+    assert "".join(pieces) == "hello world"
+    assert completion.text == "hello world"
+    assert completion.input_tokens == 3 and completion.output_tokens == 2
+    assert completion.stop_reason == "stop"
+    # the request really asked for a stream
+    assert _OpenAIStub.requests[-1]["body"]["stream"] is True
+
+
+def test_streaming_is_skipped_when_the_setting_is_off(stub):
+    provider = OpenAICompatProvider(_agent(stub, provider="deepseek", stream=False))
+    pieces: list[str] = []
+    completion = provider.complete("system", [Message(role="user", content="hi")], None,
+                                   on_text=pieces.append)
+    assert pieces == []
+    assert completion.text == "hello from the stub"
+    assert _OpenAIStub.requests[-1]["body"]["stream"] is False
