@@ -4,13 +4,16 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <meta name="color-scheme" content="dark" />
-<title>NEXUS AGENT — simulation console</title>
-<meta name="description" content="A self-contained, cinematic simulation of the NEXUS AGENT console. Visual only: no backend, no model calls, no network." />
+<title>NEXUS AGENT — console</title>
+<meta name="description" content="NEXUS AGENT console: the live agent roster, role→agent map and event stream, read from the local Nexus server." />
 <style>
 /* ─────────────────────────────────────────────────────────────────────────
-   NEXUS AGENT · simulation console
-   One file. No libraries, no CDNs, no images, no network.
-   Everything below is a visual simulation — see .disclaimer and `help`.
+   NEXUS AGENT · console
+   One self-contained file (inline HTML/CSS/JS, no libraries, no CDN, no
+   images). Every number, name and line on screen comes from the local Nexus
+   server: /health, /api/stats, /api/roles, /api/pipelines, /api/memory/<role>
+   and the SSE stream /api/events/<task>. Nothing is hardcoded; if the server
+   cannot be reached the console says so instead of inventing values.
    ───────────────────────────────────────────────────────────────────────── */
 :root{
   --bg:#03070a;
@@ -19,15 +22,14 @@
   --cyan:#22e3ff;
   --amber:#ffb020;
   --red:#ff4d63;
+  --violet:#b47bff;
   --fg:#d5f7ec;
   --fg-dim:#8fb8ae;
   --dim:#4f7a72;
   --line:rgba(0,255,163,.16);
-  --line-2:rgba(34,227,255,.14);
   --card:rgba(5,18,20,.55);
   --mono:ui-monospace,"SF Mono","Cascadia Mono","JetBrains Mono",Menlo,Consolas,"Liberation Mono",monospace;
 }
-
 *{box-sizing:border-box}
 html,body{margin:0;padding:0}
 html{background:#05090b}
@@ -36,331 +38,203 @@ body{
   display:flex;flex-direction:column;align-items:center;justify-content:center;
   gap:clamp(10px,1.4vw,18px);
   padding:clamp(10px,2vw,34px);
-  font-family:var(--mono);
-  color:var(--fg);
-  background:
-    radial-gradient(1100px 620px at 50% 38%, #071519 0%, #040a0d 46%, #020506 100%),
-    #020506;
+  font-family:var(--mono);color:var(--fg);
+  background:radial-gradient(1100px 620px at 50% 38%,#071519 0%,#040a0d 46%,#020506 100%),#020506;
   overflow-x:hidden;
 }
 button{font:inherit;color:inherit}
 
-/* ── metallic monitor ─────────────────────────────────────────────────── */
+/* ── monitor ─────────────────────────────────────────────────────────── */
 .monitor{
-  position:relative;
-  width:min(1580px,100%);
+  position:relative;width:min(1580px,100%);
   border-radius:clamp(14px,1.5vw,26px);
   padding:clamp(7px,.9vw,15px);
-  background:
-    linear-gradient(155deg,#39454c 0%,#1b252b 14%,#0c1215 38%,#080d10 62%,#1f2a30 84%,#3b474e 100%);
-  box-shadow:
-    0 1px 0 rgba(255,255,255,.14) inset,
-    0 -1px 0 rgba(0,0,0,.7) inset,
-    0 0 0 1px rgba(0,255,163,.10),
-    0 34px 90px -20px rgba(0,0,0,.95),
-    0 0 120px -30px rgba(0,255,163,.18);
+  background:linear-gradient(155deg,#39454c 0%,#1b252b 14%,#0c1215 38%,#080d10 62%,#1f2a30 84%,#3b474e 100%);
+  box-shadow:0 1px 0 rgba(255,255,255,.14) inset,0 -1px 0 rgba(0,0,0,.7) inset,
+    0 0 0 1px rgba(0,255,163,.10),0 34px 90px -20px rgba(0,0,0,.95),0 0 120px -30px rgba(0,255,163,.18);
 }
-.monitor::after{ /* faint top sheen */
+.monitor::after{
   content:"";position:absolute;inset:1px 6% auto 6%;height:38%;pointer-events:none;
   background:linear-gradient(180deg,rgba(255,255,255,.07),transparent 70%);
   border-radius:24px 24px 0 0;opacity:.6;
 }
-.screw{
-  position:absolute;width:clamp(7px,.7vw,11px);height:clamp(7px,.7vw,11px);
-  border-radius:50%;
+.screw{position:absolute;width:clamp(7px,.7vw,11px);height:clamp(7px,.7vw,11px);border-radius:50%;
   background:radial-gradient(circle at 34% 30%,#7b8b92,#2a353a 62%,#111a1e);
-  box-shadow:0 0 0 1px rgba(0,0,0,.6),0 1px 1px rgba(255,255,255,.10);
-  z-index:4;
-}
-.screw.tl{left:.9%;top:4%} .screw.tr{right:.9%;top:4%}
-.screw.bl{left:.9%;bottom:4%} .screw.br{right:.9%;bottom:4%}
+  box-shadow:0 0 0 1px rgba(0,0,0,.6),0 1px 1px rgba(255,255,255,.10);z-index:4}
+.screw.tl{left:.9%;top:4%}.screw.tr{right:.9%;top:4%}
+.screw.bl{left:.9%;bottom:4%}.screw.br{right:.9%;bottom:4%}
 
-/* ── the screen ───────────────────────────────────────────────────────── */
 .screen{
-  position:relative;
-  aspect-ratio:16/9;
-  min-height:min(560px,72svh);
-  border-radius:clamp(8px,1vw,14px);
-  overflow:hidden;
+  position:relative;aspect-ratio:16/9;min-height:min(560px,72svh);
+  border-radius:clamp(8px,1vw,14px);overflow:hidden;
   display:flex;flex-direction:column;
-  background:
-    radial-gradient(ellipse 62% 58% at 50% 42%, rgba(0,60,52,.42) 0%, rgba(2,10,12,.2) 52%, rgba(1,4,6,.9) 100%),
+  background:radial-gradient(ellipse 62% 58% at 50% 42%,rgba(0,60,52,.42) 0%,rgba(2,10,12,.2) 52%,rgba(1,4,6,.9) 100%),
     linear-gradient(180deg,#050d11,#020608 62%,#04090b);
-  box-shadow:
-    0 0 0 1px rgba(0,0,0,.85),
-    0 0 34px rgba(0,255,163,.06) inset,
-    0 0 90px rgba(0,0,0,.7) inset;
-  font-size:clamp(9.5px,.86vw,13px);
-  isolation:isolate;
+  box-shadow:0 0 0 1px rgba(0,0,0,.85),0 0 34px rgba(0,255,163,.06) inset,0 0 90px rgba(0,0,0,.7) inset;
+  font-size:clamp(9.5px,.86vw,13px);isolation:isolate;
 }
 .fx{position:absolute;inset:0;pointer-events:none;z-index:3}
-.fx.scanlines{
-  background:repeating-linear-gradient(180deg,rgba(0,0,0,.24) 0 1px,transparent 1px 3px);
-  opacity:.5;mix-blend-mode:multiply;
-}
-.fx.vignette{
-  background:radial-gradient(ellipse 78% 70% at 50% 46%,transparent 52%,rgba(0,0,0,.55) 100%);
-}
-.fx.glass{
-  background:linear-gradient(118deg,rgba(255,255,255,.055) 0%,transparent 26%,transparent 72%,rgba(255,255,255,.028) 100%);
-}
+.fx.scanlines{background:repeating-linear-gradient(180deg,rgba(0,0,0,.24) 0 1px,transparent 1px 3px);opacity:.5;mix-blend-mode:multiply}
+.fx.vignette{background:radial-gradient(ellipse 78% 70% at 50% 46%,transparent 52%,rgba(0,0,0,.55) 100%)}
+.fx.glass{background:linear-gradient(118deg,rgba(255,255,255,.055) 0%,transparent 26%,transparent 72%,rgba(255,255,255,.028) 100%)}
 .fx.flicker{animation:flicker 7.3s steps(1,end) infinite;opacity:0}
-@keyframes flicker{
-  0%,96%,100%{opacity:0}
-  97%{opacity:.05;background:rgba(34,227,255,.5)}
-  98%{opacity:0}
-  98.6%{opacity:.03;background:rgba(0,255,163,.4)}
-}
+@keyframes flicker{0%,96%,100%{opacity:0}97%{opacity:.05;background:rgba(34,227,255,.5)}98%{opacity:0}98.6%{opacity:.03;background:rgba(0,255,163,.4)}}
 
-/* ── top bar ──────────────────────────────────────────────────────────── */
+/* ── top bar ─────────────────────────────────────────────────────────── */
 .topbar{
-  position:relative;z-index:2;
-  display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);
+  position:relative;z-index:2;display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);
   align-items:center;gap:clamp(6px,1vw,18px);
   padding:clamp(8px,1.1vw,18px) clamp(10px,1.4vw,24px);
-  border-bottom:1px solid var(--line);
-  background:linear-gradient(180deg,rgba(0,255,163,.05),transparent);
+  border-bottom:1px solid var(--line);background:linear-gradient(180deg,rgba(0,255,163,.05),transparent);
 }
 .brand{display:flex;align-items:center;gap:clamp(6px,.8vw,13px);min-width:0}
-.hex{
-  width:clamp(26px,2.9vw,44px);height:auto;flex:0 0 auto;
-  filter:drop-shadow(0 0 8px rgba(0,255,163,.55));
-}
+.hex{width:clamp(26px,2.9vw,44px);height:auto;flex:0 0 auto;filter:drop-shadow(0 0 8px rgba(0,255,163,.55))}
 .hex polygon{fill:rgba(0,255,163,.06);stroke:var(--green);stroke-width:2}
 .hex .n-path{fill:none;stroke:var(--green);stroke-width:3.4;stroke-linecap:square;stroke-linejoin:miter}
 .brand-txt{display:flex;flex-direction:column;gap:2px;min-width:0}
-.wordmark{
-  position:relative;display:inline-block;
-  font-size:clamp(15px,1.85vw,29px);
-  font-weight:700;letter-spacing:.24em;
-  color:#eafff7;line-height:1;
-  text-shadow:0 0 14px rgba(0,255,163,.55),0 0 40px rgba(0,255,163,.25);
-  white-space:nowrap;
-}
-.wordmark::before,.wordmark::after{
-  content:attr(data-text);position:absolute;inset:0;
-  opacity:0;pointer-events:none;
-}
+.wordmark{position:relative;display:inline-block;font-size:clamp(15px,1.85vw,29px);font-weight:700;
+  letter-spacing:.24em;color:#eafff7;line-height:1;white-space:nowrap;
+  text-shadow:0 0 14px rgba(0,255,163,.55),0 0 40px rgba(0,255,163,.25)}
+.wordmark::before,.wordmark::after{content:attr(data-text);position:absolute;inset:0;opacity:0;pointer-events:none}
 .wordmark::before{color:var(--cyan);transform:translate(-2px,0)}
 .wordmark::after{color:var(--red);transform:translate(2px,0)}
 .wordmark.glitch::before{opacity:.85;animation:glitchA .19s steps(2,end) 2}
 .wordmark.glitch::after{opacity:.7;animation:glitchB .19s steps(2,end) 2}
-@keyframes glitchA{
-  0%{clip-path:inset(12% 0 62% 0);transform:translate(-3px,-1px)}
-  50%{clip-path:inset(58% 0 22% 0);transform:translate(3px,1px)}
-  100%{clip-path:inset(0 0 0 0);transform:translate(-1px,0)}
-}
-@keyframes glitchB{
-  0%{clip-path:inset(66% 0 8% 0);transform:translate(3px,1px)}
-  50%{clip-path:inset(18% 0 58% 0);transform:translate(-2px,-1px)}
-  100%{clip-path:inset(0 0 0 0);transform:translate(1px,0)}
-}
-.label{
-  font-size:clamp(7px,.68vw,10px);letter-spacing:.3em;color:var(--cyan);
-  text-transform:uppercase;opacity:.9;white-space:nowrap;
-}
+@keyframes glitchA{0%{clip-path:inset(12% 0 62% 0);transform:translate(-3px,-1px)}50%{clip-path:inset(58% 0 22% 0);transform:translate(3px,1px)}100%{clip-path:inset(0 0 0 0);transform:translate(-1px,0)}}
+@keyframes glitchB{0%{clip-path:inset(66% 0 8% 0);transform:translate(3px,1px)}50%{clip-path:inset(18% 0 58% 0);transform:translate(-2px,-1px)}100%{clip-path:inset(0 0 0 0);transform:translate(1px,0)}}
+.label{font-size:clamp(7px,.68vw,10px);letter-spacing:.3em;color:var(--cyan);text-transform:uppercase;opacity:.9;white-space:nowrap}
 .label .sep{color:var(--dim);margin:0 .4em}
-
 .headline{display:flex;flex-direction:column;align-items:center;gap:3px;text-align:center}
-.hl-a{
-  display:flex;align-items:center;gap:.55em;
-  font-size:clamp(8px,.8vw,12px);letter-spacing:.2em;color:var(--fg);
-}
-.hl-a .dot{
-  width:.62em;height:.62em;border-radius:50%;background:var(--green);
-  box-shadow:0 0 8px var(--green);animation:breathe 1.6s ease-in-out infinite;
-}
+.hl-a{display:flex;align-items:center;gap:.55em;font-size:clamp(8px,.8vw,12px);letter-spacing:.2em;color:var(--fg)}
+.hl-a .dot{width:.62em;height:.62em;border-radius:50%;background:var(--dim);box-shadow:0 0 8px var(--dim)}
+.hl-a .dot.on{background:var(--green);box-shadow:0 0 8px var(--green);animation:breathe 1.6s ease-in-out infinite}
+.hl-a .dot.bad{background:var(--red);box-shadow:0 0 8px var(--red)}
 .hl-b{font-size:clamp(8px,.78vw,11.5px);letter-spacing:.16em;color:var(--cyan)}
 .hl-b b{color:var(--green);font-weight:600}
-.sim-chip{
-  margin-top:2px;padding:2px .7em;border:1px solid rgba(255,176,32,.4);border-radius:999px;
-  font-size:clamp(6.5px,.62vw,9px);letter-spacing:.24em;color:#ffce7a;
-  background:rgba(255,176,32,.08);white-space:nowrap;
-}
+.src-chip{margin-top:2px;padding:2px .7em;border:1px solid rgba(0,255,163,.28);border-radius:999px;
+  font-size:clamp(6.5px,.62vw,9px);letter-spacing:.2em;color:var(--green-soft);background:rgba(0,255,163,.06);white-space:nowrap}
+.src-chip.bad{border-color:rgba(255,77,99,.45);color:#ff9aa8;background:rgba(255,77,99,.08)}
 .hud-meta{display:flex;align-items:center;justify-content:flex-end;gap:clamp(8px,1.2vw,20px)}
 .hud-meta>div{display:flex;flex-direction:column;gap:2px;align-items:flex-end}
 .hud-meta span{font-size:clamp(6.5px,.6vw,9px);letter-spacing:.22em;color:var(--dim)}
-.hud-meta b{font-size:clamp(9px,.82vw,12.5px);letter-spacing:.12em;color:var(--fg)}
+.hud-meta b{font-size:clamp(9px,.82vw,12.5px);letter-spacing:.12em;color:var(--fg);font-variant-numeric:tabular-nums}
 .ctrl-row{flex-direction:row!important;gap:6px!important}
-.ctrl-row button{
-  padding:.42em .8em;border-radius:4px;cursor:pointer;
-  border:1px solid rgba(0,255,163,.35);background:rgba(0,255,163,.07);
-  color:var(--green);font-size:clamp(7px,.66vw,10px);letter-spacing:.18em;
-  transition:background .16s,border-color .16s,color .16s,transform .12s;
-}
+.ctrl-row button{padding:.42em .8em;border-radius:4px;cursor:pointer;border:1px solid rgba(0,255,163,.35);
+  background:rgba(0,255,163,.07);color:var(--green);font-size:clamp(7px,.66vw,10px);letter-spacing:.18em;
+  transition:background .16s,border-color .16s,color .16s,transform .12s}
 .ctrl-row button:hover{background:rgba(0,255,163,.18);border-color:var(--green);transform:translateY(-1px)}
-.ctrl-row button:active{transform:translateY(0)}
 .ctrl-row button:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
 .ctrl-row button.paused{color:var(--amber);border-color:rgba(255,176,32,.5);background:rgba(255,176,32,.1)}
 
-/* ── deck ─────────────────────────────────────────────────────────────── */
-.deck{
-  position:relative;z-index:2;
-  flex:1 1 auto;min-height:0;
-  display:grid;
+/* ── deck ────────────────────────────────────────────────────────────── */
+.deck{position:relative;z-index:2;flex:1 1 auto;min-height:0;display:grid;
   grid-template-columns:minmax(150px,.95fr) minmax(0,2.5fr) minmax(150px,.95fr);
-  gap:clamp(6px,.9vw,16px);
-  padding:clamp(7px,.9vw,16px) clamp(9px,1.3vw,22px);
-}
+  gap:clamp(6px,.9vw,16px);padding:clamp(7px,.9vw,16px) clamp(9px,1.3vw,22px)}
 .col{display:flex;flex-direction:column;gap:clamp(5px,.7vw,11px);min-height:0}
-.card{
-  position:relative;
-  border:1px solid var(--line);border-radius:6px;
-  background:var(--card);
-  padding:clamp(5px,.62vw,11px);
-  display:flex;flex-direction:column;gap:clamp(3px,.35vw,6px);
-  min-height:0;
-  backdrop-filter:blur(2px);
-}
-.card::before,.card::after{ /* corner ticks */
-  content:"";position:absolute;width:8px;height:8px;border:1px solid rgba(0,255,163,.55);
-}
+.card{position:relative;border:1px solid var(--line);border-radius:6px;background:var(--card);
+  padding:clamp(5px,.62vw,11px);display:flex;flex-direction:column;gap:clamp(3px,.35vw,6px);
+  min-height:0;backdrop-filter:blur(2px)}
+.card::before,.card::after{content:"";position:absolute;width:8px;height:8px;border:1px solid rgba(0,255,163,.55)}
 .card::before{left:-1px;top:-1px;border-right:0;border-bottom:0}
 .card::after{right:-1px;bottom:-1px;border-left:0;border-top:0}
-.card h2{
-  margin:0 0 2px;font-size:clamp(6.8px,.64vw,9.5px);font-weight:500;
-  letter-spacing:.26em;color:var(--cyan);text-transform:uppercase;
-  display:flex;align-items:baseline;gap:.6em;
-}
-.card h2 em{
-  font-style:normal;color:var(--dim);letter-spacing:.12em;font-size:.9em;
-  text-transform:lowercase;
-}
+.card h2{margin:0 0 2px;font-size:clamp(6.8px,.64vw,9.5px);font-weight:500;letter-spacing:.26em;
+  color:var(--cyan);text-transform:uppercase;display:flex;align-items:baseline;gap:.6em}
+.card h2 em{font-style:normal;color:var(--dim);letter-spacing:.12em;font-size:.9em;text-transform:none;margin-left:auto}
 
-/* telemetry */
-.stat{display:flex;align-items:baseline;justify-content:space-between;gap:.5em;padding:.24em 0}
+.stat{display:flex;align-items:baseline;justify-content:space-between;gap:.5em;padding:.2em 0}
 .stat span{font-size:clamp(6.5px,.62vw,9.5px);letter-spacing:.16em;color:var(--fg-dim)}
-.stat b{
-  font-size:clamp(9.5px,1.05vw,16px);color:var(--green);letter-spacing:.04em;font-weight:600;
-  text-shadow:0 0 10px rgba(0,255,163,.4);font-variant-numeric:tabular-nums;
-}
+.stat b{font-size:clamp(9.5px,1.05vw,16px);color:var(--green);letter-spacing:.04em;font-weight:600;
+  text-shadow:0 0 10px rgba(0,255,163,.4);font-variant-numeric:tabular-nums}
 .stat b small{font-size:.58em;color:var(--dim);margin-left:.25em;letter-spacing:.08em}
 .meter{height:3px;border-radius:2px;background:rgba(0,255,163,.12);overflow:hidden;margin-top:2px}
 .meter i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--green),var(--cyan));
   box-shadow:0 0 10px var(--green);transition:width .3s linear}
 
-/* matrix */
-.matrix-card{flex:1 1 auto;min-height:0;overflow:hidden}
-.matrix{
-  margin:0;flex:1 1 auto;min-height:0;overflow:hidden;
-  font-size:clamp(6.5px,.6vw,9px);line-height:1.5;letter-spacing:.14em;
-  color:var(--green-soft);opacity:.72;
-  white-space:pre;
+.index-card{flex:1 1 auto;min-height:0;overflow:hidden}
+.index{margin:0;flex:1 1 auto;min-height:0;overflow:hidden;font-size:clamp(6.5px,.6vw,9px);line-height:1.55;
+  letter-spacing:.08em;color:var(--green-soft);opacity:.78;white-space:pre;
   -webkit-mask-image:linear-gradient(180deg,transparent,#000 12%,#000 88%,transparent);
-  mask-image:linear-gradient(180deg,transparent,#000 12%,#000 88%,transparent);
-}
-.matrix b{color:#eafff7;font-weight:400}
+  mask-image:linear-gradient(180deg,transparent,#000 12%,#000 88%,transparent)}
 
-/* ── brain stage ──────────────────────────────────────────────────────── */
-.brain-wrap{
-  position:relative;min-height:0;min-width:0;
-  display:flex;flex-direction:column;
-  border-radius:8px;
+/* ── map ─────────────────────────────────────────────────────────────── */
+.map-wrap{position:relative;min-height:0;min-width:0;display:flex;flex-direction:column;border-radius:8px;
   border:1px solid rgba(0,255,163,.10);
-  background:
-    radial-gradient(ellipse 58% 52% at 50% 46%,rgba(0,255,163,.055),transparent 70%),
+  background:radial-gradient(ellipse 58% 52% at 50% 46%,rgba(0,255,163,.055),transparent 70%),
     repeating-linear-gradient(0deg,rgba(0,255,163,.035) 0 1px,transparent 1px 34px),
     repeating-linear-gradient(90deg,rgba(34,227,255,.03) 0 1px,transparent 1px 34px);
-  overflow:hidden;
-}
-#brain{position:absolute;inset:0;display:block;width:100%;height:100%}
-.brain-stage{position:relative;flex:1 1 auto;min-height:0;min-width:0}
+  overflow:hidden}
+.map-stage{position:relative;flex:1 1 auto;min-height:0;min-width:0}
+#map{position:absolute;inset:0;display:block;width:100%;height:100%}
 .labels{position:absolute;inset:0;pointer-events:none}
-.agent-label{
-  position:absolute;transform:translate(-50%,-50%);
-  display:flex;align-items:center;gap:.4em;
-  padding:1px .45em;border-radius:2px;
-  font-size:clamp(6px,.55vw,8.5px);letter-spacing:.2em;color:var(--cyan);
-  background:rgba(4,18,20,.72);border:1px solid rgba(34,227,255,.22);
-  white-space:nowrap;
-  box-shadow:0 0 14px rgba(34,227,255,.12);
-}
-.agent-label::before{content:"";width:4px;height:4px;border-radius:50%;background:var(--green);box-shadow:0 0 6px var(--green)}
-.agent-label.hot{color:#eafff7;border-color:rgba(0,255,163,.5)}
-.brain-caption{
-  display:flex;align-items:center;justify-content:space-between;gap:1em;
-  padding:0 clamp(6px,.8vw,14px) 2px;
-  font-size:clamp(6.5px,.6vw,9px);letter-spacing:.22em;color:var(--dim);
-}
-.brain-caption span:first-child{color:var(--cyan);opacity:.85}
-.progress{
-  display:flex;align-items:center;gap:clamp(6px,.8vw,14px);
-  padding:clamp(4px,.5vw,9px) clamp(6px,.8vw,14px) clamp(6px,.7vw,12px);
-}
-.pbar{
-  position:relative;flex:1 1 auto;height:clamp(4px,.5vw,8px);border-radius:2px;
-  background:rgba(0,255,163,.10);border:1px solid rgba(0,255,163,.18);overflow:hidden;
-}
-.pbar i{
-  position:absolute;inset:0 auto 0 0;width:0;
-  background:linear-gradient(90deg,rgba(0,255,163,.85),var(--cyan));
-  box-shadow:0 0 14px var(--green);
-}
-.pbar i::after{
-  content:"";position:absolute;inset:0;
+.hub-label{position:absolute;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;
+  gap:2px;padding:1px .5em;border-radius:3px;font-size:clamp(6.5px,.6vw,9px);letter-spacing:.16em;color:var(--cyan);
+  background:rgba(4,18,20,.82);border:1px solid rgba(34,227,255,.25);white-space:nowrap;
+  box-shadow:0 0 14px rgba(34,227,255,.12);transition:border-color .2s,color .2s}
+.hub-label b{font-weight:600;letter-spacing:.18em;color:var(--fg)}
+.hub-label small{font-size:.82em;color:var(--dim);letter-spacing:.08em}
+.hub-label.hot{border-color:var(--green);color:var(--green)}
+.hub-label.hot b{color:var(--green)}
+.role-pin{position:absolute;transform:translate(-50%,-50%);padding:1px .45em;border-radius:2px;
+  font-size:clamp(6px,.55vw,8.5px);letter-spacing:.12em;color:#04120e;background:var(--green);
+  box-shadow:0 0 14px rgba(0,255,163,.6);white-space:nowrap;opacity:0;transition:opacity .2s}
+.role-pin.show{opacity:1}
+.map-caption{display:flex;align-items:center;justify-content:space-between;gap:1em;
+  padding:0 clamp(6px,.8vw,14px) 2px;font-size:clamp(6.5px,.6vw,9px);letter-spacing:.2em;color:var(--dim)}
+.map-caption span:first-child{color:var(--cyan);opacity:.85}
+.progress{display:flex;align-items:center;gap:clamp(6px,.8vw,14px);padding:clamp(4px,.5vw,9px) clamp(6px,.8vw,14px) clamp(6px,.7vw,12px)}
+.pbar{position:relative;flex:1 1 auto;height:clamp(4px,.5vw,8px);border-radius:2px;
+  background:rgba(0,255,163,.10);border:1px solid rgba(0,255,163,.18);overflow:hidden}
+.pbar i{position:absolute;inset:0 auto 0 0;width:0;background:linear-gradient(90deg,rgba(0,255,163,.85),var(--cyan));
+  box-shadow:0 0 14px var(--green);transition:width .25s linear}
+.pbar i::after{content:"";position:absolute;inset:0;
   background:repeating-linear-gradient(115deg,rgba(255,255,255,.25) 0 5px,transparent 5px 11px);
-  animation:stripes 1.1s linear infinite;opacity:.5;
-}
+  animation:stripes 1.1s linear infinite;opacity:.5}
 @keyframes stripes{to{transform:translateX(22px)}}
 .pmeta{display:flex;align-items:baseline;gap:.7em;white-space:nowrap}
-.pmeta span{font-size:clamp(6.5px,.6vw,9px);letter-spacing:.22em;color:var(--dim)}
-.pmeta b{font-size:clamp(9px,.9vw,13px);color:var(--green);text-shadow:0 0 12px rgba(0,255,163,.5)}
+.pmeta span{font-size:clamp(6.5px,.6vw,9px);letter-spacing:.2em;color:var(--dim)}
+.pmeta b{font-size:clamp(9px,.9vw,13px);color:var(--green);text-shadow:0 0 12px rgba(0,255,163,.5);font-variant-numeric:tabular-nums}
 
-/* ── agent sync + datastream ──────────────────────────────────────────── */
-.agent-card{border:1px solid rgba(0,255,163,.12);border-radius:4px;padding:clamp(3px,.4vw,7px);display:flex;flex-direction:column;gap:3px}
+/* ── agent cards / stream ────────────────────────────────────────────── */
+.agent-card{border:1px solid rgba(0,255,163,.12);border-radius:4px;padding:clamp(3px,.4vw,7px);
+  display:flex;flex-direction:column;gap:3px}
 .a-head{display:flex;align-items:baseline;justify-content:space-between;gap:.5em}
-.a-head b{font-size:clamp(7.5px,.72vw,11px);letter-spacing:.14em;color:var(--fg)}
-.a-state{font-size:clamp(6px,.56vw,8.5px);letter-spacing:.18em;color:var(--green)}
-.a-state.off{color:var(--amber)}
+.a-head b{font-size:clamp(7.5px,.72vw,11px);letter-spacing:.12em;color:var(--fg)}
+.a-state{font-size:clamp(6px,.56vw,8.5px);letter-spacing:.16em;color:var(--dim)}
+.a-state.ok{color:var(--green)}
+.a-state.warn{color:var(--amber)}
+.a-meta{display:flex;justify-content:space-between;gap:.4em;font-size:clamp(6px,.56vw,8.5px);letter-spacing:.1em;color:var(--dim)}
+.a-meta b{color:var(--fg-dim);font-weight:500}
+.a-model{font-size:clamp(5.8px,.54vw,8px);letter-spacing:.06em;color:rgba(34,227,255,.65);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .a-bar{height:3px;background:rgba(0,255,163,.12);border-radius:2px;overflow:hidden}
 .a-bar i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--green),var(--cyan));
   box-shadow:0 0 8px var(--green);transition:width .35s linear}
-.a-meta{display:flex;justify-content:space-between;gap:.4em;font-size:clamp(6px,.56vw,8.5px);
-  letter-spacing:.12em;color:var(--dim)}
-.a-meta b{color:var(--fg-dim);font-weight:500}
-.a-stream{
-  font-size:clamp(5.8px,.54vw,8px);letter-spacing:.1em;color:rgba(34,227,255,.6);
-  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
-}
 .stream-card{flex:1 1 auto;min-height:0;overflow:hidden}
-.stream{
-  flex:1 1 auto;min-height:0;overflow:hidden;
-  display:flex;flex-direction:column;gap:1px;
-  font-size:clamp(6px,.56vw,8.5px);letter-spacing:.08em;color:rgba(0,255,163,.62);
-  -webkit-mask-image:linear-gradient(180deg,#000 60%,transparent);
-  mask-image:linear-gradient(180deg,#000 60%,transparent);
-}
+.stream{flex:1 1 auto;min-height:0;overflow:hidden;display:flex;flex-direction:column;gap:1px;
+  font-size:clamp(6px,.56vw,8.5px);letter-spacing:.04em;color:rgba(0,255,163,.62);
+  -webkit-mask-image:linear-gradient(180deg,#000 60%,transparent);mask-image:linear-gradient(180deg,#000 60%,transparent)}
 .stream div{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .stream div b{color:#eafff7;font-weight:400}
 .stream div .t{color:var(--dim)}
+.stream div .k{color:var(--cyan)}
+.stream div.err{color:#ff9aa8}
 
-/* ── console ──────────────────────────────────────────────────────────── */
-.console{
-  position:relative;z-index:2;
-  flex:0 0 auto;
-  display:flex;flex-direction:column;min-height:0;
-  height:clamp(150px,25%,280px);
-  margin:0 clamp(9px,1.3vw,22px) clamp(8px,1vw,16px);
+/* ── console ─────────────────────────────────────────────────────────── */
+.console{position:relative;z-index:2;flex:0 0 auto;display:flex;flex-direction:column;min-height:0;
+  height:clamp(160px,27%,300px);margin:0 clamp(9px,1.3vw,22px) clamp(8px,1vw,16px);
   border:1px solid var(--line);border-radius:6px;
   background:linear-gradient(180deg,rgba(3,14,14,.9),rgba(2,8,9,.94));
-  box-shadow:0 0 40px rgba(0,255,163,.05) inset;
-  overflow:hidden;
-}
-.console-head{
-  display:flex;align-items:center;justify-content:space-between;gap:1em;
-  padding:.4em .8em;border-bottom:1px solid rgba(0,255,163,.12);
-  background:rgba(0,255,163,.045);
-  font-size:clamp(6.8px,.62vw,9.5px);letter-spacing:.24em;color:var(--cyan);
-  text-transform:uppercase;
-}
-.console-head .hint{color:var(--dim);letter-spacing:.16em}
+  box-shadow:0 0 40px rgba(0,255,163,.05) inset;overflow:hidden}
+.console-head{display:flex;align-items:center;justify-content:space-between;gap:1em;flex-wrap:wrap;
+  padding:.4em .8em;border-bottom:1px solid rgba(0,255,163,.12);background:rgba(0,255,163,.045);
+  font-size:clamp(6.8px,.62vw,9.5px);letter-spacing:.2em;color:var(--cyan);text-transform:uppercase}
+.console-head .ctx{color:var(--fg-dim);letter-spacing:.12em;text-transform:none}
+.console-head .ctx b{color:var(--green);font-weight:500}
+.console-head .hint{color:var(--dim);letter-spacing:.12em;text-transform:none}
 .console-head .hint b{color:var(--fg-dim)}
-.log{
-  flex:1 1 auto;min-height:0;overflow-y:auto;
-  padding:.55em .8em;
+.log{flex:1 1 auto;min-height:0;overflow-y:auto;padding:.55em .8em;
   font-size:clamp(8px,.74vw,11.5px);line-height:1.6;
-  scrollbar-width:thin;scrollbar-color:rgba(0,255,163,.3) transparent;
-}
+  scrollbar-width:thin;scrollbar-color:rgba(0,255,163,.3) transparent}
 .log::-webkit-scrollbar{width:6px}
 .log::-webkit-scrollbar-thumb{background:rgba(0,255,163,.3);border-radius:3px}
 .log p{margin:0;white-space:pre-wrap;word-break:break-word;animation:lineIn .18s ease-out}
@@ -374,53 +248,34 @@ button{font:inherit;color:inherit}
 .log .cmd{color:#eafff7}
 .log .cmd::before{content:"› ";color:var(--green)}
 .log p b{color:#eafff7;font-weight:600}
-.prompt{
-  display:flex;align-items:center;gap:.5em;
-  padding:.42em .8em .5em;border-top:1px solid rgba(0,255,163,.12);
-  background:rgba(0,255,163,.03);
-}
+.prompt{display:flex;align-items:center;gap:.5em;padding:.42em .8em .5em;border-top:1px solid rgba(0,255,163,.12);
+  background:rgba(0,255,163,.03)}
 .ps1{font-size:clamp(8px,.74vw,11.5px);letter-spacing:.06em;color:var(--green);white-space:nowrap;
   text-shadow:0 0 10px rgba(0,255,163,.4)}
-#cmd{
-  flex:1 1 auto;min-width:0;
-  background:transparent;border:0;outline:0;color:#eafff7;
-  font:inherit;font-size:clamp(8px,.74vw,11.5px);letter-spacing:.05em;
-  caret-color:var(--green);
-}
+#cmd{flex:1 1 auto;min-width:0;background:transparent;border:0;outline:0;color:#eafff7;font:inherit;
+  font-size:clamp(8px,.74vw,11.5px);letter-spacing:.05em;caret-color:var(--green)}
 #cmd::placeholder{color:rgba(79,122,114,.85)}
 #cmd:disabled{color:var(--dim)}
 
-/* ── standby overlay ──────────────────────────────────────────────────── */
-.standby{
-  position:absolute;inset:0;z-index:6;
-  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.8em;
-  text-align:center;padding:1.5em;
-  background:radial-gradient(ellipse at 50% 50%,rgba(2,10,12,.82),rgba(1,4,6,.96));
-  backdrop-filter:blur(3px);
-}
+.standby{position:absolute;inset:0;z-index:6;display:flex;flex-direction:column;align-items:center;
+  justify-content:center;gap:.8em;text-align:center;padding:1.5em;
+  background:radial-gradient(ellipse at 50% 50%,rgba(2,10,12,.86),rgba(1,4,6,.97));backdrop-filter:blur(3px)}
 .standby[hidden]{display:none}
-.standby .big{font-size:clamp(13px,1.5vw,22px);letter-spacing:.34em;color:var(--green);
+.standby .big{font-size:clamp(13px,1.5vw,22px);letter-spacing:.32em;color:var(--green);
   text-shadow:0 0 24px rgba(0,255,163,.5)}
-.standby p{margin:0;font-size:clamp(7.5px,.7vw,11px);letter-spacing:.14em;color:var(--fg-dim);max-width:44ch;line-height:1.7}
-.standby button{
-  margin-top:.4em;padding:.6em 1.3em;border-radius:4px;cursor:pointer;
-  border:1px solid var(--green);background:rgba(0,255,163,.1);color:var(--green);
-  letter-spacing:.24em;font-size:clamp(7.5px,.7vw,10.5px);
-}
+.standby p{margin:0;font-size:clamp(7.5px,.7vw,11px);letter-spacing:.1em;color:var(--fg-dim);max-width:52ch;line-height:1.7}
+.standby button{margin-top:.4em;padding:.6em 1.3em;border-radius:4px;cursor:pointer;border:1px solid var(--green);
+  background:rgba(0,255,163,.1);color:var(--green);letter-spacing:.24em;font-size:clamp(7.5px,.7vw,10.5px)}
 .standby button:hover{background:rgba(0,255,163,.2)}
 
-/* ── footer disclaimer ────────────────────────────────────────────────── */
-.disclaimer{
-  margin:0;text-align:center;max-width:90ch;
-  font-size:clamp(8px,.72vw,11px);line-height:1.7;letter-spacing:.06em;
-  color:#6d918a;
-}
-.disclaimer b{color:#ffce7a;font-weight:500}
-.disclaimer code{color:#a8d9cd;background:rgba(0,255,163,.07);padding:0 .35em;border-radius:3px}
+.disclaimer{margin:0;text-align:center;max-width:96ch;font-size:clamp(8px,.72vw,11px);line-height:1.7;
+  letter-spacing:.04em;color:#6d918a}
+.disclaimer b{color:#a8d9cd;font-weight:500}
+.disclaimer code{color:#a8d9cd;background:rgba(0,255,163,.07);padding:0 .35em;border-radius:3px;white-space:nowrap}
 
 @keyframes breathe{0%,100%{opacity:1}50%{opacity:.35}}
 
-/* ── responsive ───────────────────────────────────────────────────────── */
+/* ── responsive ──────────────────────────────────────────────────────── */
 @media (max-width:1120px){
   .screen{font-size:11px}
   .deck{grid-template-columns:minmax(130px,.9fr) minmax(0,2.2fr) minmax(130px,.9fr)}
@@ -428,33 +283,29 @@ button{font:inherit;color:inherit}
 @media (max-width:920px){
   .screen{min-height:auto}
   .topbar{grid-template-columns:1fr auto;gap:8px}
-  .headline{order:3;grid-column:1/-1;align-items:flex-start;text-align:left;flex-direction:row;flex-wrap:wrap;gap:.6em}
+  .headline{order:3;grid-column:1/-1;align-items:flex-start;text-align:left;flex-flow:row wrap;gap:.6em}
   .hud-meta{gap:10px}
   .deck{grid-template-columns:1fr 1fr;grid-auto-rows:minmax(0,1fr)}
-  .brain-wrap{grid-column:1/-1;order:-1;min-height:clamp(220px,42svh,340px)}
+  .map-wrap{grid-column:1/-1;order:-1;min-height:clamp(240px,44svh,360px)}
   .col.telemetry{grid-column:1;grid-row:2}
   .col.agents{grid-column:2;grid-row:2}
-  .console{height:clamp(160px,34svh,240px)}
+  .console{height:clamp(170px,34svh,250px)}
 }
 @media (max-width:620px){
   body{padding:6px;gap:8px}
   .monitor{padding:5px;border-radius:12px}
   .screen{aspect-ratio:auto;min-height:0;border-radius:8px;font-size:12px}
   .deck{grid-template-columns:1fr;gap:8px;padding:8px}
-  .brain-wrap{min-height:clamp(230px,48svh,380px)}
+  .map-wrap{min-height:clamp(250px,50svh,400px)}
   .col.telemetry,.col.agents{grid-column:1;grid-row:auto}
   .col.telemetry{flex-direction:row}
   .col.telemetry .card{flex:1 1 0}
-  .matrix-card{display:none}
-  .console{height:clamp(180px,36svh,260px);margin:0 8px 8px}
+  .index-card{display:none}
+  .console{height:clamp(190px,38svh,280px);margin:0 8px 8px}
   .log{font-size:11px}
-  .brand-txt .label{letter-spacing:.16em}
   .screw{display:none}
 }
-@media (max-width:420px){
-  .hl-a,.hl-b{font-size:8px}
-  .wordmark{letter-spacing:.16em}
-}
+@media (max-width:420px){.wordmark{letter-spacing:.16em}.hl-a,.hl-b{font-size:8px}}
 @media (prefers-reduced-motion:reduce){
   *,*::before,*::after{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important}
   .fx.scanlines{opacity:.32}
@@ -472,7 +323,6 @@ button{font:inherit;color:inherit}
     <div class="fx glass"></div>
     <div class="fx flicker"></div>
 
-    <!-- ── top bar ─────────────────────────────────────────────────── -->
     <header class="topbar">
       <div class="brand">
         <svg class="hex" viewBox="0 0 48 52" role="img" aria-label="Nexus hexagonal N mark">
@@ -481,14 +331,14 @@ button{font:inherit;color:inherit}
         </svg>
         <div class="brand-txt">
           <span class="wordmark" id="wordmark" data-text="NEXUS">NEXUS</span>
-          <span class="label">AGENT<span class="sep">/</span>simulation console</span>
+          <span class="label">AGENT<span class="sep">/</span>console</span>
         </div>
       </div>
 
       <div class="headline">
-        <div class="hl-a"><span class="dot"></span>1000+ AI AGENTS ONLINE</div>
-        <div class="hl-b">[STATUS: <b id="statusMode">ACTIVE</b>]</div>
-        <div class="sim-chip">SIMULATION · NOT A LIVE BACKEND</div>
+        <div class="hl-a"><span class="dot" id="liveDot"></span><span id="headlineCounts">connecting to the local server…</span></div>
+        <div class="hl-b">[STATUS: <b id="statusMode">CONNECTING</b>]</div>
+        <div class="src-chip" id="srcChip">/api/stats · /api/roles · SSE /api/events</div>
       </div>
 
       <div class="hud-meta">
@@ -496,241 +346,279 @@ button{font:inherit;color:inherit}
         <div><span>RENDER</span><b id="fps">— fps</b></div>
         <div class="ctrl-row">
           <button id="pauseBtn" type="button" aria-pressed="false">PAUSE</button>
-          <button id="replayBtn" type="button">REPLAY</button>
+          <button id="reloadBtn" type="button">RELOAD</button>
         </div>
       </div>
     </header>
 
-    <!-- ── deck ────────────────────────────────────────────────────── -->
     <div class="deck">
       <aside class="col telemetry">
         <div class="card">
-          <h2>TELeMETRY <em>synthetic</em></h2>
-          <div class="stat"><span>AGENTS ONLINE</span><b>1,000+</b></div>
-          <div class="stat"><span>NEURAL NODES</span><b id="tNodes">1,024</b></div>
-          <div class="stat"><span>PATHWAY SPEED</span><b id="tSpeed">4,096<small>syn/s</small></b></div>
-          <div class="stat"><span>EFFICIENCY</span><b id="tEff">0<small>%</small></b></div>
-          <div class="stat"><span>SYNC</span><b id="tSync">0<small>%</small></b></div>
-          <div class="meter"><i id="syncBar"></i></div>
+          <h2>TELEMETRY <em>/api/stats</em></h2>
+          <div class="stat"><span>MODEL AGENTS</span><b id="tAgents">—</b></div>
+          <div class="stat"><span>ROLES</span><b id="tRoles">—</b></div>
+          <div class="stat"><span>PIPELINES</span><b id="tPipelines">—</b></div>
+          <div class="stat"><span>KEYS</span><b id="tKeys">—</b></div>
+          <div class="stat"><span>TOKENS IN / OUT</span><b id="tTokens">—</b></div>
+          <div class="stat"><span>RUN TURNS</span><b id="tTurns">—</b></div>
+          <div class="stat"><span>SESSIONS done/err</span><b id="tSessions">—</b></div>
+          <div class="stat"><span>UPTIME</span><b id="tUptime">—</b></div>
+          <div class="meter"><i id="uptimeBar"></i></div>
         </div>
-        <div class="card matrix-card">
-          <h2>BINARY MATRIX</h2>
-          <pre class="matrix" id="matrix" aria-hidden="true"></pre>
+        <div class="card index-card">
+          <h2>CONFIG INDEX <em>real roster</em></h2>
+          <pre class="index" id="index" aria-hidden="true"></pre>
         </div>
       </aside>
 
-      <section class="brain-wrap" id="brainWrap" aria-label="Simulated holographic cortex map">
-        <div class="brain-stage" id="brainStage">
-          <canvas id="brain"></canvas>
+      <section class="map-wrap" aria-label="Role to agent map, built from the live configuration">
+        <div class="map-stage" id="mapStage">
+          <canvas id="map"></canvas>
           <div class="labels" id="labels"></div>
         </div>
-        <div class="brain-caption">
-          <span>HOLOGRAPHIC CORTEX MAP</span>
-          <span id="nodeCount">1,024 NODES</span>
+        <div class="map-caption">
+          <span id="mapTitle">ROLE → AGENT MAP</span>
+          <span id="mapMeta">waiting for /api/roles…</span>
         </div>
         <div class="progress">
           <div class="pbar"><i id="pfill"></i></div>
-          <div class="pmeta"><span>PROCESSING</span><b id="pct">0%</b></div>
+          <div class="pmeta"><span id="plabel">LOADING</span><b id="pct">0%</b></div>
         </div>
       </section>
 
       <aside class="col agents">
         <div class="card">
-          <h2>AGENT SYNC <em>simulated</em></h2>
-          <div class="agent-card" data-agent="AGENT_412">
-            <div class="a-head"><b>AGENT_412</b><span class="a-state" data-state>SYNCING</span></div>
-            <div class="a-bar"><i data-bar></i></div>
-            <div class="a-meta"><span>SYNC <b data-sync>0%</b></span><span>PROC <b data-proc>0%</b></span></div>
-            <div class="a-stream" data-line>—</div>
-          </div>
-          <div class="agent-card" data-agent="AGENT_876">
-            <div class="a-head"><b>AGENT_876</b><span class="a-state" data-state>SYNCING</span></div>
-            <div class="a-bar"><i data-bar></i></div>
-            <div class="a-meta"><span>SYNC <b data-sync>0%</b></span><span>PROC <b data-proc>0%</b></span></div>
-            <div class="a-stream" data-line>—</div>
-          </div>
+          <h2>AGENTS <em>/api/agents</em></h2>
+          <div id="agentCards"><div class="a-model">loading…</div></div>
         </div>
         <div class="card stream-card">
-          <h2>DATASTREAM</h2>
+          <h2>EVENT STREAM</h2>
           <div class="stream" id="datastream"></div>
         </div>
       </aside>
     </div>
 
-    <!-- ── console ─────────────────────────────────────────────────── -->
-    <section class="console" aria-label="Simulated command console">
+    <section class="console" aria-label="Nexus console">
       <div class="console-head">
-        <span>nexus sim console</span>
-        <span class="hint">type <b>help</b> · <b>status</b> · <b>clear</b> · <b>exit</b></span>
+        <span id="ctxLine" class="ctx">role <b>auto</b> · pipeline <b>none</b> · read-only <b>off</b></span>
+        <span class="hint">type <b>help</b> · <b>status</b> · <b>agents</b> · <b>roles &lt;text&gt;</b> · a task to run</span>
       </div>
       <div class="log" id="log" role="log" aria-live="polite" aria-label="console output"></div>
       <form class="prompt" id="promptForm" autocomplete="off">
-        <label class="ps1" for="cmd">nexus@sim:~$</label>
+        <label class="ps1" for="cmd">nexus@<span id="wsName">workspace</span>:~$</label>
         <input id="cmd" name="cmd" type="text" autocomplete="off" autocapitalize="off"
-               spellcheck="false" placeholder="type a command or a question…" aria-label="command input" />
+               spellcheck="false" placeholder="run help, or type a task for the agent…" aria-label="command input" />
       </form>
     </section>
 
     <div class="standby" id="standby" hidden>
-      <div class="big">SESSION ENDED</div>
-      <p>Console standby. This is a simulation — nothing was disconnected, because nothing was ever connected.</p>
-      <button id="standbyReplay" type="button">REPLAY SIMULATION</button>
+      <div class="big">CONSOLE CLOSED</div>
+      <p id="standbyText">The event stream is closed and the prompt is off. Reload to reconnect to the local server.</p>
+      <button id="standbyReload" type="button">RECONNECT</button>
     </div>
   </div>
 </div>
 
 <p class="disclaimer">
-  <b>Simulation only.</b> Every number, agent id and datastream on this screen is synthetic — generated in your
-  browser for this UI. There is no backend, no API key, no network request and no model call. For the real thing,
-  run <code>nexus gui</code> (live dashboard) or <code>nexus task "…"</code> (CLI) in this repo.
+  <b>Everything here is read from your local Nexus server</b> — <code>/health</code>, <code>/api/stats</code>,
+  <code>/api/roles</code>, <code>/api/pipelines</code>, <code>/api/memory/&lt;role&gt;</code> and the
+  <code>/api/events/&lt;task&gt;</code> stream. No number is hardcoded and nothing is invented: when the server
+  cannot be reached the console says so and shows dashes. The brain outline behind the map is a decorative
+  backdrop; every dot on it is a real role from <code>roles.yaml</code> plus its real agent.
 </p>
 
 <script>
 (function () {
   "use strict";
 
-  /* ── constants ─────────────────────────────────────────────────────── */
-  var NODE_COUNT = 1024;          // actually rendered, not decorative
-  var AGENT_IDS = ["AGENT_412", "AGENT_876", "AGENT_018", "AGENT_204", "AGENT_733"];
-  var MAX_PULSES = 30;
-  var MAX_RIPPLES = 26;
-  var REDUCED = window.matchMedia ? window.matchMedia("(prefers-reduced-motion: reduce)").matches : false;
-
-  /* ── tiny helpers ──────────────────────────────────────────────────── */
+  /* ── helpers ───────────────────────────────────────────────────────── */
   function $(id) { return document.getElementById(id); }
-  function pad(n, w) { return String(n).padStart(w || 2, "0"); }
+  function pad(n) { return String(n).padStart(2, "0"); }
   function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
-  function mulberry32(a) {
-    return function () {
-      a |= 0; a = (a + 0x6D2B79F5) | 0;
-      var t = Math.imul(a ^ (a >>> 15), 1 | a);
-      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-    };
+  function num(n) { return (typeof n === "number" && isFinite(n)) ? n.toLocaleString("en-US") : "—"; }
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
   }
-  function hex(n) { return n.toString(16).toUpperCase().padStart(2, "0"); }
+  function dur(sec) {
+    sec = Math.max(0, Math.floor(Number(sec) || 0));
+    if (sec < 60) return sec + "s";
+    if (sec < 3600) return Math.floor(sec / 60) + "m " + pad(sec % 60) + "s";
+    return Math.floor(sec / 3600) + "h " + pad(Math.floor((sec % 3600) / 60)) + "m";
+  }
+  function timeNow() {
+    var d = new Date();
+    return pad(d.getHours()) + ":" + pad(d.getMinutes()) + ":" + pad(d.getSeconds());
+  }
+  function providerColor(p) {
+    return { gemini: "#00ffa3", deepseek: "#22e3ff", openrouter: "#ffb020" }[p] || "#b47bff";
+  }
 
-  /* ── state ─────────────────────────────────────────────────────────── */
+  var TOKEN = new URLSearchParams(location.search).get("token") || "";
+  var REDUCED = window.matchMedia ? window.matchMedia("(prefers-reduced-motion: reduce)").matches : false;
+  var FINE_POINTER = window.matchMedia ? window.matchMedia("(pointer:fine)").matches : true;
+
   var S = {
-    seed: 20261024,
+    online: false,
+    health: null,
+    stats: null,
+    roles: [],
+    agents: {},
+    pipelines: {},
+    ctx: { role: null, pipeline: null, readOnly: false },
+    taskId: null,
+    es: null,
+    running: false,
+    pending: false,
+    turn: 0,
+    maxTurns: 0,
+    tokens: { in: 0, out: 0 },
+    tools: 0,
+    activeAgent: null,
+    activeRole: null,
+    graph: null,
+    labels: {},
+    pulses: [],
+    flashes: [],
     paused: false,
     exited: false,
-    booted: false,
-    rafId: 0,
-    lastFrame: 0,
-    fpsFrames: 0,
-    fpsLast: 0,
-    fps: 0,
-    elapsed: 0,
-    progress: 0,
-    brain: null,
-    pulses: [],
-    ripples: [],
-    labelsOn: [],
+    loadedAt: 0,
     history: [],
     histIdx: -1,
-    sawWarn: false
+    boot: { done: 0, total: 0 },
+    fps: 0,
+    fpsFrames: 0,
+    fpsLast: 0,
+    demoNoted: false
   };
 
-  /* ── boot sequence ─────────────────────────────────────────────────── */
-  var logEl = $("log");
-  var cmdEl = $("cmd");
+  /* ── http ──────────────────────────────────────────────────────────── */
+  async function api(path, options) {
+    var opts = Object.assign({ headers: {} }, options || {});
+    opts.headers["Accept"] = "application/json";
+    if (opts.body) opts.headers["Content-Type"] = "application/json";
+    if (TOKEN) opts.headers["X-Nexus-Token"] = TOKEN;
+    var res, body = null;
+    try {
+      res = await fetch(path, opts);
+    } catch (err) {
+      return { ok: false, status: 0, body: null, error: String(err) };
+    }
+    try { body = await res.json(); } catch (_) { body = null; }
+    if (!res.ok) {
+      return { ok: false, status: res.status, body: body,
+        error: (body && (body.error || body.message)) || ("HTTP " + res.status) };
+    }
+    return { ok: true, status: res.status, body: body };
+  }
 
+  /* ── console printing ──────────────────────────────────────────────── */
+  var logEl = $("log"), cmdEl = $("cmd");
+
+  function push(html, cls) {
+    var p = document.createElement("p");
+    if (cls) p.className = cls;
+    if (html.indexOf("<b>") === -1 && html.indexOf("<code>") === -1) p.textContent = html;
+    else p.innerHTML = html;
+    logEl.appendChild(p);
+    while (logEl.children.length > 500) logEl.removeChild(logEl.firstChild);
+    logEl.scrollTop = logEl.scrollHeight;
+  }
   function line(text, cls) {
     var p = document.createElement("p");
     if (cls) p.className = cls;
     p.textContent = text;
     logEl.appendChild(p);
-    while (logEl.children.length > 400) logEl.removeChild(logEl.firstChild);
+    while (logEl.children.length > 500) logEl.removeChild(logEl.firstChild);
     logEl.scrollTop = logEl.scrollHeight;
-    return p;
-  }
-  function rich(html, cls) {
-    var p = document.createElement("p");
-    if (cls) p.className = cls;
-    p.innerHTML = html;
-    logEl.appendChild(p);
-    while (logEl.children.length > 400) logEl.removeChild(logEl.firstChild);
-    logEl.scrollTop = logEl.scrollHeight;
-    return p;
   }
 
-  function bootLog() {
-    logEl.innerHTML = "";
-    line("NEXUS AGENT · simulation console", "ok");
-    line("renderer canvas2d · " + NODE_COUNT + " neural nodes · " + (S.brain ? S.brain.edges.length : 0) + " pathways", "dim");
-    line("mode SIMULATION — synthetic telemetry, no model calls, no network", "warn");
-    line("", "dim");
-    line("Type `help` for commands, `status` for telemetry.", "info");
-    line("", "dim");
+  /* ── progress / status ─────────────────────────────────────────────── */
+  function setProgress(phase, pct, value) {
+    $("pfill").style.width = clamp(pct, 0, 100).toFixed(1) + "%";
+    $("plabel").textContent = phase;
+    $("pct").textContent = value != null ? value : Math.round(pct) + "%";
+  }
+  function setStatus(mode) {
+    $("statusMode").textContent = mode;
+    var dot = $("liveDot");
+    dot.className = "dot" + (mode === "LIVE" || mode === "RUNNING" ? " on" : mode === "OFFLINE" ? " bad" : "");
   }
 
-  /* ── matrix ────────────────────────────────────────────────────────── */
-  var matrixEl = $("matrix");
-  var matrixRows = [];
-  var matrixTimer = 0;
-  var MATRIX_LINES = 26, MATRIX_COLS = 22;
+  /* ── config index (real roster text) ───────────────────────────────── */
+  var indexEl = $("index"), indexLines = [], indexPos = 0, indexTimer = 0;
 
-  function matrixRow() {
-    var rnd = Math.random;
-    var out = "";
-    for (var i = 0; i < MATRIX_COLS; i++) out += rnd() > 0.5 ? "1" : "0";
-    return out;
-  }
-  function pushMatrixRow() {
-    matrixRows.push(matrixRow());
-    if (matrixRows.length > MATRIX_LINES) matrixRows.shift();
-    matrixEl.textContent = matrixRows.map(function (row, i) {
-      return i === matrixRows.length - 1 ? row.replace(/^(.{4})(.*)$/, "$1 $2") : row;
-    }).join("\n");
-  }
-  function startMatrix() {
-    matrixRows = [];
-    matrixEl.textContent = "";
-    var shown = 0;
-    clearInterval(matrixTimer);
-    matrixTimer = setInterval(function () {
-      if (S.paused) return;
-      pushMatrixRow();
-      if (++shown >= MATRIX_LINES) {
-        clearInterval(matrixTimer);
-        matrixTimer = setInterval(function () { if (!S.paused) pushMatrixRow(); }, 260);
-      }
-    }, 90);
+  function buildIndex() {
+    indexLines = [];
+    var names = Object.keys(S.agents);
+    names.forEach(function (name) {
+      var a = S.agents[name] || {};
+      indexLines.push(name + " · " + (a.model || "?") + (a.optional ? " · local" : ""));
+    });
+    S.roles.slice(0, 400).forEach(function (r) {
+      indexLines.push(r.name + " · " + r.agent);
+    });
+    Object.keys(S.pipelines).forEach(function (p) {
+      indexLines.push("pipeline " + p + " · " + ((S.pipelines[p].steps || []).join(" → ") || "single"));
+    });
+    indexPos = 0;
+    indexEl.textContent = "";
+    clearInterval(indexTimer);
+    indexTimer = setInterval(function () {
+      if (S.paused || !indexLines.length) return;
+      indexEl.textContent = indexLines.slice(indexPos, indexPos + 22).join("\n");
+      indexPos = (indexPos + 1) % indexLines.length;
+    }, 420);
   }
 
-  /* ── datastream ────────────────────────────────────────────────────── */
-  var streamEl = $("datastream");
-  var streamTimer = 0;
-  function token() {
-    var t = "";
-    for (var i = 0; i < 4; i++) t += hex(Math.floor(Math.random() * 256));
-    return t;
-  }
-  function pushStream() {
-    var row = document.createElement("div");
-    var who = AGENT_IDS[Math.floor(Math.random() * AGENT_IDS.length)];
-    row.innerHTML = '<span class="t">' + pad(Math.floor(Math.random() * 60)) + ":" +
-      pad(Math.floor(Math.random() * 60)) + '</span> <b>' + who + "</b> " + token() + " " +
-      token().slice(0, 4) + (Math.random() > 0.6 ? " ▸ ok" : "");
-    streamEl.appendChild(row);
-    while (streamEl.children.length > 16) streamEl.removeChild(streamEl.firstChild);
-  }
-  function startStream() {
-    streamEl.innerHTML = "";
-    for (var i = 0; i < 9; i++) pushStream();
-    clearInterval(streamTimer);
-    streamTimer = setInterval(function () { if (!S.paused && !S.exited) pushStream(); }, 520);
+  /* ── agent cards (real agents) ─────────────────────────────────────── */
+  function roleCountByAgent() {
+    var counts = {};
+    S.roles.forEach(function (r) { counts[r.agent] = (counts[r.agent] || 0) + 1; });
+    return counts;
   }
 
-  /* ── brain ─────────────────────────────────────────────────────────── */
-  var canvas = $("brain");
+  function renderAgentCards() {
+    var counts = roleCountByAgent();
+    var names = Object.keys(S.agents).sort(function (a, b) { return (counts[b] || 0) - (counts[a] || 0); });
+    var top = names.slice(0, 3);
+    if (S.activeAgent && top.indexOf(S.activeAgent) === -1) top = [S.activeAgent].concat(top.slice(0, 2));
+    var totalRoles = S.roles.length || 1;
+    var html = top.map(function (name) {
+      var a = S.agents[name] || {};
+      var count = counts[name] || 0;
+      var percent = (count / totalRoles) * 100;
+      var keyState = a.optional ? "no key" : (a.key_present ? "key ✓" : "key ✗");
+      var stateCls = a.key_present || a.optional ? "ok" : "warn";
+      return '<div class="agent-card" data-agent="' + esc(name) + '">' +
+        '<div class="a-head"><b>' + esc(name) + '</b><span class="a-state ' + stateCls + '">' + esc(keyState) + '</span></div>' +
+        '<div class="a-model">' + esc(a.model || "?") + ' · ' + esc(a.provider || "?") + '</div>' +
+        '<div class="a-bar"><i style="width:' + percent.toFixed(1) + '%"></i></div>' +
+        '<div class="a-meta"><span>roles <b>' + num(count) + '</b></span>' +
+        '<span>fallback <b>' + esc(a.fallback || "—") + '</b></span></div>' +
+        '</div>';
+    }).join("");
+    $("agentCards").innerHTML = html || '<div class="a-model">no agents configured</div>';
+  }
+
+  /* ── event stream rows ─────────────────────────────────────────────── */
+  function streamRow(kind, text, isErr) {
+    var el = document.createElement("div");
+    if (isErr) el.className = "err";
+    el.innerHTML = '<span class="t">' + timeNow() + '</span> <span class="k">' + esc(kind) + '</span> ' + esc(text);
+    var box = $("datastream");
+    box.appendChild(el);
+    while (box.children.length > 18) box.removeChild(box.firstChild);
+  }
+
+  /* ── the map: real roles → real agents ─────────────────────────────── */
+  var canvas = $("map");
   var ctx = canvas.getContext("2d");
   var staticLayer = document.createElement("canvas");
   var sctx = staticLayer.getContext("2d");
   var DPR = Math.min(window.devicePixelRatio || 1, 2);
 
-  function silhouette(path, cx, cy, s) {
+  function brainPath(path, cx, cy, s) {
     path.moveTo(cx, cy - 0.46 * s);
     path.bezierCurveTo(cx - 0.16 * s, cy - 0.50 * s, cx - 0.35 * s, cy - 0.40 * s, cx - 0.41 * s, cy - 0.21 * s);
     path.bezierCurveTo(cx - 0.46 * s, cy - 0.02 * s, cx - 0.43 * s, cy + 0.17 * s, cx - 0.31 * s, cy + 0.31 * s);
@@ -742,504 +630,630 @@ button{font:inherit;color:inherit}
     return path;
   }
 
-  function buildBrain(w, h) {
-    var rnd = mulberry32(S.seed);
-    var cx = w / 2;
-    var cy = h * 0.5;
-    var s = Math.min(w * 0.86, h * 1.02);
-    var outline = silhouette(new Path2D(), cx, cy, s);
+  function buildGraph() {
+    var stage = $("mapStage");
+    var w = Math.max(160, stage.clientWidth);
+    var h = Math.max(140, stage.clientHeight);
+    canvas.width = Math.round(w * DPR);
+    canvas.height = Math.round(h * DPR);
 
-    // nodes: rejection-sampled inside the silhouette
+    var cx = w / 2, cy = h * 0.5;
+    var s = Math.min(w * 0.92, h * 1.06);
+    var outline = brainPath(new Path2D(), cx, cy, s);
+
+    var counts = roleCountByAgent();
+    var agentNames = Object.keys(S.agents);
+    var hubs = {};
+    agentNames.forEach(function (name, i) {
+      var a = Math.PI / 2 + (i * 2 * Math.PI) / Math.max(agentNames.length, 1);
+      hubs[name] = {
+        name: name,
+        x: cx + Math.cos(a) * s * 0.26,
+        y: cy + Math.sin(a) * s * 0.19,
+        color: providerColor((S.agents[name] || {}).provider),
+        count: counts[name] || 0,
+        phase: i * 0.7
+      };
+    });
+
+    // one dot per real role, clustered around its real agent
     var nodes = [];
-    var guard = 0;
-    while (nodes.length < NODE_COUNT && guard < NODE_COUNT * 400) {
-      guard++;
-      var x = cx + (rnd() - 0.5) * s;
-      var y = cy + (rnd() - 0.5) * s;
-      if (!ctx.isPointInPath(outline, x, y)) continue;
+    var maxCount = Math.max.apply(null, agentNames.map(function (n) { return counts[n] || 0; }).concat([1]));
+    S.roles.forEach(function (role, idx) {
+      var hub = hubs[role.agent] || hubs[agentNames[0]];
+      if (!hub) return;
+      var weight = Math.sqrt((hub.count || 1) / maxCount);
+      var lobe = s * (0.07 + 0.15 * weight);
+      var placed = null;
+      for (var t = 0; t < 24 && !placed; t++) {
+        var ang = Math.random() * Math.PI * 2;
+        var rad = lobe * Math.sqrt(Math.random());
+        var x = hub.x + Math.cos(ang) * rad * 1.35;
+        var y = hub.y + Math.sin(ang) * rad;
+        if (x < 6 || x > w - 6 || y < 6 || y > h - 6) continue;
+        if (!ctx.isPointInPath(outline, x, y)) continue;
+        placed = { x: x, y: y };
+      }
+      if (!placed) placed = { x: hub.x + (Math.random() - 0.5) * 8, y: hub.y + (Math.random() - 0.5) * 8 };
       nodes.push({
-        x: x, y: y,
-        side: x < cx ? -1 : 1,
-        r: 0.7 + rnd() * 1.25,
-        phase: rnd() * Math.PI * 2,
-        speed: 0.6 + rnd() * 1.8,
-        heat: 0
+        role: role.name, agent: role.agent, category: role.category,
+        x: placed.x, y: placed.y, r: 0.9, hub: hub, idx: idx, heat: 0
       });
-    }
-
-    // edges: k-nearest within a radius via a spatial grid
-    var cell = 26;
-    var grid = new Map();
-    nodes.forEach(function (n, i) {
-      var key = Math.floor(n.x / cell) + ":" + Math.floor(n.y / cell);
-      if (!grid.has(key)) grid.set(key, []);
-      grid.get(key).push(i);
     });
-    var edges = [];
-    var seen = new Set();
-    for (var i = 0; i < nodes.length; i++) {
-      var n = nodes[i];
-      var gx = Math.floor(n.x / cell), gy = Math.floor(n.y / cell);
-      var cands = [];
-      for (var dx = -1; dx <= 1; dx++) {
-        for (var dy = -1; dy <= 1; dy++) {
-          var bucket = grid.get((gx + dx) + ":" + (gy + dy));
-          if (!bucket) continue;
-          for (var b = 0; b < bucket.length; b++) {
-            var j = bucket[b];
-            if (j === i) continue;
-            var m = nodes[j];
-            var d2 = (m.x - n.x) * (m.x - n.x) + (m.y - n.y) * (m.y - n.y);
-            if (d2 < 42 * 42) cands.push([d2, j]);
-          }
-        }
-      }
-      cands.sort(function (a, b) { return a[0] - b[0]; });
-      var made = 0;
-      for (var c = 0; c < cands.length && made < 2; c++) {
-        var other = cands[c][1];
-        var key2 = (i < other ? i + "-" + other : other + "-" + i);
-        if (seen.has(key2)) continue;
-        seen.add(key2);
-        edges.push([i, other]);
-        made++;
-      }
-    }
 
-    // cortical folds: wavy beziers clipped to the silhouette
-    var folds = [];
-    for (var f = 0; f < 22; f++) {
-      var fx = cx + (rnd() - 0.5) * s * 0.78;
-      var fy = cy + (rnd() - 0.5) * s * 0.84;
-      var a = (rnd() - 0.5) * Math.PI;
-      var len = s * (0.10 + rnd() * 0.17);
-      folds.push({
-        x: fx, y: fy, len: len, a: a,
-        bend: (rnd() - 0.5) * len * 0.9,
-        w: 0.6 + rnd() * 0.7
-      });
-    }
-
-    // agent label anchors: outer nodes on each side
-    var anchors = [];
-    for (var k = 0; k < AGENT_IDS.length; k++) {
-      var target = null, best = -1;
-      for (var t = 0; t < 220; t++) {
-        var cand = nodes[Math.floor(rnd() * nodes.length)];
-        var score = Math.abs(cand.x - cx) / (s * 0.5) + rnd() * 0.12;
-        if (score > best) { best = score; target = cand; }
-      }
-      if (target) anchors.push({ id: AGENT_IDS[k], node: target });
-    }
-
-    return {
-      w: w, h: h, cx: cx, cy: cy, s: s,
-      outline: outline, nodes: nodes, edges: edges, folds: folds, anchors: anchors, seed: S.seed
-    };
+    S.graph = { w: w, h: h, cx: cx, cy: cy, s: s, outline: outline, hubs: hubs, nodes: nodes, agentNames: agentNames };
+    drawStatic();
+    layoutLabels();
+    $("mapMeta").textContent = num(nodes.length) + " roles · " + num(agentNames.length) + " agents · " + num(nodes.length) + " links";
+    $("mapTitle").textContent = "ROLE → AGENT MAP · live config";
   }
 
-  function drawStatic(brain) {
-    var w = brain.w, h = brain.h;
-    staticLayer.width = Math.round(w * DPR);
-    staticLayer.height = Math.round(h * DPR);
+  function drawStatic() {
+    var g = S.graph;
+    if (!g) return;
+    staticLayer.width = Math.round(g.w * DPR);
+    staticLayer.height = Math.round(g.h * DPR);
     sctx.setTransform(DPR, 0, 0, DPR, 0, 0);
-    sctx.clearRect(0, 0, w, h);
+    sctx.clearRect(0, 0, g.w, g.h);
 
-    // inner glow + fill
-    var g = sctx.createRadialGradient(brain.cx, brain.cy - brain.s * 0.06, brain.s * 0.05,
-      brain.cx, brain.cy, brain.s * 0.62);
-    g.addColorStop(0, "rgba(0,255,163,.13)");
-    g.addColorStop(0.55, "rgba(0,120,110,.07)");
-    g.addColorStop(1, "rgba(0,40,45,0)");
-    sctx.fillStyle = g;
-    sctx.fill(brain.outline);
-
-    // folds (clipped)
+    // decorative silhouette (labelled as such in the footer)
+    var glow = sctx.createRadialGradient(g.cx, g.cy, g.s * 0.05, g.cx, g.cy, g.s * 0.6);
+    glow.addColorStop(0, "rgba(0,255,163,.07)");
+    glow.addColorStop(1, "rgba(0,40,45,0)");
+    sctx.fillStyle = glow;
+    sctx.fill(g.outline);
     sctx.save();
-    sctx.clip(brain.outline);
+    sctx.strokeStyle = "rgba(0,255,163,.20)";
     sctx.lineWidth = 1;
-    brain.folds.forEach(function (f) {
-      sctx.beginPath();
-      sctx.moveTo(f.x, f.y);
-      var ex = f.x + Math.cos(f.a) * f.len;
-      var ey = f.y + Math.sin(f.a) * f.len;
-      var mx = (f.x + ex) / 2 - Math.sin(f.a) * f.bend;
-      var my = (f.y + ey) / 2 + Math.cos(f.a) * f.bend;
-      sctx.quadraticCurveTo(mx, my, ex, ey);
-      sctx.strokeStyle = "rgba(0,255,163," + (0.05 + f.w * 0.055).toFixed(3) + ")";
-      sctx.stroke();
-    });
+    sctx.stroke(g.outline);
+    sctx.restore();
 
-    // edges, batched per side
-    [-1, 1].forEach(function (side) {
+    // real links: role → its agent
+    sctx.save();
+    g.agentNames.forEach(function (name) {
+      var hub = g.hubs[name];
+      if (!hub) return;
       sctx.beginPath();
-      brain.edges.forEach(function (e) {
-        var a = brain.nodes[e[0]], b = brain.nodes[e[1]];
-        if (a.side !== side) return;
-        sctx.moveTo(a.x, a.y);
-        sctx.lineTo(b.x, b.y);
+      g.nodes.forEach(function (n) {
+        if (n.agent !== name) return;
+        sctx.moveTo(n.x, n.y);
+        sctx.lineTo(hub.x, hub.y);
       });
-      sctx.strokeStyle = side < 0 ? "rgba(0,255,163,.15)" : "rgba(34,227,255,.14)";
-      sctx.lineWidth = 0.7;
+      sctx.strokeStyle = hub.color + "22";
+      sctx.lineWidth = 0.6;
       sctx.stroke();
     });
-
-    // node dots, batched
-    sctx.beginPath();
-    brain.nodes.forEach(function (n) {
-      sctx.moveTo(n.x + n.r, n.y);
-      sctx.arc(n.x, n.y, n.r, 0, Math.PI * 2);
-    });
-    sctx.fillStyle = "rgba(150,255,225,.5)";
-    sctx.fill();
     sctx.restore();
 
-    // outline + fissure + halo
+    // real roles as dots, coloured by the agent that serves them
     sctx.save();
-    sctx.strokeStyle = "rgba(0,255,163,.75)";
-    sctx.lineWidth = 1.2;
-    sctx.shadowColor = "rgba(0,255,163,.85)";
-    sctx.shadowBlur = 16;
-    sctx.stroke(brain.outline);
-    sctx.restore();
-
-    sctx.save();
-    sctx.beginPath();
-    sctx.moveTo(brain.cx, brain.cy - brain.s * 0.455);
-    sctx.bezierCurveTo(brain.cx - 3, brain.cy - brain.s * 0.2, brain.cx + 3, brain.cy + brain.s * 0.1,
-      brain.cx, brain.cy + brain.s * 0.38);
-    sctx.strokeStyle = "rgba(0,255,163,.28)";
-    sctx.lineWidth = 1;
-    sctx.setLineDash([4, 5]);
-    sctx.stroke();
-    sctx.restore();
-
-    // holographic rings
-    var rings = [
-      { rx: brain.s * 0.56, ry: brain.s * 0.20, y: brain.cy + brain.s * 0.47, a: 0.22 },
-      { rx: brain.s * 0.64, ry: brain.s * 0.23, y: brain.cy + brain.s * 0.47, a: 0.12 },
-      { rx: brain.s * 0.50, ry: brain.s * 0.18, y: brain.cy - brain.s * 0.50, a: 0.10 }
-    ];
-    sctx.save();
-    sctx.setLineDash([2, 7]);
-    rings.forEach(function (r) {
+    g.agentNames.forEach(function (name) {
+      var hub = g.hubs[name];
+      if (!hub) return;
       sctx.beginPath();
-      sctx.ellipse(brain.cx, r.y, r.rx, r.ry, 0, 0, Math.PI * 2);
-      sctx.strokeStyle = "rgba(34,227,255," + r.a + ")";
-      sctx.lineWidth = 1;
+      g.nodes.forEach(function (n) {
+        if (n.agent !== name) return;
+        sctx.moveTo(n.x + n.r, n.y);
+        sctx.arc(n.x, n.y, n.r, 0, Math.PI * 2);
+      });
+      sctx.fillStyle = hub.color + "cc";
+      sctx.fill();
+    });
+    sctx.restore();
+
+    // agent hubs
+    sctx.save();
+    g.agentNames.forEach(function (name) {
+      var hub = g.hubs[name];
+      if (!hub) return;
+      sctx.beginPath();
+      sctx.arc(hub.x, hub.y, 5, 0, Math.PI * 2);
+      sctx.fillStyle = "rgba(3,14,12,.95)";
+      sctx.fill();
+      sctx.strokeStyle = hub.color;
+      sctx.lineWidth = 1.4;
+      sctx.stroke();
+      sctx.beginPath();
+      sctx.arc(hub.x, hub.y, 9, 0, Math.PI * 2);
+      sctx.strokeStyle = hub.color + "44";
       sctx.stroke();
     });
     sctx.restore();
   }
 
-  function layoutLabels(brain) {
+  function layoutLabels() {
     var box = $("labels");
     box.innerHTML = "";
-    S.labelsOn = brain.anchors.map(function (anchor, i) {
+    S.labels = {};
+    var g = S.graph;
+    if (!g) return;
+    g.agentNames.forEach(function (name) {
+      var hub = g.hubs[name];
+      var a = S.agents[name] || {};
       var el = document.createElement("div");
-      el.className = "agent-label" + (i < 2 ? " hot" : "");
-      el.textContent = anchor.id;
-      var left = clamp((anchor.node.x / brain.w) * 100, 4, 96);
-      var top = clamp((anchor.node.y / brain.h) * 100 - 11, 6, 94);
-      el.style.left = left + "%";
-      el.style.top = top + "%";
+      el.className = "hub-label" + (S.activeAgent === name ? " hot" : "");
+      el.innerHTML = "<b>" + esc(name) + "</b><small>" + esc(a.model || "") + " · " + num(hub.count) + " roles</small>";
+      el.style.left = clamp((hub.x / g.w) * 100, 6, 94) + "%";
+      el.style.top = clamp((hub.y / g.h) * 100, 4, 96) + "%";
       box.appendChild(el);
-      return { el: el, node: anchor.node };
+      S.labels[name] = el;
+    });
+    var pin = document.createElement("div");
+    pin.className = "role-pin";
+    pin.id = "rolePin";
+    box.appendChild(pin);
+  }
+
+  function highlightAgent(name) {
+    if (!name) return;
+    S.activeAgent = name;
+    Object.keys(S.labels).forEach(function (key) {
+      S.labels[key].classList.toggle("hot", key === name);
     });
   }
 
-  function spawnPulse() {
-    if (!S.brain || S.pulses.length >= MAX_PULSES) return;
-    var edges = S.brain.edges;
-    var e = edges[Math.floor(Math.random() * edges.length)];
-    if (!e) return;
-    var a = S.brain.nodes[e[0]], b = S.brain.nodes[e[1]];
-    S.pulses.push({
-      a: a, b: b, t: 0,
-      speed: 0.35 + Math.random() * 0.85,
-      cyan: a.side > 0,
-      w: 1.4 + Math.random() * 1.6
-    });
-  }
-
-  function drawFrame(now) {
-    if (!S.brain) return;
-    var brain = S.brain;
-    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
-    ctx.clearRect(0, 0, brain.w, brain.h);
-    ctx.drawImage(staticLayer, 0, 0, brain.w, brain.h);
-
-    var t = now / 1000;
-
-    // pulsing nodes (a subset keeps this cheap)
-    ctx.save();
-    for (var i = 0; i < brain.nodes.length; i += 3) {
-      var n = brain.nodes[i];
-      var a = 0.18 + 0.55 * (0.5 + 0.5 * Math.sin(t * n.speed + n.phase));
-      ctx.beginPath();
-      ctx.arc(n.x, n.y, n.r + 1.6, 0, Math.PI * 2);
-      ctx.fillStyle = n.side < 0 ? "rgba(0,255,163," + (a * 0.22).toFixed(3) + ")"
-        : "rgba(34,227,255," + (a * 0.22).toFixed(3) + ")";
-      ctx.fill();
-      if (a > 0.55) {
-        ctx.beginPath();
-        ctx.arc(n.x, n.y, n.r * 0.85, 0, Math.PI * 2);
-        ctx.fillStyle = n.side < 0 ? "rgba(220,255,244,.85)" : "rgba(200,246,255,.8)";
-        ctx.fill();
-      }
+  function flashRole(roleName) {
+    if (!S.graph) return;
+    var node = null;
+    for (var i = 0; i < S.graph.nodes.length; i++) {
+      if (S.graph.nodes[i].role === roleName) { node = S.graph.nodes[i]; break; }
     }
+    if (!node) return;
+    node.heat = 1;
+    var pin = $("rolePin");
+    if (pin && S.graph) {
+      pin.textContent = roleName + " → " + node.agent;
+      pin.style.left = clamp((node.x / S.graph.w) * 100, 8, 92) + "%";
+      pin.style.top = clamp((node.y / S.graph.h) * 100, 8, 92) + "%";
+      pin.classList.add("show");
+      clearTimeout(flashRole.timer);
+      flashRole.timer = setTimeout(function () { pin.classList.remove("show"); }, 3200);
+    }
+    spawnPulse(node);
+  }
+
+  function spawnPulse(node) {
+    if (!node || !node.hub || S.pulses.length > 40) return;
+    S.pulses.push({ a: node, b: node.hub, t: 0, speed: 0.9 + Math.random() * 0.5, color: node.hub.color });
+  }
+
+  function drawFrame() {
+    var g = S.graph;
+    if (!g) return;
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    ctx.clearRect(0, 0, g.w, g.h);
+    ctx.drawImage(staticLayer, 0, 0, g.w, g.h);
+
+    // hub breathing (no invented activity: this is only the live-agent highlight)
+    ctx.save();
+    g.agentNames.forEach(function (name) {
+      var hub = g.hubs[name];
+      if (!hub) return;
+      if (S.activeAgent === name) {
+        var t = (performance.now() / 900) % 1;
+        ctx.beginPath();
+        ctx.arc(hub.x, hub.y, 9 + t * 22, 0, Math.PI * 2);
+        ctx.strokeStyle = hub.color + Math.round((1 - t) * 90).toString(16).padStart(2, "0");
+        ctx.lineWidth = 1;
+        ctx.stroke();
+      }
+    });
     ctx.restore();
 
-    // captured nodes flash briefly
+    // flashes on roles that the run actually touched
     ctx.save();
-    brain.nodes.forEach(function (n) {
+    g.nodes.forEach(function (n) {
       if (n.heat <= 0) return;
       ctx.beginPath();
-      ctx.arc(n.x, n.y, 2.2 + n.heat * 4.5, 0, Math.PI * 2);
-      ctx.fillStyle = "rgba(0,255,163," + (n.heat * 0.5).toFixed(3) + ")";
+      ctx.arc(n.x, n.y, 2 + n.heat * 7, 0, Math.PI * 2);
+      ctx.fillStyle = n.hub.color + Math.round(n.heat * 120).toString(16).padStart(2, "0");
       ctx.fill();
-      n.heat = Math.max(0, n.heat - 0.03);
+      n.heat = Math.max(0, n.heat - 0.02);
     });
     ctx.restore();
 
-    // ripples
+    // pulses = real events on real links
     ctx.save();
-    for (var r = S.ripples.length - 1; r >= 0; r--) {
-      var rp = S.ripples[r];
-      rp.r += rp.grow;
-      rp.life -= 0.022;
-      if (rp.life <= 0) { S.ripples.splice(r, 1); continue; }
+    for (var i = S.pulses.length - 1; i >= 0; i--) {
+      var p = S.pulses[i];
+      p.t += p.speed * 0.03;
+      if (p.t >= 1) { S.pulses.splice(i, 1); continue; }
+      var x = p.a.x + (p.b.x - p.a.x) * p.t;
+      var y = p.a.y + (p.b.y - p.a.y) * p.t;
       ctx.beginPath();
-      ctx.arc(rp.x, rp.y, rp.r, 0, Math.PI * 2);
-      ctx.strokeStyle = (rp.cyan ? "rgba(34,227,255," : "rgba(0,255,163,") + rp.life.toFixed(3) + ")";
-      ctx.lineWidth = 1;
-      ctx.stroke();
-    }
-    ctx.restore();
-
-    // travelling light pulses
-    ctx.save();
-    ctx.shadowBlur = 9;
-    for (var p = S.pulses.length - 1; p >= 0; p--) {
-      var pu = S.pulses[p];
-      pu.t += pu.speed * 0.022;
-      if (pu.t >= 1) {
-        var hit = pu.b;
-        hit.heat = 1;
-        S.ripples.push({ x: hit.x, y: hit.y, r: 1.5, grow: 0.55, life: 0.9, cyan: pu.cyan });
-        if (S.ripples.length > MAX_RIPPLES) S.ripples.shift();
-        S.pulses.splice(p, 1);
-        continue;
-      }
-      var px = pu.a.x + (pu.b.x - pu.a.x) * pu.t;
-      var py = pu.a.y + (pu.b.y - pu.a.y) * pu.t;
-      var col = pu.cyan ? "34,227,255" : "0,255,163";
-      ctx.shadowColor = "rgba(" + col + ",.9)";
-      ctx.beginPath();
-      ctx.arc(px, py, pu.w, 0, Math.PI * 2);
-      ctx.fillStyle = "rgba(230,255,250,.95)";
+      ctx.arc(x, y, 2.4, 0, Math.PI * 2);
+      ctx.fillStyle = "rgba(235,255,250,.95)";
+      ctx.shadowColor = p.color;
+      ctx.shadowBlur = 10;
       ctx.fill();
-      ctx.beginPath();
-      ctx.arc(px, py, pu.w * 2.8, 0, Math.PI * 2);
-      ctx.fillStyle = "rgba(" + col + ",.20)";
-      ctx.fill();
+      ctx.shadowBlur = 0;
     }
     ctx.restore();
   }
 
-  /* ── loop ──────────────────────────────────────────────────────────── */
-  var spawnAccum = 0;
-
+  /* ── animation loop ────────────────────────────────────────────────── */
   function tick(now) {
     if (!S.paused && !S.exited) {
-      var dt = S.lastFrame ? Math.min(now - S.lastFrame, 60) : 16;
-      S.lastFrame = now;
-
-      if (Math.random() < 0.10) spawnPulse();
-      if (Math.random() < 0.03) spawnPulse();
-
-      drawFrame(now);
-
-      // fps
+      drawFrame();
       S.fpsFrames++;
       if (!S.fpsLast) S.fpsLast = now;
-      if (now - S.fpsLast >= 700) {
+      if (now - S.fpsLast >= 800) {
         S.fps = Math.round((S.fpsFrames * 1000) / (now - S.fpsLast));
         S.fpsFrames = 0;
         S.fpsLast = now;
         $("fps").textContent = S.fps + " fps";
       }
-
-      // progress fills once, then holds at 100
-      if (S.progress < 100) {
-        S.progress = Math.min(100, S.progress + dt * 0.032);
-        paintProgress();
+      if (S.stats) {
+        var up = (S.stats.uptime_s || 0) + (Date.now() - S.loadedAt) / 1000;
+        $("tUptime").textContent = dur(up);
+        $("uptimeBar").style.width = clamp((up % 60) / 60 * 100, 2, 100) + "%";
+        $("clock").textContent = pad(Math.floor(up / 60)) + ":" + pad(Math.floor(up % 60));
       }
-
-      // session clock
-      S.elapsed += dt / 1000;
-      paintClock();
     }
-    S.rafId = requestAnimationFrame(tick);
+    requestAnimationFrame(tick);
   }
 
-  function paintProgress() {
-    var p = S.progress;
-    $("pfill").style.width = p.toFixed(1) + "%";
-    $("pct").textContent = Math.round(p) + "%" + (p >= 100 ? " · COMPLETE" : "");
-    $("tSync").innerHTML = Math.round(p) + "<small>%</small>";
-    $("syncBar").style.width = p.toFixed(1) + "%";
-    $("tEff").innerHTML = (92 + p * 0.067).toFixed(1) + "<small>%</small>";
-  }
+  /* ── stats → screen ────────────────────────────────────────────────── */
+  function applyStats(stats) {
+    S.stats = stats;
+    S.agents = stats.agents || {};
+    S.pipelines = stats.pipelines || {};
+    S.loadedAt = Date.now();
 
-  function paintClock() {
-    var total = Math.floor(S.elapsed);
-    $("clock").textContent = pad(Math.floor(total / 60)) + ":" + pad(total % 60);
-  }
+    $("tAgents").textContent = num(Object.keys(S.agents).length);
+    $("tRoles").textContent = num(stats.roles);
+    $("tPipelines").textContent = num(Object.keys(S.pipelines).length);
+    var keys = stats.keys || {};
+    var configured = Object.keys(keys).filter(function (k) { return keys[k] && keys[k].configured; });
+    $("tKeys").innerHTML = configured.length + "<small>/" + Object.keys(keys).length + "</small>";
+    $("tTokens").textContent = num(stats.tokens && stats.tokens.in) + " / " + num(stats.tokens && stats.tokens.out);
+    $("tSessions").textContent = num(stats.sessions && stats.sessions.done) + " / " + num(stats.sessions && stats.sessions.error);
+    $("tTurns").textContent = S.running || S.taskId ? String(S.turn) + (S.maxTurns ? "/" + S.maxTurns : "") : "—";
 
-  /* ── telemetry + agent cards ───────────────────────────────────────── */
-  var speedBase = 4096;
-  setInterval(function () {
-    if (S.paused || S.exited) return;
-    var jitter = Math.round((Math.random() - 0.5) * 190);
-    $("tSpeed").innerHTML = (speedBase + jitter).toLocaleString("en-US") + "<small>syn/s</small>";
-    if (S.progress >= 100) {
-      $("statusMode").textContent = Math.random() > 0.55 ? "OPTIMIZING" : "ACTIVE";
+    $("headlineCounts").textContent = num(stats.roles) + " ROLES · " + num(Object.keys(S.agents).length) +
+      " MODEL AGENTS · " + num(Object.keys(S.pipelines).length) + " PIPELINES";
+    $("wsName").textContent = (stats.workspace || "workspace").split("/").filter(Boolean).pop() || "workspace";
+    $("srcChip").textContent = "/api/stats · /api/roles · SSE /api/events";
+    $("srcChip").className = "src-chip";
+    if (stats.demo && !S.demoNoted) {
+      S.demoNoted = true;
+      line("server runs in --demo mode: runs are scripted, the tools are real", "warn");
     }
-    // agent cards: sync completes, then processing stays at 100 for the demo
-    var cards = document.querySelectorAll(".agent-card");
-    Array.prototype.forEach.call(cards, function (card, idx) {
-      var target = clamp(S.progress - idx * 8, 0, 100);
-      card.querySelector("[data-bar]").style.width = target + "%";
-      card.querySelector("[data-sync]").textContent = Math.round(target) + "%";
-      card.querySelector("[data-proc]").textContent = Math.round(target) + "%";
-      var stateEl = card.querySelector("[data-state]");
-      var done = target >= 100;
-      stateEl.textContent = done ? "SYNCED" : "SYNCING";
-      stateEl.className = "a-state" + (done ? "" : " off");
-      card.querySelector("[data-line]").textContent = (done ? "100% processed · " : "syncing ") +
-        AGENT_IDS[idx] + " · " + token().slice(0, 4).toLowerCase();
+
+    renderAgentCards();
+    buildIndex();
+  }
+
+  function offline(reason) {
+    S.online = false;
+    setStatus("OFFLINE");
+    $("srcChip").textContent = "OFFLINE — local server unreachable";
+    $("srcChip").className = "src-chip bad";
+    $("headlineCounts").textContent = "no data — server unreachable";
+    ["tAgents", "tRoles", "tPipelines", "tKeys", "tTokens", "tSessions", "tUptime"].forEach(function (id) {
+      $(id).textContent = "—";
     });
-  }, 620);
-
-  /* ── pause / resume / replay ───────────────────────────────────────── */
-  var pauseBtn = $("pauseBtn");
-
-  function setPaused(next) {
-    S.paused = next;
-    pauseBtn.textContent = next ? "RESUME" : "PAUSE";
-    pauseBtn.classList.toggle("paused", next);
-    pauseBtn.setAttribute("aria-pressed", String(next));
-    if (next) line("simulation paused — rendering frozen", "warn");
-    else line("simulation resumed", "ok");
-  }
-  pauseBtn.addEventListener("click", function () { setPaused(!S.paused); });
-
-  function replay() {
-    S.seed = (Date.now() % 100000) + 7;
-    S.progress = 0;
-    S.elapsed = 0;
-    S.pulses = [];
-    S.ripples = [];
-    S.exited = false;
-    S.paused = false;
-    pauseBtn.textContent = "PAUSE";
-    pauseBtn.classList.remove("paused");
-    pauseBtn.setAttribute("aria-pressed", "false");
-    $("standby").hidden = true;
-    cmdEl.disabled = false;
-    $("statusMode").textContent = "ACTIVE";
-    paintProgress();
-    paintClock();
-    rebuildBrain();
-    startMatrix();
-    startStream();
-    bootLog();
-    cmdEl.focus();
-  }
-  $("replayBtn").addEventListener("click", replay);
-  $("standbyReplay").addEventListener("click", replay);
-
-  /* ── resize / rebuild ──────────────────────────────────────────────── */
-  var resizeTimer = 0;
-  function rebuildBrain() {
-    var stage = $("brainStage");
-    var w = Math.max(120, stage.clientWidth);
-    var h = Math.max(120, stage.clientHeight);
-    canvas.width = Math.round(w * DPR);
-    canvas.height = Math.round(h * DPR);
-    S.brain = buildBrain(w, h);
-    drawStatic(S.brain);
-    layoutLabels(S.brain);
-    $("nodeCount").textContent = S.brain.nodes.length.toLocaleString("en-US") +
-      " NODES · " + S.brain.edges.length.toLocaleString("en-US") + " PATHWAYS";
-    $("tNodes").textContent = S.brain.nodes.length.toLocaleString("en-US");
-    drawFrame(performance.now());
-  }
-  function onResize() {
-    clearTimeout(resizeTimer);
-    resizeTimer = setTimeout(rebuildBrain, 140);
-  }
-  window.addEventListener("resize", onResize);
-  if (window.ResizeObserver) new ResizeObserver(onResize).observe($("brainStage"));
-
-  /* ── command console ───────────────────────────────────────────────── */
-  function statusReport() {
-    var nodes = S.brain ? S.brain.nodes.length : NODE_COUNT;
-    var edges = S.brain ? S.brain.edges.length : 0;
-    rich("SIMULATED STATUS <b>·</b> " + Math.round(S.progress) + "% processed", "ok");
-    line("  agents online .......... 1,000+  (display value, simulated)", "info");
-    line("  neural nodes rendered .. " + nodes.toLocaleString("en-US") + "  (drawn on canvas)", "info");
-    line("  pathways rendered ...... " + edges.toLocaleString("en-US"), "info");
-    line("  wave speed ............. " + (speedBase).toLocaleString("en-US") + " syn/s  (synthetic)", "info");
-    line("  efficiency ............. " + (92 + S.progress * 0.067).toFixed(1) + "%  (synthetic)", "info");
-    line("  sync ................... " + Math.round(S.progress) + "%", "info");
-    line("  session ............... " + $("clock").textContent + "  (real, since page load)", "info");
-    line("  render ................ " + (S.fps || "—") + " fps  (real, measured)", "info");
-    line("  state ................. " + (S.paused ? "PAUSED" : "RUNNING") + " · simulation", "dim");
-    line("  backend ............... none — no network, no model calls", "warn");
-    line("", "dim");
+    $("mapMeta").textContent = "no server";
+    $("agentCards").innerHTML = '<div class="a-model">no data — start `nexus gui` and reload</div>';
+    setProgress("OFFLINE", 0, "—");
+    line("cannot reach the local server: " + reason, "err");
+    line("start it with `nexus gui` (or `nexus serve`) and press RELOAD — nothing is faked here.", "dim");
   }
 
-  function helpReport() {
-    rich("COMMANDS <b>·</b> this console is a simulation", "ok");
-    line("  status          print the synthetic telemetry block", "info");
-    line("  help            this list", "info");
-    line("  clear           wipe the console output", "info");
-    line("  exit            end the session (REPLAY restarts it)", "info");
-    line("  pause / resume  freeze or resume the animation", "info");
-    line("  replay          re-seed the cortex and restart the boot sequence", "info");
-    line("  anything else   answered with a canned, clearly-marked demo reply", "info");
-    line("", "dim");
-    line("Note: no command here reaches a model. The real CLI is `nexus task \"…\"`;", "dim");
-    line("the live dashboard is `nexus gui`.", "dim");
-    line("", "dim");
-  }
+  /* ── boot: real requests, real progress ────────────────────────────── */
+  async function boot() {
+    S.boot = { done: 0, total: 4 };
+    setProgress("LOADING", 0, "0%");
 
-  var CANNED = [
-    { keys: ["brain", "cortex", "neural", "hemisphere"], text: "The cortex you see is generated geometry: 1,024 nodes sampled inside a bezier silhouette, linked to their two nearest neighbours, with light pulses travelling the resulting edges. Nothing is anatomically real, and nothing is loaded from a backend." },
-    { keys: ["agent", "agile", "team", "swarm"], text: "The agent labels (AGENT_412, AGENT_876 …) are decorative ids for this mock-up. The real roster in this repo is 11 configured models and 959 imported roles — run `nexus agents` or `nexus roles` in a terminal." },
-    { keys: ["sync", "latency", "token", "telemetry", "speed", "efficiency"], text: "Telemetry on this screen is synthetic and regenerated in the browser. Two values are honest by construction: the session clock (since page load) and the render rate (measured frames per second). Current render rate: " + (S.fps || "—") + " fps." },
-    { keys: ["model", "gemini", "deepseek", "openrouter", "ollama", "llm"], text: "No model is connected. This page makes zero network requests, and the sandbox you are looking at cannot call one. Real model routing lives in nexus/providers.py and needs a key from `nexus keys set`." },
-    { keys: ["hello", "hi", "hey", "salam", "assalam"], text: "Hello. You are talking to a scripted demo — the replies come from a fixed table in this file, not from a model." },
-    { keys: ["who", "what are you", "about", "nexus"], text: "NEXUS AGENT is a terminal-first autonomous coding agent in this repository. This page is a visual simulation of its console, built as a single self-contained HTML file to show the intended look without touching a backend." },
-    { keys: ["real", "fake", "true", "honest"], text: "Fair question: everything numeric here except the session clock and the measured fps is simulated, and the page says so in three places. The dashboard at `nexus gui` shows real events from a real run." }
-  ];
-
-  function answerFor(query) {
-    var q = " " + query.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim() + " ";
-    var best = null, bestLen = 0;
-    for (var i = 0; i < CANNED.length; i++) {
-      for (var k = 0; k < CANNED[i].keys.length; k++) {
-        var key = " " + CANNED[i].keys[k] + " ";
-        if (q.indexOf(key) !== -1 && CANNED[i].keys[k].length > bestLen) {
-          best = CANNED[i].text;
-          bestLen = CANNED[i].keys[k].length;
-        }
-      }
+    var health = await api("/health");
+    S.boot.done++;
+    setProgress("LOADING", (S.boot.done / S.boot.total) * 100, Math.round((S.boot.done / S.boot.total) * 100) + "%");
+    if (!health.ok) {
+      offline(health.error || "no /health");
+      return;
     }
-    if (best) return best;
-    return "No scripted answer for that. This console only holds a small canned reply table — it is not wired to a model, so an unknown query gets an honest shrug rather than an invented answer. Try `status`, `help`, or ask about the brain, agents or telemetry.";
+    S.health = health.body;
+    S.online = true;
+    line("nexus " + health.body.version + " · workspace " + health.body.workspace, "ok");
+
+    var stats = await api("/api/stats");
+    S.boot.done++;
+    setProgress("LOADING", (S.boot.done / S.boot.total) * 100, Math.round((S.boot.done / S.boot.total) * 100) + "%");
+    if (!stats.ok) { offline(stats.error || "no /api/stats"); return; }
+    applyStats(stats.body);
+
+    var roles = await api("/api/roles");
+    S.boot.done++;
+    setProgress("LOADING", (S.boot.done / S.boot.total) * 100, Math.round((S.boot.done / S.boot.total) * 100) + "%");
+    if (roles.ok && Array.isArray(roles.body)) S.roles = roles.body;
+    else line("roles unavailable: " + (roles.error || "invalid payload"), "err");
+
+    var pipelines = await api("/api/pipelines");
+    S.boot.done++;
+    setProgress("LOADING", 100, "100%");
+    if (pipelines.ok) S.pipelines = pipelines.body || S.pipelines;
+
+    buildGraph();
+    renderAgentCards();
+    buildIndex();
+    setStatus("LIVE");
+    setProgress("READY", 100, "100%");
+    line("loaded " + num(S.roles.length) + " roles · " + num(Object.keys(S.agents).length) + " agents · " +
+      num(Object.keys(S.pipelines).length) + " pipelines from the server", "ok");
+    line("", "dim");
+    line("type `help` for commands, or a task to hand to the agent.", "info");
+    line("", "dim");
+  }
+
+  /* ── running a task (real POST /api/task) ──────────────────────────── */
+  async function runTask(task) {
+    if (S.running) { line("a run is already in progress — `cancel` first", "warn"); return; }
+    var payload = {
+      task: task,
+      role: S.ctx.role || null,
+      read_only: !!S.ctx.readOnly,
+      pipeline: S.ctx.pipeline || null
+    };
+    line("→ POST /api/task " + (payload.pipeline ? "pipeline=" + payload.pipeline + " " : "") +
+      (payload.role ? "role=" + payload.role + " " : "") + "…", "dim");
+    var res = await api("/api/task", { method: "POST", body: JSON.stringify(payload) });
+    if (!res.ok || !res.body || !res.body.task_id) {
+      line("task rejected: " + (res.error || "no task id"), "err");
+      setStatus("LIVE");
+      return;
+    }
+    S.taskId = res.body.task_id;
+    S.running = true;
+    S.pending = false;
+    S.turn = 0;
+    S.maxTurns = 0;
+    S.tools = 0;
+    S.tokens = { in: 0, out: 0 };
+    setStatus("RUNNING");
+    setProgress("STARTING", 0, "0%");
+    $("tTurns").textContent = "0";
+    line("task " + S.taskId + " accepted", "ok");
+    openStream(S.taskId);
+  }
+
+  function openStream(taskId) {
+    if (S.es) { S.es.close(); S.es = null; }
+    var url = "/api/events/" + taskId + (TOKEN ? "?token=" + encodeURIComponent(TOKEN) : "");
+    var es = new EventSource(url);
+    S.es = es;
+    es.onopen = function () { line("SSE connected · /api/events/" + taskId, "dim"); };
+    es.onmessage = function (msg) {
+      var ev;
+      try { ev = JSON.parse(msg.data); } catch (_) { return; }
+      handleEvent(ev);
+    };
+    es.onerror = function () {
+      if (es.readyState === EventSource.CLOSED && S.running) {
+        line("event stream closed before the run finished", "warn");
+      }
+    };
+  }
+
+  function handleEvent(ev) {
+    switch (ev.type) {
+      case "role":
+        S.activeRole = ev.role;
+        highlightAgent(ev.agent);
+        flashRole(ev.role);
+        streamRow("role", ev.role + " → " + ev.agent + " (" + (ev.method || "?") + ")");
+        line("route: " + ev.role + " → " + ev.agent + " · " + (ev.method || "?") +
+          (ev.hits && ev.hits.length ? " · hits: " + ev.hits.join(", ") : ""), "cyan");
+        break;
+      case "agent":
+        if (ev.agent) {
+          highlightAgent(ev.agent);
+          streamRow("agent", ev.agent + (ev.model ? " · " + ev.model : "") + (ev.error ? " ✗ " + ev.error : ""));
+          if (ev.error) line("agent " + ev.agent + " failed: " + ev.error, "err");
+          else if (ev.message) line(ev.message, "info");
+        }
+        break;
+      case "think":
+        S.turn = ev.turn || S.turn;
+        S.maxTurns = ev.max_turns || S.maxTurns;
+        if (ev.agent) highlightAgent(ev.agent);
+        setProgress("TURN", S.maxTurns ? (S.turn / S.maxTurns) * 100 : 0,
+          S.maxTurns ? S.turn + "/" + S.maxTurns : String(S.turn));
+        $("tTurns").textContent = S.maxTurns ? S.turn + "/" + S.maxTurns : String(S.turn);
+        streamRow("think", (ev.agent || "") + " turn " + (ev.turn || "?") + "/" + (ev.max_turns || "?"));
+        break;
+      case "usage":
+        if (typeof ev.input_tokens === "number") S.tokens.in = ev.input_tokens;
+        if (typeof ev.output_tokens === "number") S.tokens.out = ev.output_tokens;
+        $("tTokens").textContent = num(S.tokens.in) + " / " + num(S.tokens.out);
+        streamRow("usage", num(S.tokens.in) + " in / " + num(S.tokens.out) + " out");
+        break;
+      case "tool_call":
+        S.tools++;
+        streamRow("tool", ev.tool + " · " + String(ev.preview || "").slice(0, 60));
+        line("tool: " + ev.tool + (ev.preview ? "  " + String(ev.preview).slice(0, 300) : ""), "info");
+        break;
+      case "tool_result":
+        streamRow(ev.is_error ? "fail" : "ok", String(ev.preview || "").slice(0, 60), !!ev.is_error);
+        line((ev.is_error ? "✗ " : "✓ ") + String(ev.preview || "").slice(0, 400), ev.is_error ? "err" : "dim");
+        break;
+      case "text":
+        if (ev.text) line(String(ev.text), "cyan");
+        break;
+      case "status":
+        if (ev.message) { line(ev.message, "info"); streamRow("status", String(ev.message).slice(0, 60)); }
+        break;
+      case "memory":
+        line("memory saved for " + ev.role + " → " + ev.path, "ok");
+        break;
+      case "approval_request":
+        S.pending = true;
+        line("approval needed: " + ev.tool + " (" + (ev.risk || "write") + ")", "warn");
+        line("  " + String(ev.preview || "").slice(0, 400), "dim");
+        line("  type `approve`, `approve always`, or `deny`", "warn");
+        streamRow("approval", ev.tool + " waiting", false);
+        break;
+      case "approval_response":
+        S.pending = false;
+        line("approval " + (ev.approved ? "granted" : "denied") + ": " + (ev.tool || ""), ev.approved ? "ok" : "warn");
+        break;
+      case "error":
+        line("error: " + (ev.message || "unknown"), "err");
+        streamRow("error", String(ev.message || "").slice(0, 60), true);
+        break;
+      case "done":
+        finish(ev);
+        break;
+      default:
+        break;
+    }
+  }
+
+  function finish(ev) {
+    S.running = false;
+    S.pending = false;
+    if (S.es) { S.es.close(); S.es = null; }
+    var r = ev.result || {};
+    setStatus("LIVE");
+    if (r.ok === false || ev.status === "error") {
+      setProgress("FAILED", 100, "error");
+      line("run failed: " + (r.error || r.stopped_reason || "unknown"), "err");
+    } else {
+      setProgress("COMPLETE", 100, (r.turns != null ? r.turns + " turns" : "done"));
+      line("run complete · " + (r.role || "?") + " · " + (r.agent || "?") +
+        " · " + (r.turns != null ? r.turns + " turns" : "?") + " · " +
+        (r.tool_calls != null ? r.tool_calls + " tools" : "?") + " · " +
+        (r.duration_s != null ? r.duration_s + "s" : "?"), "ok");
+      if (r.summary) line(r.summary, "cyan");
+      if (r.changed_files && r.changed_files.length) line("changed: " + r.changed_files.join(", "), "info");
+      if (r.followups && r.followups.length) r.followups.forEach(function (f) { line("↳ " + f, "dim"); });
+    }
+    if (r.input_tokens != null) S.tokens.in = r.input_tokens;
+    if (r.output_tokens != null) S.tokens.out = r.output_tokens;
+    $("tTokens").textContent = num(S.tokens.in) + " / " + num(S.tokens.out);
+    line("", "dim");
+    api("/api/stats").then(function (res) { if (res.ok) applyStats(res.body); });
+  }
+
+  /* ── commands ──────────────────────────────────────────────────────── */
+  function helpText() {
+    line("commands", "ok");
+    line("  help                  this list", "info");
+    line("  status                server + run state (/health, /api/stats)", "info");
+    line("  agents                agents from /api/agents (model, key, fallback)", "info");
+    line("  roles <text>          search the real role list (empty → count)", "info");
+    line("  pipelines             pipelines from /api/pipelines", "info");
+    line("  keys                  key state from /api/stats (masked, never printed)", "info");
+    line("  memory <role>         /api/memory/<role> notes", "info");
+    line("  /role <name|auto>     force a role for the next run", "info");
+    line("  /pipeline <name|none> run a pipeline next", "info");
+    line("  /plan on|off          read-only mode", "info");
+    line("  <any other text>      POST /api/task and stream the real run", "info");
+    line("  approve | approve always | deny | cancel", "info");
+    line("  clear · exit · pause · reload", "info");
+  }
+
+  function statusText() {
+    if (!S.online || !S.stats) { line("server unreachable — no status to show", "err"); return; }
+    var st = S.stats;
+    line("nexus " + (S.health ? S.health.version : st.version) + " · " + st.workspace, "ok");
+    line("  agents ......... " + Object.keys(S.agents).length, "info");
+    line("  roles .......... " + st.roles + "  (" + num(S.roles.length) + " loaded in the map)", "info");
+    line("  pipelines ...... " + Object.keys(S.pipelines).length + "  " + Object.keys(S.pipelines).join(", "), "info");
+    line("  default agent .. " + st.default_agent + (st.prefer_local ? "  (local-first)" : ""), "info");
+    line("  router ......... " + (st.settings && st.settings.router_agent) +
+      " · auto_route " + (st.settings && st.settings.auto_route), "info");
+    line("  max turns ...... " + (st.settings && st.settings.max_turns), "info");
+    line("  sessions ....... " + st.sessions.total + " total · " + st.sessions.running + " running · " +
+      st.sessions.done + " done · " + st.sessions.error + " error", "info");
+    line("  tokens ......... " + num(st.tokens.in) + " in / " + num(st.tokens.out) + " out (server totals)", "info");
+    line("  run state ...... " + (S.running ? "RUNNING task " + S.taskId : "idle") +
+      (S.pending ? " · waiting for approval" : ""), "info");
+    line("  context ........ role " + (S.ctx.role || "auto") + " · pipeline " + (S.ctx.pipeline || "none") +
+      " · read-only " + (S.ctx.readOnly ? "on" : "off"), "info");
+    line("  render ......... " + (S.fps || "—") + " fps (measured)", "dim");
+  }
+
+  function agentsText() {
+    var names = Object.keys(S.agents);
+    if (!names.length) { line("no agents loaded", "err"); return; }
+    var counts = roleCountByAgent();
+    names.forEach(function (name) {
+      var a = S.agents[name] || {};
+      var key = a.optional ? "no key needed" : (a.key_present ? "key ✓ " + (a.key_source || "") : "key ✗");
+      line("  " + name.padEnd(20) + (a.model || "?").padEnd(30) + (a.provider || "").padEnd(12) +
+        (counts[name] || 0) + " roles  " + key, "info");
+    });
+    line("fallbacks: " + names.map(function (n) { return n + "→" + (S.agents[n].fallback || "none"); }).join("  "), "dim");
+  }
+
+  function rolesText(needle) {
+    if (!S.roles.length) { line("role list not loaded", "err"); return; }
+    if (!needle) {
+      var byCat = {};
+      S.roles.forEach(function (r) { byCat[r.category] = (byCat[r.category] || 0) + 1; });
+      line(S.roles.length + " roles across " + Object.keys(byCat).length + " categories:", "ok");
+      Object.keys(byCat).sort().forEach(function (c) { line("  " + c.padEnd(22) + byCat[c], "info"); });
+      return;
+    }
+    var q = needle.toLowerCase();
+    var hits = S.roles.filter(function (r) {
+      return r.name.toLowerCase().indexOf(q) !== -1 || (r.title || "").toLowerCase().indexOf(q) !== -1 ||
+        (r.keywords || []).some(function (k) { return String(k).toLowerCase().indexOf(q) !== -1; });
+    });
+    line(hits.length + " role(s) matching “" + needle + "”:", "ok");
+    hits.slice(0, 14).forEach(function (r) {
+      line("  " + r.name.padEnd(28) + r.agent.padEnd(22) + r.category, "info");
+    });
+    if (hits.length > 14) line("  … " + (hits.length - 14) + " more", "dim");
+  }
+
+  function pipelinesText() {
+    var names = Object.keys(S.pipelines);
+    if (!names.length) { line("no pipelines configured", "err"); return; }
+    names.forEach(function (n) {
+      var p = S.pipelines[n] || {};
+      line("  " + n.padEnd(18) + (p.steps || []).join(" → "), "info");
+      if (p.description) line("    " + p.description, "dim");
+    });
+  }
+
+  function keysText() {
+    if (!S.stats || !S.stats.keys) { line("no key data", "err"); return; }
+    var keys = S.stats.keys;
+    Object.keys(keys).forEach(function (fam) {
+      var k = keys[fam] || {};
+      line("  " + fam.padEnd(12) + (k.configured ? "set " + (k.masked || "") + "  (" + (k.source || "") + ")" : "not configured"),
+        k.configured ? "ok" : "warn");
+    });
+    line("set one with: nexus keys set <gemini|deepseek|openrouter>", "dim");
+  }
+
+  async function memoryText(role) {
+    if (!role) { line("usage: memory <role>", "warn"); return; }
+    var res = await api("/api/memory/" + encodeURIComponent(role));
+    if (!res.ok) { line("memory error: " + (res.error || "unknown"), "err"); return; }
+    line("memory for " + res.body.role + " → " + res.body.path, "ok");
+    var text = (res.body.text || "").trim();
+    line(text || "(empty)", text ? "info" : "dim");
+  }
+
+  function updateCtx() {
+    $("ctxLine").innerHTML = "role <b>" + esc(S.ctx.role || "auto") + "</b> · pipeline <b>" +
+      esc(S.ctx.pipeline || "none") + "</b> · read-only <b>" + (S.ctx.readOnly ? "on" : "off") + "</b>";
+  }
+
+  async function decide(approved, scope) {
+    if (!S.taskId) { line("no task to approve", "warn"); return; }
+    var res = await api("/api/approve/" + S.taskId, {
+      method: "POST", body: JSON.stringify({ approved: approved, scope: scope })
+    });
+    line(res.ok ? "approval sent" : "approval failed: " + res.error, res.ok ? "ok" : "err");
+  }
+
+  async function cancelRun() {
+    if (!S.taskId) { line("no task running", "dim"); return; }
+    var res = await api("/api/cancel/" + S.taskId, { method: "POST", body: "{}" });
+    line(res.ok ? "cancel requested" : "cancel failed: " + res.error, res.ok ? "warn" : "err");
   }
 
   function runCommand(raw) {
@@ -1248,34 +1262,118 @@ button{font:inherit;color:inherit}
     S.history.push(text);
     S.histIdx = S.history.length;
     line(text, "cmd");
+    var parts = text.split(/\s+/);
+    var head = parts[0].toLowerCase();
+    var rest = text.slice(parts[0].length).trim();
 
-    var head = text.toLowerCase().split(/\s+/)[0];
-    if (head === "help" || head === "?") return helpReport();
-    if (head === "status" || head === "stats") return statusReport();
+    if (head === "help" || head === "?") return helpText();
+    if (head === "status") return statusText();
+    if (head === "agents") return agentsText();
+    if (head === "roles") return rolesText(rest);
+    if (head === "pipelines") return pipelinesText();
+    if (head === "keys") return keysText();
+    if (head === "memory") { memoryText(rest); return; }
     if (head === "clear" || head === "cls") {
       logEl.innerHTML = "";
-      line("console cleared · simulation still running", "dim");
+      line("console cleared", "dim");
       return;
     }
     if (head === "exit" || head === "quit") {
-      line("shutting down simulated session…", "warn");
-      line("no connection to close — nothing was ever connected.", "dim");
+      if (S.es) { S.es.close(); S.es = null; }
       S.exited = true;
       cmdEl.disabled = true;
+      setStatus("CLOSED");
+      $("standbyText").textContent = "The event stream is closed and the prompt is off. " +
+        "The server is still running — press RECONNECT to load it again.";
       $("standby").hidden = false;
-      $("statusMode").textContent = "STANDBY";
+      line("console closed — SSE stream closed", "warn");
       return;
     }
-    if (head === "pause" || head === "resume") {
-      setPaused(head === "pause" ? true : false);
+    if (head === "pause") { setPaused(true); return; }
+    if (head === "resume") { setPaused(false); return; }
+    if (head === "reload") { reloadAll(); return; }
+    if (head === "approve") {
+      if (!S.pending) { line("nothing is waiting for approval", "dim"); return; }
+      return decide(true, rest.indexOf("always") !== -1 ? "session" : "once");
+    }
+    if (head === "deny") {
+      if (!S.pending) { line("nothing is waiting for approval", "dim"); return; }
+      return decide(false, "once");
+    }
+    if (head === "cancel") { cancelRun(); return; }
+
+    if (head === "/role") {
+      var roleName = rest || null;
+      if (roleName && roleName !== "auto" && S.roles.length &&
+        !S.roles.some(function (r) { return r.name === roleName; })) {
+        line("unknown role “" + roleName + "” — `roles " + roleName + "` to search", "err");
+        return;
+      }
+      S.ctx.role = roleName === "auto" ? null : roleName;
+      updateCtx();
+      line("role → " + (S.ctx.role || "auto"), "ok");
       return;
     }
-    if (head === "replay") { replay(); return; }
-    rich("SIMULATED RESPONSE <b>·</b> " + answerFor(text), "cyan");
-    line("(canned reply — no model was called, no network request was made)", "dim");
-    line("", "dim");
+    if (head === "/pipeline") {
+      if (rest && rest !== "none" && !S.pipelines[rest]) {
+        line("unknown pipeline “" + rest + "” — `pipelines` lists them", "err");
+        return;
+      }
+      S.ctx.pipeline = rest === "none" ? null : rest;
+      updateCtx();
+      line("pipeline → " + (S.ctx.pipeline || "none"), "ok");
+      return;
+    }
+    if (head === "/plan") {
+      S.ctx.readOnly = rest === "on" ? true : rest === "off" ? false : !S.ctx.readOnly;
+      updateCtx();
+      line("read-only → " + (S.ctx.readOnly ? "on" : "off"), "ok");
+      return;
+    }
+
+    if (head === "run") {
+      if (!rest) { line("usage: run <task>", "warn"); return; }
+      return runTask(rest);
+    }
+
+    // everything else is a real task for the agent
+    if (!S.online) { line("server unreachable — cannot run a task", "err"); return; }
+    runTask(text);
   }
 
+  /* ── pause / reload ────────────────────────────────────────────────── */
+  var pauseBtn = $("pauseBtn");
+  function setPaused(next) {
+    S.paused = next;
+    pauseBtn.textContent = next ? "RESUME" : "PAUSE";
+    pauseBtn.classList.toggle("paused", next);
+    pauseBtn.setAttribute("aria-pressed", String(next));
+  }
+  pauseBtn.addEventListener("click", function () {
+    setPaused(!S.paused);
+    line(S.paused ? "rendering paused (the run keeps going)" : "rendering resumed", "dim");
+  });
+  $("reloadBtn").addEventListener("click", function () { reloadAll(); });
+  $("standbyReload").addEventListener("click", function () { reloadAll(); });
+
+  function reloadAll() {
+    if (S.es) { S.es.close(); S.es = null; }
+    S.exited = false;
+    S.running = false;
+    S.pending = false;
+    S.activeAgent = null;
+    S.activeRole = null;
+    S.pulses = [];
+    S.taskId = null;
+    cmdEl.disabled = false;
+    $("standby").hidden = true;
+    setStatus("CONNECTING");
+    logEl.innerHTML = "";
+    line("reloading configuration from the local server…", "dim");
+    boot();
+  }
+
+  /* ── input wiring ──────────────────────────────────────────────────── */
   $("promptForm").addEventListener("submit", function (e) {
     e.preventDefault();
     var v = cmdEl.value;
@@ -1298,53 +1396,48 @@ button{font:inherit;color:inherit}
     }
   });
   document.addEventListener("keydown", function (e) {
-    if (e.key === "/" && document.activeElement !== cmdEl && !e.metaKey && !e.ctrlKey) {
+    if (e.key === "/" && document.activeElement !== cmdEl && !e.metaKey && !e.ctrlKey && !e.altKey) {
       e.preventDefault();
       cmdEl.focus();
     }
   });
-  var FINE_POINTER = window.matchMedia ? window.matchMedia("(pointer:fine)").matches : true;
   document.addEventListener("click", function (e) {
-    if (!FINE_POINTER) return;                       // no keyboard popups on touch
+    if (!FINE_POINTER) return;
     if (e.target.closest("button,input,a,label")) return;
     if (window.getSelection && String(window.getSelection())) return;
     cmdEl.focus({ preventScroll: true });
   });
 
-  /* ── occasional glitch (never constant) ────────────────────────────── */
+  /* ── resize ────────────────────────────────────────────────────────── */
+  var resizeTimer = 0;
+  function onResize() {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(function () {
+      if (!S.roles.length && !Object.keys(S.agents).length) return;
+      buildGraph();
+    }, 160);
+  }
+  window.addEventListener("resize", onResize);
+  if (window.ResizeObserver) new ResizeObserver(onResize).observe($("mapStage"));
+
+  /* ── occasional wordmark glitch (decorative, never constant) ────────── */
   var wordmark = $("wordmark");
   (function glitchLoop() {
-    var wait = 5200 + Math.random() * 6400;
     setTimeout(function () {
       if (!S.paused && !S.exited && !REDUCED) {
         wordmark.classList.add("glitch");
         setTimeout(function () { wordmark.classList.remove("glitch"); }, 380);
       }
       glitchLoop();
-    }, wait);
+    }, 5600 + Math.random() * 6400);
   })();
 
-  /* ── start ─────────────────────────────────────────────────────────── */
-  function start() {
-    rebuildBrain();
-    bootLog();
-    startMatrix();
-    startStream();
-    paintProgress();
-    paintClock();
-    S.rafId = requestAnimationFrame(tick);
-    if (REDUCED) {
-      S.paused = true;
-      pauseBtn.textContent = "RESUME";
-      pauseBtn.classList.add("paused");
-      pauseBtn.setAttribute("aria-pressed", "true");
-      line("reduced motion detected — simulation starts paused", "warn");
-    }
-    cmdEl.focus({ preventScroll: true });
-  }
-
-  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", start);
-  else start();
+  /* ── go ────────────────────────────────────────────────────────────── */
+  updateCtx();
+  requestAnimationFrame(tick);
+  if (REDUCED) { setPaused(true); }
+  boot();
+  cmdEl.focus({ preventScroll: true });
 })();
 </script>
 </body>

@@ -391,10 +391,12 @@ nexus gui --host 0.0.0.0 --token "$(openssl rand -hex 16)"   # reach it from ano
 terminal, browser and sidebar all render the identical event stream.
 
 Alongside it, `/console` serves [`nexus/panel/index.html`](nexus/panel/index.html) — the cinematic
-**NEXUS AGENT** console mock-up: one self-contained file (inline HTML/CSS/JS, no libraries, no CDN, no
-images), with a 1,024-node holographic cortex, binary matrix, telemetry, a working `status` / `help` /
-`clear` / `exit` prompt — and **simulated data only**. It never calls the API; use `/dashboard` for a
-real run.
+**NEXUS AGENT** console: one self-contained file (inline HTML/CSS/JS, no libraries, no CDN, no images)
+that draws the **real** configuration read from this server — every role in `roles.yaml` as a dot, its
+real agent as a hub, real key state, real token/session counters — and lets you drive a real run from
+the prompt (`status`, `agents`, `roles <text>`, `pipelines`, `keys`, `memory <role>`, `/role`, `/pipeline`,
+`/plan`, `approve` / `deny` / `cancel`, or any text as a task). Nothing on it is hardcoded: if the server
+is unreachable it says so and shows dashes.
 
 **What you see while a task runs**
 

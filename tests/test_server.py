@@ -376,15 +376,21 @@ def test_dashboard_is_served_with_its_assets(server):
     assert excinfo.value.headers["Location"] == "/dashboard"
 
 
-def test_simulation_console_is_served_and_self_contained(server):
+def test_console_is_served_and_reads_real_data(server):
     status, html = server.get("/console")
     assert status == 200
     assert "NEXUS AGENT" in html
-    assert "SIMULATION · NOT A LIVE BACKEND" in html
-    # one file: no external libraries, no CDNs, no images
+    # one file: no libraries, no CDNs, no images - only same-origin API calls
     for forbidden in ("http://", "https://", "<link", "@import", "src="):
         assert forbidden not in html, forbidden
     assert "<script>" in html and "<style>" in html
+    # it is wired to the real endpoints ...
+    for endpoint in ("/health", "/api/stats", "/api/roles", "/api/pipelines", "/api/events/", "/api/task"):
+        assert endpoint in html, endpoint
+    # ... and carries no invented fixtures or simulated telemetry
+    for fabricated in ("AGENT_412", "AGENT_876", "1,024", "1000+", "SIMULATION", "synthetic",
+                       "pathway speed", "OPTIMIZING"):
+        assert fabricated not in html, fabricated
     # the /console/ asset form is served from the panel dir
     assert server.get("/console/index.html")[0] == 200
 
