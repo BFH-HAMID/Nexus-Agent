@@ -285,6 +285,7 @@ class EventType(str, Enum):
     APPROVAL = "approval"        # waiting for the human
     ERROR = "error"
     MEMORY = "memory"
+    SKILL = "skill"              # skill created / patched / imported
     DONE = "done"
 
 

@@ -460,6 +460,11 @@ class Settings:
     router_agent: str = ""              # empty => use default_agent
     max_turns: int = 24
     stream: bool = True                 # stream model output (instant feedback in CLI/GUI)
+    learning: bool = True               # after non-trivial runs, save skills/memory (Hermes loop)
+    learning_agent: str = ""            # cheap model that reviews runs (empty = router_agent)
+    learning_min_tools: int = 4         # only review runs with at least this many tool calls
+    skill_nudge_interval: int = 8       # remind the agent to save skills every N turns (0 = off)
+    skills_enabled: bool = True         # load SKILL.md skills into the prompt
     auto_yes: bool = False
     allow_dangerous: bool = False
     command_timeout: float = 120.0
@@ -508,8 +513,14 @@ class Settings:
         self.prefer_local = _bool("NEXUS_PREFER_LOCAL", self.prefer_local)
         self.auto_branch = _bool("NEXUS_AUTO_BRANCH", self.auto_branch)
         self.stream = _bool("NEXUS_STREAM", self.stream)
+        self.learning = _bool("NEXUS_LEARNING", self.learning)
+        self.skills_enabled = _bool("NEXUS_SKILLS", self.skills_enabled)
+        if os.environ.get("NEXUS_LEARNING_AGENT"):
+            self.learning_agent = os.environ["NEXUS_LEARNING_AGENT"]
         for name, attr in (
             ("NEXUS_MAX_TURNS", "max_turns"),
+            ("NEXUS_LEARNING_MIN_TOOLS", "learning_min_tools"),
+            ("NEXUS_SKILL_NUDGE", "skill_nudge_interval"),
             ("NEXUS_ROUTER_MIN_SCORE", "router_min_score"),
             ("NEXUS_COMMAND_TIMEOUT", "command_timeout"),
         ):

@@ -256,6 +256,8 @@ class ToolContext:
     command_timeout: float = 120.0
     excludes: list[str] = field(default_factory=lambda: list(DEFAULT_EXCLUDES))
     ask_agent_depth: int = 0
+    memory_store: Any = None                 # nexus.memory.MemoryStore (global notes/profile)
+    sessions: Any = None                     # nexus.sessions.SessionStore (recall)
     state: dict[str, Any] = field(default_factory=dict)
 
 
@@ -733,6 +735,68 @@ def build_tools(ctx: ToolContext, *, role: str = "general", include_ask_agent: b
         lambda a: tool_remember(ctx, a, role=role),
         risk=Risk.WRITE,
     )
+
+    # -- learning surfaces (skills / memory / recall) ---------------------- #
+    reg.register(
+        "skill_view",
+        "Load a saved skill (reusable procedure) by name, in full. Call with no name to list "
+        "what is installed. Check the skills index in your system prompt first.",
+        {
+            "type": "object",
+            "properties": {"name": {"type": "string", "description": "skill slug (optional)"}},
+        },
+        lambda a: tool_skill_view(ctx, a),
+        risk=Risk.READ,
+    )
+    reg.register(
+        "skill_manage",
+        "Create, patch or delete a skill (agentskills.io SKILL.md). Use it after a non-trivial "
+        "task that will repeat, or to fix a skill that was wrong. description <= 60 chars, "
+        "body in markdown with When to Use / Procedure / Verification.",
+        {
+            "type": "object",
+            "properties": {
+                "action": {"type": "string", "enum": ["create", "patch", "delete"]},
+                "name": {"type": "string"},
+                "description": {"type": "string"},
+                "body": {"type": "string"},
+                "tags": {"type": "array", "items": {"type": "string"}},
+                "category": {"type": "string", "description": "default: learned"},
+            },
+            "required": ["action", "name"],
+        },
+        lambda a: tool_skill_manage(ctx, a),
+        risk=Risk.WRITE,
+    )
+    if ctx.memory_store is not None:
+        reg.register(
+            "memory",
+            "Curated long-term memory. section=memory for decisions/gotchas, section=user for "
+            "stable preferences about the human. Actions: add, remove, list. Keep entries short.",
+            {
+                "type": "object",
+                "properties": {
+                    "action": {"type": "string", "enum": ["add", "remove", "list"]},
+                    "section": {"type": "string", "enum": ["memory", "user"]},
+                    "text": {"type": "string"},
+                },
+                "required": ["action"],
+            },
+            lambda a: tool_memory(ctx, a),
+            risk=Risk.WRITE,
+        )
+    if ctx.sessions is not None:
+        reg.register(
+            "recall",
+            "Search your own past sessions in this project (what we did about X, which command "
+            "fixed Y). Call with no query for the most recent runs.",
+            {
+                "type": "object",
+                "properties": {"query": {"type": "string"}, "limit": {"type": "integer"}},
+            },
+            lambda a: tool_recall(ctx, a),
+            risk=Risk.READ,
+        )
 
     # -- collaboration ----------------------------------------------------- #
     if include_ask_agent and ctx.providers is not None:
@@ -1295,8 +1359,141 @@ def tool_finish(ctx: ToolContext, args: dict[str, Any]) -> str:
 # read-only tool subset (used by `nexus ask` / plan mode)
 # --------------------------------------------------------------------------- #
 
+# --------------------------------------------------------------------------- #
+# skills / memory / recall tools (Hermes-style learning surfaces)
+# --------------------------------------------------------------------------- #
+
+
+def tool_skill_view(ctx: ToolContext, args: dict[str, Any]) -> str:
+    """Load one SKILL.md in full - the agent reads the procedure, not a summary."""
+    from . import skills as skilllib
+
+    name = str(args.get("name") or "").strip()
+    if not name:
+        library = skilllib.discover(ctx.workspace)
+        if not library:
+            return "No skills are installed yet. `skill_manage` can create the first one."
+        return "Available skills:\n" + "\n".join(s.one_line() for s in library)
+    skill = skilllib.get(name, ctx.workspace)
+    if skill is None:
+        library = skilllib.discover(ctx.workspace)
+        close = [s.name for s in library if name.lower() in s.name.lower()][:8]
+        hint = f" Did you mean: {', '.join(close)}?" if close else ""
+        return f"No skill named '{name}'.{hint}"
+    skill.record_use()
+    header = (
+        f"# Skill: {skill.name} (v{skill.version}, source: {skill.source})\n"
+        f"description: {skill.description}\n"
+        f"tags: {', '.join(skill.tags) or '-'}\n"
+        f"path: {skill.path}\n"
+    )
+    support = ""
+    if skill.dir is not None:
+        files = sorted(
+            str(p.relative_to(skill.dir))
+            for p in skill.dir.rglob("*")
+            if p.is_file() and p.name != skilllib.SKILL_FILE
+        )[:20]
+        if files:
+            support = "\nsupport files (skill-relative): " + ", ".join(files) + "\n"
+    return header + support + "\n" + skill.body[: ctx.max_read_chars]
+
+
+def tool_skill_manage(ctx: ToolContext, args: dict[str, Any]) -> str:
+    """Create / patch / delete one skill (agentskills.io layout)."""
+    from . import skills as skilllib
+
+    action = str(args.get("action") or "create").strip().lower()
+    name = str(args.get("name") or "").strip().lower()
+    if not name:
+        raise ToolFailure("`name` is required")
+    if action == "delete":
+        return "deleted" if skilllib.delete_skill(name, ctx.workspace) else f"no skill named '{name}'"
+    if action not in {"create", "patch"}:
+        raise ToolFailure("action must be create, patch or delete")
+
+    existing = skilllib.get(name, ctx.workspace)
+    if action == "create" and existing is not None:
+        action = "patch"
+    if action == "patch":
+        if existing is None:
+            raise ToolFailure(f"no skill named '{name}' - use action=create")
+        if existing.source == "hermes":
+            raise ToolFailure(f"'{name}' is imported from Hermes - create a new skill instead")
+        body = args.get("body") if isinstance(args.get("body"), str) and args["body"].strip() else None
+        description = args.get("description") if isinstance(args.get("description"), str) else None
+        if body is None and description is None:
+            raise ToolFailure("patch needs a new `body` or `description`")
+        skilllib.patch_skill(existing.path, body=body, description=description)
+        return f"patched skill '{name}' ({existing.path})"
+
+    description = str(args.get("description") or "").strip()
+    body = str(args.get("body") or "").strip()
+    tags = args.get("tags") if isinstance(args.get("tags"), list) else []
+    warnings = skilllib.lint(name, description, body, tags=tags)
+    if any("invalid" in w or "required" in w for w in warnings):
+        raise ToolFailure("; ".join(warnings))
+    path = skilllib.create_skill(
+        name=name, description=description, body=body, tags=tags,
+        category=str(args.get("category") or "learned"), workspace=ctx.workspace,
+        provenance={"created_by": "agent"},
+    )
+    note = f" (warnings: {'; '.join(warnings)})" if warnings else ""
+    ctx.emit(Event(EventType.SKILL, {"action": "create", "name": name, "path": str(path)}))
+    return f"created skill '{name}' at {path}{note}"
+
+
+def tool_memory(ctx: ToolContext, args: dict[str, Any]) -> str:
+    """Curated long-term memory (MEMORY.md + USER.md)."""
+    store = ctx.memory_store
+    if store is None:
+        raise ToolFailure("memory is unavailable in this context")
+    action = str(args.get("action") or "add").strip().lower()
+    section = str(args.get("section") or "memory").strip().lower()
+    text = str(args.get("text") or "").strip()
+    if action == "list":
+        block = store.block(section)
+        return f"{block.name} ({block.chars}/{block.limit} chars)\n" + (
+            block.render() or "(empty)"
+        )
+    if action == "remove":
+        ok, message = store.remove(text, section)
+        if not ok:
+            raise ToolFailure(message)
+        return message
+    ok, message = store.add(text, section)
+    if not ok:
+        raise ToolFailure(message)
+    ctx.emit(Event(EventType.MEMORY, {"role": section, "text": text,
+                                      "path": str(store.block(section).path)}))
+    return message
+
+
+def tool_recall(ctx: ToolContext, args: dict[str, Any]) -> str:
+    """Search this project's past runs (FTS5 over stored transcripts)."""
+    if ctx.sessions is None:
+        raise ToolFailure("session history is unavailable in this context")
+    query = str(args.get("query") or "").strip()
+    limit = int(args.get("limit") or 5)
+    if not query:
+        rows = ctx.sessions.recent(limit)
+        if not rows:
+            return "No past sessions recorded yet."
+        return "\n".join(
+            f"{row['id']}  {row.get('role') or '-':<18} {str(row.get('task') or '')[:110]}"
+            for row in rows
+        )
+    rows = ctx.sessions.search(query, limit=limit)
+    if not rows:
+        return f"No past session matches '{query}'."
+    from .sessions import format_hit
+
+    return "\n\n".join(format_hit(row) + (f"\n        …{row.get('hit', '')}" if row.get("hit") else "")
+                        for row in rows)
+
+
 READ_ONLY_TOOLS = {
-    "list_files", "read_file", "grep", "git", "ask_agent", "finish",
+    "list_files", "read_file", "grep", "git", "ask_agent", "finish", "skill_view", "recall",
 }
 
 

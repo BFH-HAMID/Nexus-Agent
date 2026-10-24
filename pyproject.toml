@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "nexus-agent"
-version = "0.2.0"
+version = "0.3.0"
 description = "Nexus - one CLI/VS Code agent that routes your task to a team of specialist agents (Gemini, DeepSeek, OpenRouter) and ships the result."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -49,12 +49,13 @@ packages = ["nexus"]
 "agents.yaml" = "nexus/_config/agents.yaml"
 "roles.yaml" = "nexus/_config/roles.yaml"
 "pipelines.yaml" = "nexus/_config/pipelines.yaml"
+"skills" = "nexus/_config/skills"
 ".vscode/tasks.json" = "nexus/bundled/vscode-tasks.json"
 ".vscode/launch.json" = "nexus/bundled/vscode-launch.json"
 ".vscode/settings.json" = "nexus/bundled/vscode-settings.json"
 
 [tool.hatch.build.targets.sdist]
-include = ["nexus", "tests", "scripts", "agents.yaml", "roles.yaml", "pipelines.yaml", "README.md", "LICENSE"]
+include = ["nexus", "skills", "tests", "scripts", "agents.yaml", "roles.yaml", "pipelines.yaml", "README.md", "LICENSE"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

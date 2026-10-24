@@ -91,7 +91,9 @@
       fillRoles();
     }
     refreshMemory();
+    refreshBrain();
     setInterval(refreshStats, 15000);
+    setInterval(refreshBrain, 30000);
     setInterval(tickMeters, 1000);
     requestAnimationFrame(tickPackets);
   }
@@ -863,6 +865,48 @@
       : "no memory notes for this role yet — the agent writes here with the `remember` tool.");
   }
 
+  /* ── learning brain (skills + memory + recall) ───────────────────── */
+  async function refreshBrain() {
+    const { ok, body } = await api("/api/brain");
+    if (!ok || !body || !body.skills) return;
+    const skills = body.skills || {};
+    const mem = body.memory || {};
+    const runs = body.sessions || {};
+    $("brainSkills").textContent = fmt(skills.total || 0);
+    $("brainRuns").textContent = fmt(runs.sessions || 0);
+    const entries = ((mem.memory || {}).entries || []).length + ((mem.user || {}).entries || []).length;
+    $("brainMemo").textContent = fmt(entries);
+    const learning = body.learning || {};
+    $("brainPill").textContent = learning.enabled === false ? "paused" : "learning";
+    $("brainMeta").textContent = (skills.categories || []).length + " categories · " +
+      (runs.fts ? "FTS5 recall" : "recall") + (learning.agent ? " · " + learning.agent : "");
+    renderBrainList((skills.recent || []).slice(0, 8).map((s) => ({
+      title: s.name, sub: s.description, tag: (s.uses ? s.uses + "×" : s.category || "skill"),
+    })), "no skills yet — the agent writes them after non-trivial runs (or `nexus hermes install`)");
+  }
+
+  function renderBrainList(items, empty) {
+    const host = $("brainList");
+    if (!items.length) {
+      host.innerHTML = '<div class="brain-empty">' + esc(empty) + "</div>";
+      return;
+    }
+    host.innerHTML = items.map((it) =>
+      '<div class="brain-item"><b>' + esc(it.title) + "</b> <em>" + esc(it.tag) + "</em><span>" +
+      esc(trunc(it.sub || "", 96)) + "</span></div>").join("");
+  }
+
+  async function recall(query) {
+    const path = "/api/recall" + (query ? "?q=" + encodeURIComponent(query) : "");
+    const { ok, body } = await api(path);
+    if (!ok || !Array.isArray(body)) return;
+    renderBrainList(body.map((row) => ({
+      title: (row.role || "run") + " · " + new Date((row.created || 0) * 1000).toISOString().slice(0, 10),
+      sub: row.task || row.summary || "",
+      tag: row.id,
+    })), "no past runs match that yet");
+  }
+
   /* ── UI wiring ────────────────────────────────────────────────────── */
   function wireUi() {
     $("runBtn").addEventListener("click", run);
@@ -877,6 +921,10 @@
     $("apAlways").addEventListener("click", () => decide(true, "session"));
     $("apNo").addEventListener("click", () => decide(false, "once"));
     $("roleSelect").addEventListener("change", () => refreshMemory($("roleSelect").value || null));
+    $("brainGo").addEventListener("click", () => recall($("brainQuery").value.trim()));
+    $("brainQuery").addEventListener("keydown", (e) => {
+      if (e.key === "Enter") { e.preventDefault(); recall($("brainQuery").value.trim()); }
+    });
     $("filters").addEventListener("click", (e) => {
       const btn = e.target.closest(".filter");
       if (!btn) return;

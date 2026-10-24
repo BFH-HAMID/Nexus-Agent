@@ -638,10 +638,79 @@ def handle_slash(agent: NexusAgent, line: str) -> bool:
                 + (f" fallback={cfg.fallback}" if cfg.fallback else "")
             )
     elif cmd == "memory":
+        if arg.split()[0:1] and arg.split()[0].lower() in {"global", "brain", "long"}:
+            store = agent.memory_store
+            for block in (store.memory, store.user):
+                print(COLORS.bold(f"{block.name} ({block.chars}/{block.limit})")
+                      + COLORS.dim(f"  {block.path}"))
+                print(block.render() or COLORS.dim("  (empty)"))
+            return True
         target = arg or agent.active_role.name
         text = agent.memory.read(target)
         print(COLORS.bold(f"memory: {target}") + COLORS.dim(f" ({agent.memory.path_for(target)})"))
         print(text or COLORS.dim("(empty)"))
+    elif cmd in {"skills", "skill"}:
+        from . import skills as skilllib
+
+        library = skilllib.discover(agent.ws)
+        if cmd == "skill" and arg:
+            bits = arg.split(maxsplit=1)
+            skill = skilllib.get(bits[0], agent.ws)
+            if skill is None:
+                print(COLORS.red(f"no skill named '{bits[0]}' - try /skills"))
+            elif len(bits) > 1:
+                agent.inject_skill(skill.name)
+                print(COLORS.cyan(f"skill '{skill.name}' active for this task"))
+                result = agent.chat_turn(bits[1])
+                print_result(result)
+            else:
+                print(COLORS.bold(skill.name) + COLORS.dim(f"  {skill.path}"))
+                print(skill.body)
+        elif not library:
+            print(COLORS.yellow("no skills yet - /learn <what we just did> or `nexus skills import`"))
+        else:
+            print(COLORS.bold(f"{len(library)} skills") + COLORS.dim(" (load: /<skill-name>, or /skill <name> <task>)"))
+            for skill in library[:60]:
+                uses = skill.usage().get("uses", 0)
+                print(f"  {COLORS.cyan(skill.name):<34} {COLORS.dim(skill.prompt_description)}"
+                      + (COLORS.dim(f"  ({uses}x)") if uses else ""))
+    elif cmd == "learn":
+        brief = arg or "the work we just did in this session"
+        print(COLORS.dim("· reviewing the session and writing a skill…"))
+        outcome = agent.learning.learn_from_brief(brief, history=agent.history)
+        if outcome.changed:
+            print(COLORS.green(f"✓ learned: {outcome.summary()}"))
+            if outcome.skill:
+                print(COLORS.dim(f"  {outcome.skill_path}"))
+        else:
+            print(COLORS.yellow(f"nothing saved: {outcome.summary()}"))
+        for note in outcome.notes[:4]:
+            print(COLORS.dim(f"  {note}"))
+    elif cmd == "curate":
+        from . import skills as skilllib
+
+        report = skilllib.curator_report(agent.ws)
+        print(COLORS.bold(f"curator: {report['total']} skills")
+              + COLORS.dim(f" · stale {len(report['stale'])} · never used {len(report['unused'])}"))
+        for row in report["stale"][:12]:
+            print(f"  {row['name']:<32} {row['last_used'] or 'never'}")
+        if arg in {"apply", "archive", "yes"}:
+            archived = skilllib.archive_stale(agent.ws)
+            print(COLORS.green(f"archived {len(archived)} skills (nothing deleted)"))
+        elif report["stale"]:
+            print(COLORS.dim("  /curate apply to archive them"))
+    elif cmd == "recall":
+        rows = agent.sessions.search(arg, limit=6) if arg else agent.sessions.recent(6)
+        if not rows:
+            print(COLORS.dim("no past sessions recorded yet"))
+        for row in rows:
+            from .sessions import format_hit
+
+            print(format_hit(row, width=96))
+    elif cmd == "hermes":
+        cmd_hermes(argparse.Namespace(action=(arg.split()[0] if arg else "status"), argv=[], json=False))
+    elif cmd == "update":
+        cmd_update(argparse.Namespace(no_pull=False, no_install=False))
     elif cmd == "remember":
         if not arg:
             print(COLORS.red("usage: /remember <note>"))
@@ -701,7 +770,19 @@ def handle_slash(agent: NexusAgent, line: str) -> bool:
         target.write_text("\n".join(lines), encoding="utf-8")
         print(COLORS.dim(f"transcript saved -> {target}"))
     else:
-        print(COLORS.red(f"unknown command '/{cmd}' - try /help"))
+        # Hermes-style shortcut: /<skill-name> [task] runs that skill
+        from . import skills as skilllib
+
+        skill = skilllib.get(cmd, agent.ws)
+        if skill is None:
+            print(COLORS.red(f"unknown command '/{cmd}' - try /help"))
+        else:
+            agent.inject_skill(skill.name)
+            print(COLORS.cyan(f"skill '{skill.name}' active"))
+            if arg:
+                print_result(agent.chat_turn(arg))
+            else:
+                print(skill.body)
     return True
 
 
@@ -1279,6 +1360,23 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     add("gh cli", gh_available(), shutil.which("gh") or "not installed",
         "install from https://cli.github.com - needed for PR tools")
 
+    # -- learning surfaces (skills / memory / sessions) -------------------- #
+    try:
+        from . import skills as skilllib
+        from .memory import MemoryStore
+        from .sessions import SessionStore
+
+        library = skilllib.discover(workspace)
+        add("skills", None if not library else True, f"{len(library)} skills available",
+            "nexus skills import  -  import the hermes-agent skill library")
+        store = MemoryStore()
+        add("memory", None, f"{len(store.memory.entries)} memory / {len(store.user.entries)} profile entries "
+                            f"({store.memory.chars}/{store.memory.limit} chars)")
+        add("sessions", None, f"{SessionStore().stats()['sessions']} past runs recorded",
+            "`nexus recall` searches them")
+    except Exception as exc:  # noqa: BLE001
+        add("learning", False, str(exc))
+
     # -- API keys (terminal store, env vars; .env is optional/legacy) ------- #
     families = config.key_families()
     for family in families:
@@ -1484,6 +1582,291 @@ def add_common(parser: argparse.ArgumentParser) -> None:
                         help="never ask for an API key interactively (CI / scripts)")
 
 
+# --------------------------------------------------------------------------- #
+# skills / memory / recall / learning / hermes / self-update
+# --------------------------------------------------------------------------- #
+
+
+def _skills_count(config_workspace: Path) -> int:
+    from . import skills as skilllib
+
+    return len(skilllib.discover(config_workspace))
+
+
+def cmd_skills(args: argparse.Namespace) -> int:
+    """``nexus skills [list|show|import|curate|delete|path]``."""
+    from . import skills as skilllib
+
+    workspace = Path(args.workspace).resolve() if getattr(args, "workspace", None) else Path.cwd()
+    action = getattr(args, "action", None) or "list"
+
+    if action == "path":
+        for root in skilllib.skill_roots(workspace):
+            print(root)
+        return 0
+
+    if action == "import":
+        from . import hermes
+
+        count, notes = hermes.import_skills(
+            refresh=not getattr(args, "offline", False),
+            include_optional=not getattr(args, "no_optional", False),
+            force=bool(getattr(args, "force", False)),
+            log=lambda msg: print(COLORS.dim(f"· {msg}")),
+        )
+        print(COLORS.green(f"imported {count} skills from Nous Research's hermes-agent"))
+        for note in notes[:20]:
+            print(COLORS.dim(f"  {note}"))
+        print(COLORS.dim("  list them with: nexus skills"))
+        return 0 if count else 1
+
+    if action == "curate":
+        report = skilllib.curator_report(workspace, stale_days=int(getattr(args, "stale_days", 45) or 45))
+        print(COLORS.bold("skills curator") + COLORS.dim(f" ({report['total']} skills)"))
+        print(COLORS.dim(f"  stale: {len(report['stale'])} · never used: {len(report['unused'])}"))
+        for row in report["stale"][:20]:
+            print(f"  {row['name']:<34} {row['last_used'] or 'never':<12} {row['description']}")
+        if getattr(args, "apply", False):
+            archived = skilllib.archive_stale(workspace, stale_days=int(args.stale_days or 45))
+            print(COLORS.green(f"archived {len(archived)} stale skills (moved to archive/, never deleted)"))
+        elif report["stale"]:
+            print(COLORS.dim("  run `nexus skills curate --apply` to archive them"))
+        return 0
+
+    if action == "delete":
+        name = (getattr(args, "name", "") or "").strip()
+        if not name:
+            print(COLORS.red("usage: nexus skills delete <name>"))
+            return 2
+        ok = skilllib.delete_skill(name, workspace=workspace)
+        print(COLORS.green(f"deleted {name}") if ok else COLORS.red(f"no skill named '{name}'"))
+        return 0 if ok else 1
+
+    library = skilllib.discover(workspace)
+    if action == "show":
+        name = (getattr(args, "name", "") or "").strip()
+        skill = skilllib.get(name, workspace)
+        if skill is None:
+            print(COLORS.red(f"no skill named '{name}' (try: nexus skills)"))
+            return 1
+        print(COLORS.bold(skill.name) + COLORS.dim(f"  v{skill.version} · {skill.source} · {skill.path}"))
+        print(COLORS.dim(f"  {skill.description}"))
+        print()
+        print(skill.body)
+        usage = skill.usage()
+        if usage:
+            print(COLORS.dim(f"\n  used {usage.get('uses', 0)}x · last {usage.get('last_used', '—')}"))
+        return 0
+
+    if getattr(args, "json", False):
+        print(json.dumps([skill.to_dict() for skill in library], indent=2, ensure_ascii=False))
+        return 0
+    if not library:
+        print(COLORS.yellow("no skills installed yet."))
+        print(COLORS.dim("  create one:            /learn <what you just did>   (inside the REPL)"))
+        print(COLORS.dim("  import Hermes library: nexus skills import"))
+        return 0
+    needle = (getattr(args, "search", "") or "").lower()
+    rows = [s for s in library if not needle or needle in (s.name + s.description + " ".join(s.tags)).lower()]
+    print(COLORS.bold(f"{len(rows)} skills") + COLORS.dim(" · procedural memory the agent loads on demand"))
+    for skill in rows:
+        uses = skill.usage().get("uses", 0)
+        print(f"  {COLORS.cyan(skill.name):<34} {COLORS.dim(skill.category or '-'):<16} "
+              f"{skill.prompt_description}" + (COLORS.dim(f"  ({uses}x)") if uses else ""))
+    print()
+    print(COLORS.dim("  nexus skills show <name> · nexus skills import · nexus skills curate"))
+    return 0
+
+
+def _brief_from_source(source: str) -> str:
+    """Turn a file, directory or URL into text the learning call can read."""
+    import urllib.request
+    from pathlib import Path as _P
+
+    if source.startswith(("http://", "https://")):
+        req = urllib.request.Request(source, headers={"User-Agent": "nexus-agent"})
+        with urllib.request.urlopen(req, timeout=20) as response:  # noqa: S310 - user-supplied URL
+            raw = response.read(200_000).decode("utf-8", "replace")
+        return f"SOURCE: {source}\n\n{raw}"
+    path = _P(source).expanduser()
+    if path.is_dir():
+        parts = [f"SOURCE DIRECTORY: {path}"]
+        for child in sorted(path.rglob("*")):
+            if child.is_file() and child.stat().st_size < 200_000:
+                try:
+                    parts.append(f"\n### {child.relative_to(path)}\n{child.read_text('utf-8', 'replace')[:20000]}")
+                except OSError:
+                    continue
+            if sum(len(p) for p in parts) > 120_000:
+                parts.append("\n… [truncated]")
+                break
+        return "\n".join(parts)
+    if path.is_file():
+        return f"SOURCE FILE: {path}\n\n{path.read_text('utf-8', 'replace')[:120_000]}"
+    return source
+
+
+def cmd_learn(args: argparse.Namespace) -> int:
+    """``nexus learn "<what to capture>" | nexus learn path/ | nexus learn <url>``."""
+    raw_text = getattr(args, "text", "") or ""
+    text = " ".join(raw_text).strip() if isinstance(raw_text, list) else str(raw_text).strip()
+    if not text:
+        print(COLORS.red("usage: nexus learn <description | file | directory | url>"))
+        return 2
+    brief = _brief_from_source(text)
+    agent = build_agent(args)
+    agent.auto_route = False
+    outcome = agent.learning.learn_from_brief(brief, name=getattr(args, "name", "") or "")
+    if outcome.changed:
+        print(COLORS.green(f"✓ {outcome.summary()}"))
+        if outcome.skill:
+            print(COLORS.dim(f"  {outcome.skill_path}"))
+        for note in outcome.notes[:5]:
+            print(COLORS.dim(f"  {note}"))
+        return 0
+    print(COLORS.yellow(f"nothing saved: {outcome.summary()}"))
+    for note in outcome.notes[:5]:
+        print(COLORS.dim(f"  {note}"))
+    return 1
+
+
+def cmd_recall(args: argparse.Namespace) -> int:
+    """Search this workspace's past runs."""
+    from .sessions import SessionStore, format_hit, json_dumps
+
+    store = SessionStore()
+    raw_query = getattr(args, "query", "") or ""
+    query = " ".join(raw_query).strip() if isinstance(raw_query, list) else str(raw_query).strip()
+    rows = store.search(query, limit=args.limit) if query else store.recent(args.limit)
+    if getattr(args, "json", False):
+        print(json_dumps(rows))
+        return 0
+    if not rows:
+        print(COLORS.dim(f"no sessions recorded yet ({store.stats()['path']})"))
+        return 0
+    if not query:
+        print(COLORS.bold(f"last {len(rows)} runs") + COLORS.dim(f" · {store.path}"))
+        for row in rows:
+            print(f"  {row['id']}  {_ago(row['created']):>10}  {str(row.get('role') or '-'):<18} "
+                  f"{' '.join(str(row.get('task') or '').split())[:90]}")
+        return 0
+    print(COLORS.bold(f"{len(rows)} match(es) for '{query}'"))
+    for row in rows:
+        print(format_hit(row, width=110))
+    return 0
+
+
+def _ago(timestamp: float) -> str:
+    import datetime as _dt
+
+    delta = _dt.datetime.now(_dt.timezone.utc).timestamp() - float(timestamp or 0)
+    for unit, size in (("d", 86400), ("h", 3600), ("m", 60)):
+        if delta >= size:
+            return f"{int(delta // size)}{unit} ago"
+    return "just now"
+
+
+def cmd_memory(args: argparse.Namespace) -> int:
+    """Global memory (MEMORY.md / USER.md) - the long-term brain."""
+    from .memory import MemoryStore, env_flag
+
+    store = MemoryStore(enabled=env_flag("NEXUS_MEMORY", True))
+    action = getattr(args, "action", None) or "list"
+    if action == "add":
+        text = (getattr(args, "text", "") or "").strip()
+        if not text:
+            print(COLORS.red("usage: nexus memory add <text> [--user]"))
+            return 2
+        ok, message = store.add(text, "user" if getattr(args, "user", False) else "memory")
+        print(COLORS.green(message) if ok else COLORS.red(message))
+        return 0 if ok else 1
+    if action == "remove":
+        ok, message = store.remove(getattr(args, "text", "") or "", "user" if getattr(args, "user", False) else "memory")
+        print(COLORS.green(message) if ok else COLORS.red(message))
+        return 0 if ok else 1
+    if action == "import":
+        count, notes = store.import_hermes(getattr(args, "source", None))
+        print(COLORS.green(f"imported {count} memory entries"))
+        for note in notes:
+            print(COLORS.dim(f"  {note}"))
+        return 0
+    if getattr(args, "json", False):
+        print(json.dumps(store.stats(), indent=2, ensure_ascii=False))
+        return 0
+    for block in (store.memory, store.user):
+        print(COLORS.bold(f"{block.name} ({block.chars}/{block.limit})") + COLORS.dim(f"  {block.path}"))
+        print(block.render() or COLORS.dim("  (empty)"))
+        print()
+    return 0
+
+
+def cmd_hermes(args: argparse.Namespace) -> int:
+    """Bridge to Nous Research's hermes-agent."""
+    from . import hermes
+
+    action = getattr(args, "action", None) or "status"
+    if action == "run":
+        return hermes.run_cli(getattr(args, "argv", []) or [])
+    if action == "install":
+        count, notes = hermes.import_skills(
+            refresh=True, force=bool(getattr(args, "force", False)),
+            log=lambda msg: print(COLORS.dim(f"· {msg}")),
+        )
+        print(COLORS.green(f"✓ {count} Hermes skills available to Nexus") if count
+              else COLORS.red("could not import Hermes skills"))
+        for note in notes[:20]:
+            print(COLORS.dim(f"  {note}"))
+        return 0 if count else 1
+    if action == "sync":
+        count, notes = hermes.import_skills(
+            refresh=True, force=True, log=lambda msg: print(COLORS.dim(f"· {msg}"))
+        )
+        memories, mem_notes = hermes.import_memories(getattr(args, "memories", None))
+        print(COLORS.green(f"✓ synced {count} skills and {memories} memory entries"))
+        for note in [*notes[:10], *mem_notes[:5]]:
+            print(COLORS.dim(f"  {note}"))
+        return 0
+
+    info = hermes.status()
+    if getattr(args, "json", False):
+        print(json.dumps(info, indent=2))
+        return 0
+    print(COLORS.bold("hermes-agent bridge"))
+    rows = (
+        ("upstream", info["repo"]),
+        ("checkout", f"{info['checkout']} ({'present' if info['checkout_present'] else 'not cloned'})"),
+        ("skills", f"{info['skills_available']} upstream · {info['imported_skills']} imported into Nexus"),
+        ("hermes cli", info["cli"] or "not installed (only needed for the gateway/TUI)"),
+        ("memories", info["memories"]),
+    )
+    for key, value in rows:
+        print(f"  {COLORS.cyan(key):<18} {value}")
+    print()
+    print(COLORS.dim("  nexus hermes install   # clone upstream + import its skills"))
+    print(COLORS.dim("  nexus hermes sync      # re-import skills and MEMORY.md/USER.md"))
+    print(COLORS.dim("  nexus hermes run ...   # hand a task to a locally installed `hermes`"))
+    return 0
+
+
+def cmd_update(args: argparse.Namespace) -> int:
+    """``nexus update`` - fast-forward this checkout and reinstall the package."""
+    from . import __version__, hermes
+
+    print(COLORS.dim(f"nexus {__version__} @ {hermes.repo_root()}"))
+    ok, messages = hermes.self_update(
+        pull=not getattr(args, "no_pull", False),
+        reinstall=not getattr(args, "no_install", False),
+        log=lambda msg: print(COLORS.dim(f"· {msg}")),
+    )
+    for message in messages:
+        print(message)
+    if ok:
+        print(COLORS.green("✓ up to date"))
+        return 0
+    print(COLORS.red("update failed"))
+    return 1
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="nexus",
@@ -1627,6 +2010,53 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("role", nargs="?", default="general")
     p.add_argument("--workspace", "-C")
     p.set_defaults(func=cmd_prompt)
+
+    p = sub.add_parser("skills", help="skills: the agent's procedural memory (list/show/import/curate)")
+    p.add_argument("action", nargs="?", default="list",
+                   choices=["list", "show", "import", "curate", "delete", "path"])
+    p.add_argument("name", nargs="?", help="skill name (show / delete)")
+    p.add_argument("--workspace", "-C")
+    p.add_argument("--search", "-s", help="filter by name/description/tag")
+    p.add_argument("--apply", action="store_true", help="curate: archive the stale ones")
+    p.add_argument("--stale-days", type=int, default=45)
+    p.add_argument("--offline", action="store_true", help="import: use the local checkout, do not pull")
+    p.add_argument("--no-optional", action="store_true", help="import: skip optional-skills")
+    p.add_argument("--force", action="store_true", help="import: overwrite existing skills")
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(func=cmd_skills)
+
+    p = sub.add_parser("learn", help="turn work/a doc/a directory into a reusable skill")
+    p.add_argument("text", nargs="*", help="what to capture, a file, a directory or a URL")
+    p.add_argument("--workspace", "-C")
+    p.add_argument("--name", help="force the skill name")
+    p.set_defaults(func=cmd_learn)
+
+    p = sub.add_parser("recall", help="search your past sessions in this project")
+    p.add_argument("query", nargs="*", help="what to look for (omit for the latest runs)")
+    p.add_argument("--limit", "-n", type=int, default=8)
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(func=cmd_recall)
+
+    p = sub.add_parser("memory", help="long-term memory: MEMORY.md + USER.md")
+    p.add_argument("action", nargs="?", default="list", choices=["list", "add", "remove", "import", "path"])
+    p.add_argument("text", nargs="?", help="the entry to add/remove")
+    p.add_argument("--user", action="store_true", help="target USER.md (preferences) instead of MEMORY.md")
+    p.add_argument("--source", help="import: directory holding MEMORY.md / USER.md")
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(func=cmd_memory)
+
+    p = sub.add_parser("hermes", help="bridge to Nous Research's hermes-agent (skills, memories, CLI)")
+    p.add_argument("action", nargs="?", default="status", choices=["status", "install", "sync", "run"])
+    p.add_argument("argv", nargs="*", help="arguments for `nexus hermes run`")
+    p.add_argument("--memories", help="sync: Hermes memories directory")
+    p.add_argument("--force", action="store_true")
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(func=cmd_hermes)
+
+    p = sub.add_parser("update", help="update Nexus itself (git pull + reinstall)")
+    p.add_argument("--no-pull", action="store_true")
+    p.add_argument("--no-install", action="store_true")
+    p.set_defaults(func=cmd_update)
 
     p = sub.add_parser("version", help="print version")
     p.set_defaults(func=cmd_version)

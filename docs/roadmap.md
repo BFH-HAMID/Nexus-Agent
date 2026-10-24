@@ -96,3 +96,41 @@ Roughly in order of leverage:
    `windows-latest`.
 7. **Structured plan approval.** Render `--plan` output as a checklist the sidebar can tick off
    before switching to an apply run.
+
+## Phase 9 — Self-learning (skills, memory, recall) ✅
+
+Ported the mechanics that make Nous Research's
+[`hermes-agent`](https://github.com/NousResearch/hermes-agent) improve with use:
+
+* **Skills** (`nexus/skills.py`) — portable `SKILL.md` files discovered from the
+  bundled `skills/`, `~/.config/nexus/skills/` and `<project>/.nexus/skills/`.
+  The system prompt gets a compact index (≤60-char descriptions); bodies load on
+  demand with `skill_view`. The agent writes them with `skill_manage`.
+* **Memory** (`nexus/memory.py`) — `MEMORY.md` (facts, decisions) and `USER.md`
+  (stable preferences) with hard caps, injected into every prompt.
+* **Recall** (`nexus/sessions.py`) — every run lands in SQLite; FTS5 gives
+  `/recall <query>` and the `recall` tool.
+* **Learning loop** (`nexus/learning.py`) — after a non-trivial run a cheap model
+  reviews the task, tool trail and result and may write one skill, one patch and
+  up to three memory entries. `/learn` does it on demand; `skill_nudge_interval`
+  reminds the model to save what it learned.
+* **Curator** — stale skills are archived, never deleted.
+* **GUI** — a LEARNING BRAIN card backed by `/api/brain`, `/api/skills`,
+  `/api/recall`.
+
+Full guide: [`docs/learning.md`](learning.md).
+
+## Phase 10 — Hermes bridge + self-update ✅
+
+* `nexus hermes status|install|sync|run` — shallow-clone upstream, import its
+  200+ skills into Nexus, merge its `MEMORY.md`/`USER.md`, or hand a task to an
+  installed `hermes` binary for the parts Nexus does not re-implement (gateway,
+  TUI, terminal backends).
+* `nexus update` — `git pull --ff-only` + reinstall from this checkout, with a
+  clean refusal on a dirty tree.
+
+## Deliberately not ported
+
+Hermes' gateway (Telegram/Discord/Slack/…), its TUI, the Electron desktop app and
+its remote terminal backends are separate products; Nexus keeps one interface
+(CLI + GUI deck) and delegates when you need them (`nexus hermes run`).

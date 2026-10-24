@@ -51,6 +51,15 @@ def _isolate_committed_role_packs(monkeypatch):
     monkeypatch.setattr(config, "candidate_role_dirs", filtered)
 
 
+@pytest.fixture(autouse=True)
+def _isolated_nexus_home(tmp_path_factory, monkeypatch):
+    """Never touch the developer's real ~/.config/nexus (keys, memory, sessions)."""
+    home = tmp_path_factory.mktemp("nexus-home")
+    monkeypatch.setenv("NEXUS_HOME", str(home))
+    monkeypatch.setenv("NEXUS_LEARNING", "0")     # no extra model calls in unit tests
+    return home
+
+
 # --------------------------------------------------------------------------- #
 # scripted provider
 # --------------------------------------------------------------------------- #

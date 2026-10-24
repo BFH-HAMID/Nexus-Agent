@@ -164,6 +164,23 @@ class TerminalUI:
             label += f" · turn {turn}/{total}"
         self.start_spinner(label)
 
+    def _on_skill(self, d: dict[str, Any]) -> None:
+        self.stop_spinner()
+        action = str(d.get("action") or "update")
+        name = str(d.get("name") or "?")
+        icon = {"create": "✦", "patch": "✎", "import": "⇩"}.get(action, "✦")
+        print(
+            self.c.magenta(f"{icon} skill {action}: ") + self.c.bold(name)
+            + (self.c.dim(f"  {d.get('path')}") if d.get("path") else "")
+        )
+
+    def _on_memory(self, d: dict[str, Any]) -> None:
+        self.stop_spinner()
+        text = _short(d.get("text") or "", 100)
+        where = d.get("role") or "memory"
+        detail = text or str(d.get("path") or "")
+        print(self.c.dim(f"🧠 memory[{where}] ") + self.c.dim(detail))
+
     def _on_text_delta(self, d: dict[str, Any]) -> None:
         piece = d.get("text") or ""
         if not piece:
@@ -216,10 +233,6 @@ class TerminalUI:
         self.stop_spinner()
         print(self.c.red(f"✗ {d.get('message') or 'error'}"))
 
-    def _on_memory(self, d: dict[str, Any]) -> None:
-        self.stop_spinner()
-        print(self.c.dim(f"🧠 memory saved · {d.get('role')} → {d.get('path')}"))
-
     def _on_approval(self, d: dict[str, Any]) -> None:  # handled by the prompt
         self.stop_spinner()
 
@@ -270,6 +283,18 @@ def banner(colors: Any, agent: Any, *, version: str, workspace: str) -> None:
         "green" if configured else "yellow")
     add("approval", agent.gate.mode)
     add("mode", "local-first" if cfg.settings.prefer_local else "hosted")
+    try:
+        from . import skills as skilllib
+
+        skill_count = len(skilllib.discover(getattr(agent, "ws", None)))
+        memory_chars = getattr(getattr(agent, "memory_store", None), "memory", None)
+        brain = f"{skill_count} skills · {len(agent.sessions.recent(200))} past runs"
+        if memory_chars is not None and memory_chars.entries:
+            brain += f" · {len(memory_chars.entries)} memories"
+        add("brain", brain + ("" if getattr(agent.config.settings, "learning", True) else " · learning off"),
+            "green" if skill_count else "")
+    except Exception:  # noqa: BLE001 - the banner must never break startup
+        pass
 
     top = "╭" + "─" * (width - 2) + "╮"
     bottom = "╰" + "─" * (width - 2) + "╯"
@@ -288,7 +313,7 @@ def banner(colors: Any, agent: Any, *, version: str, workspace: str) -> None:
         shown = getattr(colors, color)(value) if color else value
         print(colors.cyan("│ ") + colors.dim(label_str) + " " + shown + " " * pad + colors.cyan(" │"))
     print(colors.cyan("├" + "─" * (width - 2) + "┤"))
-    hints = "type a task · /help commands · /gui dashboard · /exit quit"
+    hints = "type a task · /help · /skills · /learn · /gui dashboard · /exit"
     print(colors.cyan("│ ") + colors.dim(hints[:width - 4].ljust(width - 4)) + colors.cyan(" │"))
     print(colors.cyan(bottom))
     print(colors.dim(f"  Nexus v{version}"))
@@ -363,6 +388,15 @@ HELP_SECTIONS: tuple[tuple[str, tuple[tuple[str, str], ...]], ...] = (
         ("/plan <task>", "same, framed as an implementation plan"),
         ("/task <task>", "full autonomous run"),
         ("/pipeline <name> <task>", "multi-role handoff"),
+    )),
+    ("learning", (
+        ("/skills", "procedural memory: the skills the agent has learned"),
+        ("/skill <name> [task]", "load a skill, optionally run a task with it"),
+        ("/<skill-name> [task]", "shortcut for the same thing"),
+        ("/learn [what]", "turn this session (or a file/dir/URL) into a skill"),
+        ("/curate", "archive stale skills (never deleted)"),
+        ("/recall [query]", "search your own past sessions"),
+        ("/memory global", "long-term memory: MEMORY.md + USER.md"),
     )),
     ("local & UI", (
         ("/local [--pull]", "Ollama status: hermes / uncensored models"),

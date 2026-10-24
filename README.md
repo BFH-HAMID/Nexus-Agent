@@ -229,6 +229,12 @@ export GEMINI_MODEL=gemini-3.6-flash
 | `nexus doctor [--json]` | keys, endpoints, models, `gh`, repo state |
 | `nexus serve [--demo] [--yes]` | local HTTP+SSE server for the sidebar/panel |
 | `nexus gui` (alias `nexus panel`) | open the live GUI dashboard — watch routing, thinking and every tool call |
+| `nexus skills [list\|show\|import\|curate]` | the agent's skills: procedural memory it wrote itself |
+| `nexus learn "<what>" \| <file> \| <dir> \| <url>` | turn work or documentation into a reusable skill |
+| `nexus recall [query]` | full-text search over your own past runs |
+| `nexus memory [add\|remove\|import]` | long-term `MEMORY.md` + `USER.md` |
+| `nexus hermes [status\|install\|sync\|run]` | bridge to `NousResearch/hermes-agent` |
+| `nexus update` | update Nexus itself (`git pull` + reinstall) |
 | `nexus init` | drop `.nexus/roles.yaml` + `.vscode/` into any project (no `.env`) |
 | `nexus task ... --json` | machine-readable result (CI friendly) |
 
@@ -239,7 +245,8 @@ export GEMINI_MODEL=gemini-3.6-flash
 /ask <q>  /plan <task>  /task <task>  /pipeline <name> <task>
 /roles [needle]  /addagent <github-url>  /agents  /tools  /system [role]
 /keys [set <provider>]  /models [agent]
-/memory [role]  /remember <text>
+/memory [role]  /remember <text>  /memory global
+/skills  /skill <name> [task]  /<skill-name> [task]  /learn [what]  /curate  /recall [query]
 /local [--pull]  /gui [port]
 /doctor  /stats  /compact  /clear  /new  /save [file]  /exit
 ```
@@ -514,6 +521,51 @@ you can write to it with `/remember` in the REPL.
 
 ---
 
+## Learning: it grows with you (Hermes loop)
+
+Nexus keeps what it learns in three layers and loads them again next time:
+
+| Layer | Where | What |
+| --- | --- | --- |
+| **Skills** (procedural) | `~/.config/nexus/skills/`, `<project>/.nexus/skills/`, bundled `skills/` | portable `SKILL.md` files: steps, commands, pitfalls, verification |
+| **Memory** (declarative) | `~/.config/nexus/memories/MEMORY.md` + `USER.md` | facts, decisions, gotchas, your stable preferences |
+| **Sessions** (episodic) | `~/.config/nexus/sessions.db` (SQLite FTS5) | every run's task, summary and transcript — searchable |
+
+```bash
+nexus skills                  # what the agent has learned so far
+nexus skills import           # import Nous Research's hermes-agent skill library (200+)
+nexus learn "how we ship a release in this repo"
+nexus recall flaky test       # search your own past runs
+nexus memory                  # MEMORY.md + USER.md
+nexus hermes                  # status of the Hermes bridge
+nexus update                  # update Nexus itself
+```
+
+Inside the REPL: `/skills`, `/skill <name> [task]`, `/<skill-name> [task]`,
+`/learn`, `/curate`, `/recall`, `/memory global`.
+
+How the loop works:
+
+* **Before** a run, matching skills (name + ≤60-char description) and your memory
+  enter the system prompt; the full body is loaded on demand (`skill_view`) or
+  when you pin a skill.
+* **After** a non-trivial run (≥4 tool calls) a cheap model reviews the task, the
+  tool trail and the result and may write **one skill**, **one patch** and up to
+  three memory entries. It cannot touch code or your keys.
+* Skills follow the [agentskills.io](https://agentskills.io) / Hermes format, so
+  they are portable in both directions; imported skills are never overwritten.
+* The curator archives stale skills — **nothing is deleted**.
+* Turn it off with `NEXUS_LEARNING=0`; tune `learning_agent`, `learning_min_tools`,
+  `skill_nudge_interval`, `skills_enabled` in the `settings:` block.
+* Four starter skills ship with Nexus (`skills/nexus/`): add a role, add an
+  agent, verify before commit, release & self-update.
+
+Full guide: [`docs/learning.md`](docs/learning.md). The GUI has a
+**LEARNING BRAIN** card (skills, memory, recall) fed by `/api/brain`,
+`/api/skills` and `/api/recall`.
+
+---
+
 ## Project layout
 
 ```
@@ -523,6 +575,7 @@ Nexus-Agent/
 ├── roles.d/                 # 852 imported roles (5 packs) - `nexus addagent` writes here
 ├── pipelines.yaml           # multi-role handoff pipelines
 ├── pyproject.toml           # `pip install -e .` → `nexus`
+├── skills/                  # bundled SKILL.md skills (agentskills.io / Hermes format)
 ├── .vscode/                 # tasks.json, launch.json, settings.json, extensions.json
 ├── .github/
 │   ├── PULL_REQUEST_TEMPLATE.md   # auto-filled by gh_create_pr
@@ -535,13 +588,18 @@ Nexus-Agent/
 │   ├── importers.py         # `addagent`: fetch a GitHub repo → discover agents → roles.d pack
 │   ├── providers.py         # Gemini/DeepSeek/OpenRouter (OpenAI dialect) + fallback chain
 │   ├── keys.py              # `nexus keys`: ~/.config/nexus/keys.json, no .env needed
-│   ├── tools.py             # files, shell, git, GitHub, memory, ask_agent, approval gate
+│   ├── tools.py             # files, shell, git, GitHub, memory, skills, recall, ask_agent, approval gate
+│   ├── skills.py            # SKILL.md discovery/authoring/import/curator (Hermes-compatible)
+│   ├── memory.py            # MEMORY.md + USER.md with hard character caps
+│   ├── sessions.py          # session store + FTS5 recall
+│   ├── learning.py          # the self-improvement loop (/learn, nudges, review, apply)
+│   ├── hermes.py            # bridge to NousResearch/hermes-agent + `nexus update`
 │   ├── config.py            # agents/roles/roles.d/pipelines/settings loading + layering
 │   ├── server.py            # HTTP + SSE server for the sidebar/panel
 │   ├── demo.py              # scripted offline run
 │   ├── env.py               # optional legacy .env loading (never required)
 │   ├── types.py             # roles, messages, completions, events
-│   └── panel/               # dashboard.html/css/js (the GUI deck) + panel.html (VS Code webview)
+│   └── panel/               # dashboard.html/css/js (the GUI deck + LEARNING BRAIN) + panel.html
 ├── vscode-extension/        # Phase 5 sidebar (TypeScript, no runtime deps)
 ├── tests/                   # 324 offline tests
 └── docs/                    # architecture, configuration, tools, pipelines, vscode, security, roles, roadmap, addagent
@@ -583,7 +641,9 @@ Behaviour knobs (`settings:` block) and every `NEXUS_*` override are documented 
 | 7 — Per-role memory | ✅ | `.nexus/memory/<role>.md`, `remember` tool |
 | 8 — Model health & fallback | ✅ `fallback:` chain + `nexus doctor` | `agents.yaml`, `ProviderRegistry.call_with_fallback`, `cmd_doctor` |
 | Streaming tokens (CLI + GUI live deltas) | ✅ | `nexus/providers.py`, `nexus/ui.py`, `nexus/panel/*` |
-| Next — MCP tools, sessions/resume, per-repo role learning | ⏳ | [`docs/roadmap.md`](docs/roadmap.md), [`docs/architecture.md`](docs/architecture.md#whats-next) |
+| 9 — Self-learning (skills, memory, `/learn`, curator, recall) | ✅ | `nexus/skills.py`, `nexus/memory.py`, `nexus/sessions.py`, `nexus/learning.py`, [`docs/learning.md`](docs/learning.md) |
+| 10 — Hermes bridge + self-update | ✅ | `nexus/hermes.py`, `nexus skills import`, `nexus update` |
+| Next — MCP tools, session resume, gateway platforms | ⏳ | [`docs/roadmap.md`](docs/roadmap.md), [`docs/architecture.md`](docs/architecture.md#whats-next) |
 
 ---
 
@@ -591,7 +651,7 @@ Behaviour knobs (`settings:` block) and every `NEXUS_*` override are documented 
 
 ```bash
 pip install -e ".[dev]"
-python -m pytest -q                     # 292 tests, all offline (scripted providers)
+python -m pytest -q                     # 409 tests, all offline (scripted providers)
 python scripts/build_roles.py --check   # validate the role data
 python scripts/build_roles.py --stats   # counts by category / agent
 ruff check nexus tests

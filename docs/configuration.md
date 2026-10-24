@@ -254,6 +254,11 @@ roles.
 | `router_llm_fallback` | `true` | `NEXUS_ROUTER_LLM` | classify with a model when no keyword hits |
 | `router_agent` | `gemini-flash` | `NEXUS_ROUTER_AGENT` | which agent runs the classifier |
 | `stream` | `true` | `NEXUS_STREAM` | stream tokens (CLI deltas + SSE to the GUI) instead of waiting for the full reply |
+| `learning` | `true` | `NEXUS_LEARNING` | after a non-trivial run, review it and save skills/memory |
+| `learning_agent` | `""` (→ `router_agent`) | `NEXUS_LEARNING_AGENT` | the cheap model that writes what was learned |
+| `learning_min_tools` | `4` | `NEXUS_LEARNING_MIN_TOOLS` | runs with fewer tool calls are not reviewed |
+| `skill_nudge_interval` | `8` | `NEXUS_SKILL_NUDGE` | turns between "save what you learned" reminders (0 = off) |
+| `skills_enabled` | `true` | `NEXUS_SKILLS` | inject the skills index into the system prompt |
 | `prefer_local` | `false` | `NEXUS_PREFER_LOCAL` | point roles + classifier at the local Ollama lanes |
 | `max_turns` | `24` | `NEXUS_MAX_TURNS` | hard stop for the tool loop |
 | `auto_yes` | `false` | `NEXUS_YES` | never prompt (danger calls still blocked) |
@@ -291,6 +296,8 @@ NEXUS_KEYS_FILE        NEXUS_HOME                   NEXUS_WORKSPACE
 NEXUS_DEFAULT_AGENT    NEXUS_AUTO_ROUTE             NEXUS_ROUTER_AGENT
 NEXUS_ROUTER_LLM       NEXUS_ROUTER_MIN_SCORE       NEXUS_MAX_TURNS
 NEXUS_YES              NEXUS_ALLOW_DANGEROUS        NEXUS_MEMORY
+NEXUS_LEARNING         NEXUS_LEARNING_AGENT         NEXUS_LEARNING_MIN_TOOLS
+NEXUS_SKILLS           NEXUS_SKILL_NUDGE            NEXUS_HERMES_CHECKOUT
 NEXUS_AUTO_BRANCH      NEXUS_COMMAND_TIMEOUT        NEXUS_SERVE_TOKEN
 NEXUS_SERVE_PORT       NEXUS_DEMO                   NEXUS_NO_PROMPT
 NO_COLOR / NEXUS_NO_COLOR

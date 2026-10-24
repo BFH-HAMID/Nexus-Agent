@@ -211,7 +211,12 @@ agents:
 # ─────────────────────────────────────────────────────────────────────────────
 settings:
   auto_route: true
-  stream: true                  # stream tokens to the CLI/GUI (feels instant)              # router decides the role for every task
+  stream: true                  # stream tokens to the CLI/GUI (feels instant)
+  learning: true                # after non-trivial runs: write skills + memory (Hermes loop)
+  learning_agent: ""            # cheap model that reviews runs ("" = router_agent)
+  learning_min_tools: 4         # only review runs with at least this many tool calls
+  skill_nudge_interval: 8       # remind the agent to save skills every N turns (0 = off)
+  skills_enabled: true          # load SKILL.md skills into every prompt
   router_min_score: 1.0         # keyword score needed to skip the LLM classifier
   router_llm_fallback: true     # ask a model when no keyword matched
   router_agent: gemini-flash    # cheap + fast classifier (3.5-flash-lite, free tier)

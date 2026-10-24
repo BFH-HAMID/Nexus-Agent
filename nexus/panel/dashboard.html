@@ -226,6 +226,25 @@
       <div class="mem-foot" id="memPath">—</div>
     </section>
 
+    <section class="card brain-card">
+      <div class="card-head">
+        <span class="sq"></span>LEARNING BRAIN
+        <span class="pill" id="brainPill">—</span>
+        <span class="spacer"></span>
+        <span class="micro" id="brainMeta">skills · runs · memories</span>
+      </div>
+      <div class="brain-grid">
+        <div class="brain-stat"><b id="brainSkills">0</b><span>skills</span></div>
+        <div class="brain-stat"><b id="brainRuns">0</b><span>runs</span></div>
+        <div class="brain-stat"><b id="brainMemo">0</b><span>memories</span></div>
+      </div>
+      <div class="brain-search">
+        <input id="brainQuery" placeholder="recall a past run…" spellcheck="false" />
+        <button class="btn ghost" id="brainGo">recall</button>
+      </div>
+      <div class="brain-list" id="brainList"><div class="brain-empty">loading…</div></div>
+    </section>
+
     <section class="card keys-card">
       <div class="card-head"><span class="sq"></span>API KEYS<span class="spacer"></span><span class="micro">store · ~/.config/nexus/keys.json</span></div>
       <div class="keys" id="keyList"></div>

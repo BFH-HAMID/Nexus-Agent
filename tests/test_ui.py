@@ -140,3 +140,37 @@ def test_slash_gui_starts_a_threaded_dashboard(repo, monkeypatch, capsys):
     assert url.endswith(":8791/dashboard")
     assert "GUI dashboard" in capsys.readouterr().out
     assert started.get("port") == 8791
+
+
+# --------------------------------------------------------------------------- #
+# the learning surfaces in the terminal UI
+# --------------------------------------------------------------------------- #
+
+
+def test_help_mentions_learning_commands():
+    text = ui.help_text(_colorless())
+    for command in ("/skills", "/learn", "/curate", "/recall", "/skill <name>"):
+        assert command in text
+
+
+def test_banner_shows_the_brain_line(repo, capsys):
+    from nexus.agent import NexusAgent
+    from nexus.config import load_config
+
+    cfg = load_config(repo)
+    agent = NexusAgent(cfg, workspace=repo, providers=fake_registry(config=cfg),
+                       emit=lambda _e: None, auto_yes=True)
+    ui.banner(_colorless(), agent, version="9.9.9", workspace=str(repo))
+    text = capsys.readouterr().out
+    assert "brain" in text
+    assert "skills" in text
+    assert "/skills" in text
+
+
+def test_ui_renders_skill_events(capsys):
+    renderer = ui.TerminalUI(_colorless(), spinner=False, stream=True)
+    renderer(Event(EventType.SKILL, {"action": "create", "name": "my-skill", "path": "/tmp/x/SKILL.md"}))
+    renderer(Event(EventType.MEMORY, {"role": "memory", "text": "remembered", "path": "/tmp/MEMORY.md"}))
+    out = capsys.readouterr().out
+    assert "my-skill" in out
+    assert "remembered" in out
