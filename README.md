@@ -69,6 +69,27 @@ declares a `fallback:`, so a run keeps going even if one provider has no key or 
 
 ## Try it in 60 seconds (no API key needed)
 
+### Windows (PowerShell)
+
+Download, review, and run the Windows installer. Its `raw.githubusercontent.com` URL is pinned
+to a full commit hash—not the moving `main` branch—and the installer also installs Nexus from
+a pinned source commit. It creates an isolated virtual environment and needs no administrator
+rights.
+
+```powershell
+$installer = Join-Path $env:TEMP 'nexus-install.ps1'
+Invoke-WebRequest `
+  -Uri 'https://raw.githubusercontent.com/BFH-HAMID/Nexus-Agent/4670f4b05dfb767cdcaff0b16ca3f9a2490ed1d2/install.ps1' `
+  -OutFile $installer
+
+# Review $installer before running it, then:
+Unblock-File $installer
+& $installer
+nexus --demo
+```
+
+### macOS / Linux
+
 ```bash
 git clone https://github.com/BFH-HAMID/Nexus-Agent && cd Nexus-Agent
 python -m venv .venv && . .venv/bin/activate
