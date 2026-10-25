@@ -26,7 +26,7 @@ $NexusCommit = '83dafca49d8e66f8c77ed75365cb5a9fba3c152f'
 if ($NexusCommit -notmatch '^[0-9a-f]{40}$') {
     throw 'NexusCommit must be a full, lowercase Git commit hash.'
 }
-$PackageSpec = "git+https://github.com/BFH-HAMID/Nexus-Agent.git@$NexusCommit"
+$PackageSpec = "git+https://github.com/BFH-HAMID/Nexus-Agent.git@$NexusCommit" + '#egg=nexus-agent'
 
 if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
     throw 'Git is required. Install Git for Windows from https://git-scm.com/download/win and try again.'
@@ -92,6 +92,8 @@ if ($BinDir.Contains(';')) {
 }
 
 $VenvDir = Join-Path $InstallRoot 'venv'
+$SourceRoot = Join-Path $InstallRoot 'src'
+$SourceCheckout = Join-Path $SourceRoot 'nexus-agent'
 $VenvScripts = Join-Path $VenvDir 'Scripts'
 $VenvPython = Join-Path $VenvScripts 'python.exe'
 $VenvNexus = Join-Path $VenvScripts 'nexus.exe'
@@ -109,10 +111,20 @@ if (-not (Test-Path -LiteralPath $VenvPython -PathType Leaf)) {
     }
 }
 
-$PipArgs = @('-m', 'pip', 'install', '--disable-pip-version-check', '--upgrade', $PackageSpec)
+# Editable VCS installation keeps the pinned checkout beside the virtualenv and
+# uses the same PEP 660 installation path as the repository's documented setup.
+$PipArgs = @(
+    '-m', 'pip', 'install', '--disable-pip-version-check', '--upgrade',
+    '--src', $SourceRoot, '--editable', $PackageSpec
+)
 & $VenvPython @PipArgs
 if ($LASTEXITCODE -ne 0) {
     throw "Nexus installation failed (exit code $LASTEXITCODE)."
+}
+
+$SourceCommit = (& git -C $SourceCheckout rev-parse HEAD).Trim()
+if ($LASTEXITCODE -ne 0 -or $SourceCommit -ne $NexusCommit) {
+    throw "Source verification failed: expected $NexusCommit, got $SourceCommit."
 }
 if (-not (Test-Path -LiteralPath $VenvNexus -PathType Leaf)) {
     throw "Installation finished without creating the expected launcher: $VenvNexus"
