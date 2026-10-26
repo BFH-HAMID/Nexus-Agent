@@ -268,7 +268,7 @@
       const color = providerColor(a.provider);
       const initials = name.replace(/^(openrouter|ollama)-/, "").slice(0, 3).toUpperCase();
       const st = state.status[name] || "idle";
-      return `<g class="node ${esc(st)}" data-agent="${esc(name)}" transform="translate(${p.x.toFixed(1)},${p.y.toFixed(1)})" style="--node:${color}">
+      return `<g class="node ${esc(st)}" tabindex="0" role="button" aria-label="${esc(name + ": " + (a.model || "") + ". Configured endpoint, not a health check.")}" data-agent="${esc(name)}" transform="translate(${p.x.toFixed(1)},${p.y.toFixed(1)})" style="--node:${color}">
         <circle class="ring" r="21" style="stroke:${color}"/>
         <path class="hex" d="M0,-18 L16,-9 L16,9 L0,18 L-16,9 L-16,-9 Z" style="stroke:${color};stroke-opacity:.55"/>
         <text class="lbl" y="3" text-anchor="middle" fill="${color}" style="font-size:9px;opacity:.95">${esc(initials)}</text>
@@ -300,6 +300,11 @@
 
     svg.querySelectorAll(".node").forEach((node) => {
       node.addEventListener("click", (ev) => { ev.stopPropagation(); selectNode(node.dataset.agent); });
+      node.addEventListener("keydown", (ev) => {
+        if (ev.key === "Enter" || ev.key === " ") {
+          ev.preventDefault(); selectNode(node.dataset.agent);
+        }
+      });
     });
     svg.addEventListener("click", () => clearNode());
     if (state.activeAgent) paintMapActive(state.activeAgent);
@@ -617,7 +622,7 @@
   function updateSecurityLevel() {
     const c = state.counters;
     const risky = c.danger + c.denied + c.errors;
-    const level = risky === 0 ? "secure" : risky < 3 ? "watch" : "elevated";
+    const level = risky === 0 ? "no danger calls" : risky < 3 ? "watch" : "elevated";
     $("secLevel").textContent = level;
     $("secLevel").className = "micro" + (risky ? (risky < 3 ? " warn" : " bad") : "");
   }
@@ -647,7 +652,7 @@
     addStep("role", "task", "▶", esc(task), body.pipeline ? "pipeline " + body.pipeline : "one-shot run");
     startElapsed();
 
-    const { ok, body: res } = await api("/api/task", { method: "POST", body: JSON.stringify(body) });
+    const { ok, body: res } = await api("/api/task", { method: "POST", body: JSON.stringify({ ...body, local_model: window.nexusLocalModel?.() || null }) });
     if (!ok || !res.task_id) {
       state.running = false;
       $("runBtn").disabled = false;
@@ -950,6 +955,32 @@
     $("approvalCard").classList.add("hidden");
     state.pendingApproval = false;
   }
+
+  // Pointer orbit gives the SVG network depth without a GPU-heavy 3D library.
+  // Keep model names real: the map uses configured agents from /api/stats.
+  (() => {
+    const svg = $("map");
+    let dragging = false, startX = 0, startY = 0, yaw = 0, pitch = 0;
+    let baseYaw = 0, basePitch = 0;
+    svg.addEventListener("pointerdown", (event) => {
+      if (REDUCED || event.target.closest(".node")) return;
+      dragging = true; startX = event.clientX; startY = event.clientY;
+      baseYaw = yaw; basePitch = pitch;
+      svg.setPointerCapture(event.pointerId);
+    });
+    svg.addEventListener("pointermove", (event) => {
+      if (!dragging) return;
+      yaw = Math.max(-24, Math.min(24, baseYaw + (event.clientX - startX) * .12));
+      pitch = Math.max(-18, Math.min(18, basePitch - (event.clientY - startY) * .12));
+      svg.style.transform = `rotateX(${pitch}deg) rotateY(${yaw}deg)`;
+    });
+    const end = () => { dragging = false; };
+    svg.addEventListener("pointerup", end);
+    svg.addEventListener("pointercancel", end);
+    $("resetMap").addEventListener("click", () => {
+      yaw = pitch = 0; svg.style.transform = "";
+    });
+  })();
 
   /* ── ambient effects ──────────────────────────────────────────────── */
   const GLOBE_NODES = [

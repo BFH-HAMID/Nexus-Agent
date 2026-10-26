@@ -51,8 +51,8 @@ Open the repo root in VS Code and press **F5** (Extension Development Host), the
 **Nexus** icon in the activity bar. Or package it:
 
 ```bash
-npm run package        # nexus-agent-sidebar-0.1.0.vsix
-code --install-extension nexus-agent-sidebar-0.1.0.vsix
+npm run package        # nexus-agent-sidebar-0.2.0.vsix
+code --install-extension nexus-agent-sidebar-0.2.0.vsix
 ```
 
 ### What you get
@@ -111,3 +111,19 @@ command to start it and re-probes every 5 seconds.
 No API key yet? Start the server with `--demo` (or set `NEXUS_DEMO=1`) and the sidebar runs a
 scripted end-to-end task: routing, file read, a write you can approve or deny, a memory note, a
 shell command, an `ask_agent` consultation and a final summary — with zero tokens spent.
+
+### Connection setup and downloaded Ollama models
+
+Both UIs include **Connections & local models**. Refresh and select any model
+installed on `OLLAMA_HOST` (default `http://localhost:11434`). Selection pins that
+run's roles, router and learning model locally with text-mode tools and **no hosted
+fallback**. Model instruction-following determines tool reliability. Demo remains
+scripted. Ollama must be reachable from the Nexus server, not just the browser.
+
+The GitHub card checks the server machine's GitHub CLI account. Install GitHub CLI
+there, run `gh auth login --hostname github.com --web`, then `gh auth setup-git`.
+Complete browser sign-in and click **Check connection**. No credentials are stored
+by this UI. Repository permissions and tool approvals still apply.
+
+To install the extension after packaging, use **Extensions → … → Install from
+VSIX** and choose the generated `.vsix` file. A source checkout is not an install.

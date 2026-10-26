@@ -1,0 +1,8 @@
+.integration-setup { padding: 16px; line-height: 1.6; overflow-wrap: anywhere; }
+.integration-setup summary { cursor: pointer; font-weight: 700; color: var(--cyan, #22e3ff); }
+.integration-setup p { margin: 10px 0; }
+.integration-setup small { display: block; opacity: .75; font-size: 12px; }
+.integration-setup pre { white-space: pre-wrap; overflow-wrap: anywhere; padding: 10px; background: #071219; border: 1px solid #23423e; border-radius: 6px; font-size: 12px; user-select: text; }
+.integration-setup select { width: 100%; max-width: 100%; margin: 6px 0; background: #071219; color: #d5f7ec; border: 1px solid #315951; padding: 8px; border-radius: 6px; }
+.integration-setup button { cursor: pointer; background: #102a29; color: #d5f7ec; border: 1px solid #315951; padding: 6px 10px; border-radius: 5px; }
+.integration-setup hr { border: 0; border-top: 1px solid #23423e; margin: 16px 0; }

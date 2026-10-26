@@ -219,7 +219,7 @@
     $("cancel").disabled = false;
     setStatus("starting", true);
     ev("status", "task", (body.pipeline ? "pipeline " + body.pipeline + " :: " : "") + body.task);
-    api("/api/task", { method: "POST", body: JSON.stringify(body) }).then(({ ok, body: res }) => {
+    api("/api/task", { method: "POST", body: JSON.stringify({ ...body, local_model: window.nexusLocalModel?.() || null }) }).then(({ ok, body: res }) => {
       if (!ok || !res.task_id) {
         ev("error", "error", (res && res.error) || "could not start the task");
         setStatus("error", false);

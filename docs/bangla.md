@@ -97,3 +97,69 @@ NEXUS_SKILLS=0 nexus          # skill ইনজেকশন বন্ধ
 ```
 
 `agents.yaml`-এর `settings:` ব্লকে স্থায়ীভাবেও সেট করা যায়।
+
+## GUI-তে Ollama ও GitHub connect
+
+`nexus gui` → **Connections & local models** → **Refresh models** → নিজের
+downloaded model বেছে task চালান। একই controls VS Code sidebar-এও আছে।
+Custom/uncensored model-সহ Ollama-তে থাকা যেকোনো model দেখাবে। Selected model
+ওই run-এর roles, router ও learning চালায়; cloud fallback নেই। Native tool
+support না থাকলে text-mode JSON tools ব্যবহার হয়, তবে model-এর
+instruction-following ক্ষমতার উপর tool reliability নির্ভর করে। Demo mode-এ
+আসল model call হয় না।
+
+Model না দেখালে Nexus server-এর machine-এ `ollama list` দিয়ে দেখুন এবং Ollama
+বন্ধ থাকলে `ollama serve` চালান। Default host `http://localhost:11434`; অন্য host
+হলে Nexus চালানোর আগে `OLLAMA_HOST` environment variable দিন। Browser এবং Nexus
+server আলাদা machine-এ হলে browser-এর local Ollama নিজে থেকে পাওয়া যাবে না।
+
+GitHub CLI install করে **Nexus server-এর machine-এর terminal**-এ চালান:
+
+```sh
+gh auth login --hostname github.com --web
+gh auth setup-git
+gh auth status
+```
+
+Browser sign-in শেষ করে GUI-তে **Check connection** চাপুন। Connected username
+দেখাবে; Nexus-এ password/token paste করার প্রয়োজন নেই। Repo permissions ও write
+approval আগের মতোই থাকবে।
+
+VS Code extension source থাকা মানে installed নয়:
+
+```sh
+cd vscode-extension
+npm install
+npm run package
+```
+
+VS Code → Extensions → `…` → **Install from VSIX** → তৈরি হওয়া `.vsix` বেছে নিন।
+Nexus activity-bar icon খুলুন। Selection পাঠানো, current file নিয়ে প্রশ্ন,
+role/pipeline picker, event stream এবং approval controls আছে।
+
+## Cyberpunk CORE interface
+
+`nexus`-এর banner এখন binary NEXUS logo ও `[NEXUS_CORE@SYSTEM:~]$` prompt
+দেখায়। Interactive terminal-এ ছোট boot progress আছে; pipe/CI-তে animation নেই।
+`NEXUS_NO_ANIMATION=1` দিয়ে বন্ধ করা যায়। Banner-এর role count registry থেকে আসে,
+এটি online model count নয়।
+
+Standalone Windows PowerShell launcher (repository root থেকে):
+
+```powershell
+.\scripts\nexus-core.ps1
+# offline scripted tasks:
+.\scripts\nexus-core.ps1 -Demo -NoAnimation
+```
+
+Launcher-এর `[SIM]` status ও 1000-agent header শুধুই visual simulation। User task
+আসল `nexus task` command-এ যায় (আগে Nexus install/venv activate করুন)। `/gui`,
+`/doctor`, `/help`, `/exit` support আছে; input PowerShell code হিসেবে evaluate হয় না।
+
+`nexus gui`-তে neon glass dashboard, world-map overlay, binary rain, rotating globe
+ও cognition map আছে। Map-এর খালি জায়গায় drag করে tilt করুন; **reset view** দিয়ে
+ফিরুন। Tab দিয়ে node focus করে Enter/Space দিয়েও select করা যায়। OS reduced-motion
+preference মানা হয়। Map কেবল configured model দেখায়—Claude বা অন্য model ব্যবহার
+করতে তার provider/model config লাগবে; decorative globe/world map বাস্তব network
+traffic নয়। এটি ব্যবহারযোগ্য dashboard, monitor/keyboard-এর স্থির photorealistic
+ছবি নয়।

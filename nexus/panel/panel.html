@@ -73,6 +73,7 @@
   .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--dim); display: inline-block; }
   .dot.live { background: var(--ok); box-shadow: 0 0 8px var(--ok); }
 </style>
+<link rel="stylesheet" href="/panel/integrations.css" />
 </head>
 <body>
 <header>
@@ -85,6 +86,7 @@
 </header>
 
 <main>
+<section class="card integration-setup" id="integrations"></section>
   <div class="row">
     <label for="role">role</label>
     <select id="role"><option value="">auto-route</option></select>
@@ -127,5 +129,6 @@
 </footer>
 
 <script src="panel.js"></script>
+<script src="/panel/integrations.js"></script>
 </body>
 </html>
