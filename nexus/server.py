@@ -69,6 +69,7 @@ class Session:
     pipeline: str | None = None
     auto_yes: bool = False
     local_model: str | None = None
+    options: dict[str, Any] = field(default_factory=dict)
     status: str = "queued"          # queued | running | awaiting_approval | done | error | cancelled
     pending: dict[str, Any] | None = None
     approval_event: threading.Event = field(default_factory=threading.Event)
@@ -113,9 +114,15 @@ class ServerState:
         self.quiet = quiet
         self.demo = demo or os.environ.get("NEXUS_DEMO", "").lower() in {"1", "true", "yes"}
         self.sessions: dict[str, Session] = {}
-        self.lock = threading.Lock()
+        self.lock = threading.RLock()
         self.config = load_config(self.workspace)
         self.started = time.time()
+        self.task_queue: list[str] = []
+        self.active_task: str | None = None
+        self.queue_paused = False
+        from .workbench import Workbench
+
+        self.workbench = Workbench(self)
 
     # ------------------------------------------------------------------ #
     def stats(self) -> dict[str, Any]:
@@ -166,6 +173,7 @@ class ServerState:
             "uptime_s": round(time.time() - self.started, 1),
             "default_agent": cfg.default_agent,
             "prefer_local": cfg.settings.prefer_local,
+            "dashboard_policy": {"local_only": self.workbench.settings()["local_only"]},
             "local_agents": cfg.local_agents,
             "roles": len(cfg.roles),
             "categories": dict(sorted(categories.items())),
@@ -278,9 +286,12 @@ class ServerState:
         }
 
     def create(self, task: str, role: str | None, read_only: bool, pipeline: str | None = None,
-               auto_yes: bool = False, local_model: str | None = None) -> Session:
+               auto_yes: bool = False, local_model: str | None = None, options: dict | None = None) -> Session:
         session = Session(task_id=uuid.uuid4().hex[:12], task=task, role=role, read_only=read_only,
-                          pipeline=pipeline, auto_yes=auto_yes, local_model=local_model)
+                          pipeline=pipeline, auto_yes=auto_yes, local_model=local_model,
+                          options=options or self.workbench.prepare({"local_model": local_model}))
+        if pipeline and self.config.pipeline(pipeline):
+            session.options["pipeline_steps"] = self.config.pipeline(pipeline).steps
         with self.lock:
             self.sessions[session.task_id] = session
         return session
@@ -290,17 +301,36 @@ class ServerState:
             return self.sessions.get(task_id)
 
     def start(self, session: Session) -> None:
-        thread = threading.Thread(target=self._run, args=(session,), daemon=True,
-                                  name=f"nexus-{session.task_id}")
-        session.thread = thread
-        thread.start()
+        self.workbench.save_run(session)
+        with self.lock:
+            self.task_queue.append(session.task_id)
+        self.schedule()
+
+    def schedule(self) -> None:
+        with self.lock:
+            if self.active_task or getattr(self, "workflow_busy", False) or self.queue_paused or not self.task_queue:
+                return
+            ident = self.task_queue.pop(0)
+            session = self.sessions[ident]
+            self.active_task = ident
+            def worker():
+                try:
+                    self._run(session)
+                finally:
+                    with self.lock:
+                        self.active_task = None
+                    self.schedule()
+            session.thread = threading.Thread(target=worker, daemon=True, name=f"nexus-{ident}")
+            session.thread.start()
 
     # ------------------------------------------------------------------ #
     def _emit(self, session: Session):
         def handler(event: Event) -> None:
             if session.cancel.is_set():
                 raise RuntimeError("run cancelled")
-            session.push(event.to_json())
+            serialized = event.to_json()
+            self.workbench.studio.checkpoint(session, serialized)
+            session.push(serialized)
             if not self.quiet:
                 kind = event.type.value
                 if kind in {"role", "agent", "error"}:
@@ -315,7 +345,14 @@ class ServerState:
                 session.approval_event.clear()
                 session.approval_decision = None
                 session.status = "awaiting_approval"
+                try:
+                    from .workbench import proposal
+
+                    diff = proposal(self.workspace, spec.name, args)
+                except (ValueError, OSError, UnicodeError) as exc:
+                    diff = {"available": False, "reason": str(exc)}
                 session.pending = {
+                    "proposal": diff,
                     "approval_id": uuid.uuid4().hex,
                     "tool": spec.name, "risk": risk.value, "args": args, "preview": preview,
                 }
@@ -337,10 +374,11 @@ class ServerState:
                 raise RuntimeError("run cancelled")
             auto_yes = self.auto_yes or session.auto_yes
             config = load_config(self.workspace)
-            if session.local_model:
-                from .integrations import use_local_model
-
-                use_local_model(config, session.local_model)
+            if self.workbench.settings()["local_only"]:
+                session.options["policy"]["local_only"] = True
+                session.options["policy"]["default_local_model"] = self.workbench.settings()["default_local_model"]
+            self.workbench.configure(config, session.options, session.local_model)
+            self.workbench.studio.configure(config, session)
             agent = NexusAgent(
                 config,
                 workspace=self.workspace,
@@ -348,6 +386,10 @@ class ServerState:
                 approval_callback=None if auto_yes else self._approval(session),
                 auto_yes=auto_yes,
             )
+            if hasattr(agent, "gate"):
+                agent.gate.policy = self.workbench.studio.policy(agent, session, self.workbench.write_policy(session.options["policy"]))
+                agent.gate.callback = self._approval(session)
+                self.workbench.studio.attach(agent, session)
             if self.demo:
                 from .demo import patch_agent_for_demo
 
@@ -360,7 +402,13 @@ class ServerState:
             if session.pipeline:
                 session.push({"type": "status",
                               "message": f"pipeline '{session.pipeline}' -> {session.task}"})
-                results = agent.run_pipeline(session.pipeline, session.task, read_only=session.read_only)
+                if "retry_from" in session.options:
+                    pipe = config.pipeline(session.pipeline)
+                    results = agent.run_steps(pipe.steps[session.options["retry_from"]:],
+                        session.task + "\nPrior successful handoff:\n" + session.options.get("handoff", ""),
+                        pipeline=pipe, read_only=session.read_only)
+                else:
+                    results = agent.run_pipeline(session.pipeline, session.task, read_only=session.read_only)
                 steps = [
                     {"role": r.role, "agent": r.agent, "ok": r.ok, "summary": r.summary,
                      "tool_calls": r.tool_calls, "turns": r.turns}
@@ -393,13 +441,34 @@ class ServerState:
                 "pipeline": session.pipeline,
                 "steps": steps,
             }
+            if session.pipeline:
+                session.result.update(
+                    turns=sum(r.turns for r in results), tool_calls=sum(r.tool_calls for r in results),
+                    input_tokens=sum(r.usage.input_tokens for r in results),
+                    output_tokens=sum(r.usage.output_tokens for r in results),
+                    duration_s=round(sum(r.duration_s for r in results), 2),
+                    changed_files=sorted({name for r in results for name in r.changed_files}),
+                )
             session.status = "cancelled" if session.cancel.is_set() else ("done" if result.ok else "error")
         except Exception as exc:  # noqa: BLE001
             session.status = "cancelled" if session.cancel.is_set() else "error"
             session.result = {"ok": False, "error": f"{exc.__class__.__name__}: {exc}"}
             session.push({"type": "error", "message": str(exc)})
         finally:
+            try:
+                self.workbench.studio.finished(session)
+            except Exception as exc:
+                session.push({"type": "status", "message": "Studio evidence/history update failed: " + type(exc).__name__})
+            try:
+                self.workbench.save_run(session)
+            except Exception as exc:
+                session.result = {**(session.result or {}), "history_error": type(exc).__name__}
+                session.push({"type": "error", "message": "Run finished but durable history could not be saved"})
             session.push({"type": "done", "status": session.status, "result": session.result})
+            try:
+                self.workbench.save_run(session)
+            except Exception:
+                pass  # Completion must still reach SSE if history storage is unavailable.
 
 
 # --------------------------------------------------------------------------- #
@@ -507,6 +576,11 @@ def make_handler(state: ServerState):
                     "auto_yes": state.auto_yes,
                     "auth_required": bool(state.token),
                 })
+            if path.startswith("/api/workbench/"):
+                try:
+                    return self._send_json(state.workbench.get(path[len("/api/workbench/"):], parse_qs(parsed.query)))
+                except Exception as exc:
+                    return self._send_json({"error": str(exc)[:2000]}, 400)
             if path == "/api/ollama":
                 from .integrations import ollama_models
 
@@ -605,6 +679,13 @@ def make_handler(state: ServerState):
                 return self._send_json({"error": "invalid or missing token"}, 401)
             payload = self._read_json()
 
+            if path.startswith("/api/workbench/"):
+                try:
+                    if state.demo and path.rsplit("/", 1)[-1] in {"retry", "execute-plan"}:
+                        raise ValueError("Live mode required")
+                    return self._send_json(state.workbench.post(path[len("/api/workbench/"):], payload))
+                except Exception as exc:
+                    return self._send_json({"error": str(exc)[:2000]}, 400)
             if path == "/api/task":
                 if state.demo:
                     return self._send_json({"error": "Dashboard requires live mode. Restart Nexus without --demo and unset NEXUS_DEMO."}, 409)
@@ -616,7 +697,14 @@ def make_handler(state: ServerState):
                     return self._send_json(
                         {"error": f"unknown pipeline '{wanted_pipeline}' "
                                   f"(known: {', '.join(sorted(state.config.pipelines)) or 'none'})"}, 400)
-                local_model = payload.get("local_model") or None
+                try:
+                    options = state.workbench.prepare(payload)
+                    local_model = payload.get("local_model") or None
+                    if options["policy"]["local_only"]:
+                        local_model = local_model or options["policy"]["default_local_model"]
+                    state.workbench.configure(load_config(state.workspace), options, local_model)
+                except ValueError as exc:
+                    return self._send_json({"error": str(exc)}, 400)
                 if local_model:
                     from .integrations import ollama_models
 
@@ -624,10 +712,15 @@ def make_handler(state: ServerState):
                     if not isinstance(local_model, str) or local_model not in local["models"]:
                         return self._send_json({"error": local.get("error") or
                                                 "Model is not installed in Ollama. Refresh the model list."}, 400)
-                session = state.create(task, payload.get("role"), bool(payload.get("read_only")),
+                session = state.create(task, payload.get("role"), bool(payload.get("read_only")) or options["mode"] == "plan",
                                        pipeline=wanted_pipeline,
-                                       auto_yes=bool(payload.get("auto_yes")), local_model=local_model)
-                state.start(session)
+                                       auto_yes=bool(payload.get("auto_yes")) and options["mode"] != "plan",
+                                       local_model=local_model, options=options)
+                try:
+                    state.start(session)
+                except Exception as exc:
+                    session.status = "error"
+                    return self._send_json({"error": "Could not persist/start task: " + type(exc).__name__}, 500)
                 return self._send_json({"task_id": session.task_id, "status": session.status}, 202)
 
             if path == "/api/skills":
@@ -655,6 +748,16 @@ def make_handler(state: ServerState):
                             or (payload.get("approval_id") and
                                 payload["approval_id"] != session.pending["approval_id"])):
                         return self._send_json({"error": "approval is no longer pending; refresh task status"}, 409)
+                    diff = session.pending.get("proposal", {})
+                    if payload["approved"] and diff.get("available"):
+                        from .workbench import proposal
+
+                        try:
+                            current = proposal(state.workspace, session.pending["tool"], session.pending["args"])
+                        except (ValueError, OSError, UnicodeError) as exc:
+                            return self._send_json({"error": "Cannot revalidate preview: " + str(exc)}, 409)
+                        if current.get("before_hash") != diff.get("before_hash"):
+                            return self._send_json({"error": "File changed since preview; deny and request a fresh edit"}, 409)
                     session.approval_decision = ApprovalDecision(
                         approved=payload["approved"], scope=scope,
                         reason=str(payload.get("reason") or ""),
@@ -666,6 +769,12 @@ def make_handler(state: ServerState):
                 session = state.get(path.rsplit("/", 1)[-1])
                 if session is None:
                     return self._send_json({"error": "unknown task"}, 404)
+                with state.lock:
+                    if session.task_id in state.task_queue:
+                        state.workbench.post("queue", {"action": "cancel", "task_id": session.task_id})
+                        return self._send_json({"ok": True, "status": "cancelled"})
+                if session.status in {"done", "error", "cancelled"}:
+                    return self._send_json({"error": "run is already finished or stopping"}, 409)
                 with session.changed:
                     session.cancel.set()
                     if session.pending is not None:
@@ -781,10 +890,28 @@ def serve(*, host: str = "127.0.0.1", port: int = 8787, workspace: Path | None =
             webbrowser.open(f"http://{'127.0.0.1' if host == '0.0.0.0' else host}:{port}/dashboard{query}")
         except Exception:  # noqa: BLE001
             pass
+    import signal
+    old_term = None
+    if threading.current_thread() is threading.main_thread():
+        def shutdown_signal(signum, frame):
+            raise KeyboardInterrupt
+        old_term = signal.signal(signal.SIGTERM, shutdown_signal)
     try:
         httpd.serve_forever(poll_interval=0.2)
     except KeyboardInterrupt:
         print("\nshutting down")
     finally:
+        with state.lock:
+            sessions = list(state.sessions.values())
+        for session in sessions:
+            session.cancel.set()
+            session.approval_event.set()
+        with state.workbench.studio.question_lock:
+            for event in state.workbench.studio.questions.values():
+                event.set()
+        for process in state.workbench.studio.execution.list():
+            state.workbench.studio.execution.stop(process["id"])
         httpd.server_close()
+        if old_term is not None:
+            signal.signal(signal.SIGTERM, old_term)
     return 0

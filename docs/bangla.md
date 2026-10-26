@@ -186,3 +186,51 @@ traffic নয়। এটি ব্যবহারযোগ্য dashboard, moni
 
 Update করা version চালানোর পর আগের server বন্ধ করে আবার `nexus gui` চালান এবং
 browser-এ `Ctrl+F5` চাপুন। নিরাপদ পরীক্ষার task: `Create hello.txt containing Hello Nexus`।
+
+## নতুন Workbench: ২০টি dashboard update
+
+Dashboard-এর উপরের **Workbench** button বা **Ctrl+K** চাপুন। এখন পাওয়া যাবে:
+
+- Provider reachability check, per-role model mapping ও server-enforced local-only policy।
+- Approval-এর আগে file diff; Plan → review/edit → execute; স্থায়ী run history।
+- Serial task queue, reorder/pause/cancel ও পর্যালোচনার পরে failed-step retry।
+- Allowed write-folder policy, changed-file content/diff viewer।
+- Ollama installed/loaded model manager, real download status, confirmed delete,
+  capability metadata ও ইচ্ছা করলে ছোট formatting/speed inference test।
+- আসল server CPU/RAM, supported NVIDIA GPU data, token/timing observations,
+  নিজের দেওয়া source/rate অনুযায়ী স্পষ্টভাবে চিহ্নিত cost estimate।
+- Error explanations, Git branch/status, PR preview/test/push/create wizard,
+  GitHub issues/checks/failed logs।
+- Saved layout, card resize/hide/reorder, focus mode, বাংলা/ইংরেজি action labels ও
+  searchable command palette। Technical output ও বিস্তারিত help মূল ইংরেজিতেই থাকে।
+
+সব settings ও dashboard history `$NEXUS_HOME/dashboard.db`-তে workspace অনুযায়ী
+থাকে; repo-তে নয়। Server restart হলে পুরোনো অসমাপ্ত কাজ history-তে interrupted
+দেখাবে, নিজে থেকে আবার চালাবে না। Local-only হলো model-routing policy—OS firewall
+নয়। Restricted write folders থাকলে shell/git write tools-ও refuse হয়, কারণ এগুলোকে
+ওই folder-এর মধ্যে নির্ভরযোগ্যভাবে আটকে রাখা যায় না।
+
+সঠিক model/GitHub/GPU configuration ছাড়া unavailable data বানিয়ে দেখানো হয় না।
+সব ২০টি feature-এর ব্যবহার, confirmation ও সীমাবদ্ধতা: [`workbench.md`](workbench.md)।
+
+### Studio: নির্বাচিত ৪৫টি ফিচার
+
+Dashboard-এর **Studio** থেকে Sessions, Review, Evidence, Policy, Data,
+Workflows, Inbox এবং Runtime পাওয়া যাবে। Visual workflow graph, conditional steps,
+parallel read-only research, clarification, dev-app preview/logs, isolated execution,
+reviewed memory/skills ও backup/migration যুক্ত আছে। প্রতিটি নির্বাচিত ফিচারের তালিকা
+ও সীমা: [Studio guide](studio.md)।
+
+**গুরুত্বপূর্ণ:** enforced container execution-এর জন্য Docker daemon ও আগে থেকে
+ইনস্টল করা trusted image লাগে। OS-keystore encryption-এর জন্য `secure-state` extra
+ও কার্যকর Secret Service/Keychain/Credential Vault লাগে। না থাকলে activation বন্ধ
+থাকবে—host execution বা plaintext key file-এ গোপনে fallback করবে না। Worktree একা
+OS sandbox নয়। Model-এর “সফল” দাবি আর প্রকৃত verification evidence আলাদা।
+
+### Repository bar: Commit, Push, PR ও Merge
+
+Dashboard-এর উপরে repository selector, current branch, প্রকৃত `+ / −` পরিবর্তন,
+**Commit**, **Push**, **Create PR**, **PRs** ও **Merge PR** আছে। আগে preview দেখুন,
+তারপর প্রদর্শিত confirmation হুবহু লিখে execute করুন। Repo select শুধু Git controls
+বদলায়; agent workspace বা branch বদলায় না। Force push/auto-merge/admin bypass নেই।
+বিস্তারিত: [Repository toolbar](repository-toolbar.md)।

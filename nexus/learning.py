@@ -238,6 +238,11 @@ class LearningLoop:
 
     # -- apply ----------------------------------------------------------- #
     def apply(self, data: dict[str, Any], outcome: LearningOutcome) -> LearningOutcome:
+        sink = getattr(self, "review_sink", None)
+        if sink:
+            sink(data)
+            outcome.notes.append("Learning staged in Studio review inbox; no active memory/skill changed")
+            return outcome
         memory = getattr(self.agent, "memory_store", None)
 
         patch = data.get("patch")

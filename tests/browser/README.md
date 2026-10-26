@@ -26,3 +26,14 @@ side-card sizing, pipeline selection persistence, recall errors, stop errors,
 clear-during-run protection, duplicate SSE handling, live-only task gating, and
 refresh recovery at mobile width. Backend HTTP/SSE and permission-gate regression
 coverage lives in `tests/test_server.py` and `tests/test_tools.py`.
+
+Workbench coverage additionally checks provider/metrics buttons, persisted model
+and write-folder policy, history/plan loading, changed-file reads, queue controls,
+error explanations, model capability controls, cancellation before model deletion,
+Bengali labels, saved focus layout, and command-palette keyboard behavior on mobile.
+
+Studio coverage also checks safe conversation rendering/immutable branching,
+mobile visual graph construction and version saves, dry-run controls, discoverable
+live child approvals, clarification answers, actionable runtime failures, and
+closing Studio when a normal approval arrives. All model/API fixtures are test-only;
+production Studio pages read their authenticated live services.

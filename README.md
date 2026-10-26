@@ -5,7 +5,7 @@
 **One CLI / VS Code agent, a whole team of specialists behind it.**
 
 You describe a task. Nexus routes it to the right *employee* — `frontend`, `backend`,
-`pentesting`, `docs`, `trading`, `osint`, 111 curated of them (963 with the imported
+`pentesting`, `docs`, `trading`, `osint`, 111 curated of them (1000 with the imported and security
 packs in `roles.d/`) — and that role runs on the model that fits it best:
 **Gemini** for real code edits, **DeepSeek** for cheap bulk work, **OpenRouter** for hosted
 open / uncensored models used in authorized offensive-security research. Then it uses tools
@@ -96,7 +96,7 @@ python -m venv .venv && . .venv/bin/activate
 pip install -e .
 
 nexus doctor                                   # what's reachable, what's missing
-nexus roles                                    # meet the team (963 roles)
+nexus roles                                    # meet the team (1000 roles)
 nexus roles --show pentesting                  # persona + keywords + agent
 nexus addagent --list                          # the imported packs in roles.d/
 nexus task 'add pagination to the users api' --demo --yes
@@ -276,7 +276,7 @@ Everything that does not start with `/` is a chat turn.
 
 ---
 
-## The team (Phase 3 — 111 curated roles, 963 with imports)
+## The team (Phase 3 — 111 curated roles, 1000 with packs)
 
 The curated core is 111 hand-written specialists:
 
@@ -293,7 +293,7 @@ The curated core is 111 hand-written specialists:
 | general | 2 | general (fallback), assistant | *default agent* |
 
 On top of that, `roles.d/` ships **852 agents imported from five public repos**
-(see [`/addagent`](#grow-the-team-addagent)), for **963 specialists** total:
+(see [`/addagent`](#grow-the-team-addagent)), plus **37 security practitioner specializations**, for **1000 specialists** total:
 
 | Pack | Roles | From |
 | --- | --- | --- |
@@ -302,8 +302,9 @@ On top of that, `roles.d/` ships **852 agents imported from five public repos**
 | `awesome-llm-apps` | 123 | [shubhamsaboo/awesome-llm-apps](https://github.com/shubhamsaboo/awesome-llm-apps) — reference agent/RAG apps |
 | `superpowers` | 15 | [obra/superpowers](https://github.com/obra/superpowers) — dev-methodology skills |
 | `rea` | 5 | [morluto/rea](https://github.com/morluto/rea) — reverse-engineering skills |
+| `security-practitioners` | 37 | [Security role audit and common rules](docs/security-roles.md) — fifteen existing equivalents preserved |
 
-`nexus roles` prints the live table; `nexus roles -s <needle>` searches all 963.
+`nexus roles` prints the live table; `nexus roles -s <needle>` searches all 1000.
 Full list of the curated core with personas: [`docs/roles.md`](docs/roles.md).
 
 ### Grow the team: `/addagent`
@@ -628,6 +629,14 @@ Nexus-Agent/
 
 ---
 
+## Dashboard Workbench
+
+The dashboard now includes **Workbench** (or **Ctrl+K**) for provider checks, per-role
+model policy, local-only routing, durable history, plan/review/execute, serial task
+queues, safe failed-step retry, file diffs, Ollama management, sourced system metrics,
+GitHub/PR review and saved bilingual layouts. All 20 features, confirmation rules and
+external-service limitations: [Workbench guide](docs/workbench.md).
+
 ## Configuration
 
 `agents.yaml` + `roles.yaml` + `roles.d/*.yaml` + `pipelines.yaml` are loaded in layers, later wins:
@@ -654,7 +663,7 @@ Behaviour knobs (`settings:` block) and every `NEXUS_*` override are documented 
 | --- | --- | --- |
 | 1 — Core engine (providers, tools, loop, approval gate) | ✅ | `nexus/providers.py`, `nexus/tools.py`, `nexus/agent.py` |
 | 2 — Auto role-routing (keywords + LLM fallback) | ✅ | `nexus/router.py`, `roles.yaml` |
-| 3 — 100+ roles | ✅ **111 curated + 852 imported = 963** | `roles.yaml`, `roles.d/`, `scripts/build_roles.py` |
+| 3 — 100+ roles | ✅ **111 curated + 852 imported + 37 security specialists = 1000** | `roles.yaml`, `roles.d/`, `scripts/build_roles.py` |
 | 3b — Import agents from any GitHub repo | ✅ **`/addagent`** | `nexus/importers.py`, `roles.d/*.yaml`, [`docs/addagent.md`](docs/addagent.md) |
 | 4 — GitHub workflow polish (branch, commit, PR template) | ✅ | `git_prepare`, `gh_create_pr`, `.github/PULL_REQUEST_TEMPLATE.md` |
 | 5 — VS Code integration | ✅ tasks/launch **and** sidebar extension + web panel | `.vscode/`, `vscode-extension/`, `nexus/server.py`, `nexus/panel/` |
@@ -696,3 +705,19 @@ guardrails on top (deny-listed commands, `danger` risk class, path guard, plan m
 ## License
 
 MIT — see [LICENSE](LICENSE). © NXR HAMID
+
+### Studio review workspace
+
+The dashboard **Studio** button adds sessions, review inboxes, checkpoints and
+verification evidence. See [exact implementation status and limits](docs/studio.md)
+for the full selected-feature checklist, required runtimes and security/verification boundaries.
+
+### Repository toolbar
+
+Directly beneath the task description, the compact dashboard repository bar
+provides local repo selection, current branch and
+real diff counts, selected-file commits, push, PR creation/listing and reviewed
+merge/squash/rebase. Use the diff chip to review files and the **⋯** menu for
+commit/push/PR actions. Every mutation requires an expiring preview and typed
+confirmation. See [Repository toolbar](docs/repository-toolbar.md) for safe usage
+and the distinction between Git selection and the agent workspace.

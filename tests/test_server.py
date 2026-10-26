@@ -664,3 +664,97 @@ def test_redirect_preserves_ui_auth_query(server):
     with pytest.raises(urllib.error.HTTPError) as exc:
         opener.open(server.base + "/?token=example", timeout=10)
     assert exc.value.headers["Location"] == "/dashboard?token=example"
+
+
+def test_workbench_routes_are_authorized_and_settings_persist(server):
+    server.state.token = "secret"
+    assert server.get("/api/workbench/settings")[0] == 401
+    assert server.post("/api/workbench/settings", {"local_only": True})[0] == 401
+    assert server.get("/dashboard/workbench.js")[0] == 200
+    status, saved = server.post("/api/workbench/settings", {"language": "bn"}, token="secret")
+    assert status == 200 and saved["data"]["language"] == "bn"
+    assert server.get("/api/workbench/settings", token="secret")[1]["data"]["language"] == "bn"
+
+
+def test_workbench_plan_mode_and_durable_detail(server):
+    status, task = server.post("/api/task", {"task": "Inspect repository", "mode": "plan", "auto_yes": True})
+    assert status == 202
+    session = server.state.get(task["task_id"])
+    assert session.read_only and not session.auto_yes
+    server.wait_for(lambda: session.pending is not None)
+    server.post(f"/api/approve/{session.task_id}", {"approved": False})
+    server.sse(session.task_id)
+    server.wait_for(lambda: bool(server.state.workbench.history(task_id=session.task_id)[0].get("result")))
+    status, detail = server.get(f"/api/workbench/history?id={session.task_id}")
+    assert status == 200
+    assert detail["data"][0]["options"]["mode"] == "plan"
+
+
+def test_workbench_boundary_saved_and_local_only_enforced_before_submission(server):
+    assert server.post("/api/workbench/settings", {"write_paths": ["../outside"]})[0] == 400
+    assert server.post("/api/workbench/settings", {"local_only": True})[0] == 200
+    status, result = server.post("/api/task", {"task": "Inspect repository"})
+    assert status == 400 and "Local-only" in result["error"]
+    assert not server.created
+
+
+def test_approval_includes_diff_and_refuses_stale_file(server):
+    task_id = server.post("/api/task", {"task": "Create hello.txt"})[1]["task_id"]
+    session = server.state.get(task_id)
+    server.wait_for(lambda: session.pending is not None)
+    assert session.pending["proposal"]["available"]
+    assert session.pending["proposal"]["path"] == "x.py"
+    (server.state.workspace / "x.py").write_text("externally modified")
+    status, body = server.post(f"/api/approve/{task_id}", {"approved": True})
+    assert status == 409 and "changed since preview" in body["error"]
+    assert session.pending is not None
+    assert server.post(f"/api/approve/{task_id}", {"approved": False})[0] == 200
+    server.sse(task_id)
+
+
+def test_stopping_queued_task_removes_it_without_waiting_for_active_run(server):
+    server.state.queue_paused = True
+    task = server.post("/api/task", {"task": "Inspect hello.txt"})[1]
+    session = server.state.get(task["task_id"])
+    assert session.task_id in server.state.task_queue
+    status, result = server.post(f"/api/cancel/{session.task_id}", {})
+    assert status == 200 and result["status"] == "cancelled"
+    assert session.task_id not in server.state.task_queue
+    assert server.sse(session.task_id)[-1]["status"] == "cancelled"
+    assert not server.created
+
+
+def test_workflow_http_runs_keep_normal_approval_reachable(server):
+    base = '/api/workbench/studio/'
+    status, body = server.post(base + 'workflow-save', {'definition': {'name':'HTTP approval flow', 'nodes': [
+        {'id':'writer', 'kind':'agent', 'role':'backend', 'task':'Write reviewed file'}]}})
+    assert status == 200
+    ident = body['data']['id']
+    status, body = server.post(base + 'workflow-run', {'id':ident, 'confirm':'RUN REVIEWED WORKFLOW'})
+    assert status == 200
+    run_id = body['data']['run_id']
+    def pending():
+        with server.state.lock:
+            return next((s for s in server.state.sessions.values() if s.options.get('workflow_run') == run_id and s.pending), None)
+    try:
+        s = server.wait_for(pending)
+        status, live = server.get(base + 'items?kind=workflow-live')
+        assert status == 200 and live['data'][0]['task_id'] == s.task_id
+        assert server.state.workflow_busy is True
+        status, _ = server.post('/api/approve/' + s.task_id, {'approved':True, 'approval_id':s.pending['approval_id']})
+        assert status == 200
+        server.wait_for(lambda: server.state.workbench.studio.find('workflow-run', run_id)['status'] == 'done')
+        server.wait_for(lambda: not server.state.workflow_busy)
+    finally:
+        server.state.workbench.studio.workflows.cancel(run_id)
+
+
+def test_repository_toolbar_api_uses_existing_auth(server):
+    server.state.token = 'repository-test-token'
+    status, _ = server.get('/api/workbench/repository/list')
+    assert status == 401
+    status, body = server.get('/api/workbench/repository/list', token='repository-test-token')
+    assert status == 200 and body['data'][0]['agent_workspace'] is True
+    ident = body['data'][0]['id']
+    status, body = server.get('/api/workbench/repository/status?repo=' + ident, token='repository-test-token')
+    assert status == 200 and body['data']['branch'] == 'main'

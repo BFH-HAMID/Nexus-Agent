@@ -150,10 +150,15 @@ class ApprovalGate:
         self.callback = callback
         self.emit = emit or (lambda _event: None)
         self.decisions: list[tuple[str, bool]] = []
+        self.policy = None
 
     # ------------------------------------------------------------------ #
     def check(self, spec: ToolSpec, args: dict[str, Any]) -> ApprovalDecision:
         name = spec.name
+        if self.policy:
+            reason = self.policy(spec, args)
+            if reason:
+                return ApprovalDecision(False, reason=reason)
 
         if name in self.never_allow:
             return ApprovalDecision(False, reason=f"tool '{name}' is in never_allow")
