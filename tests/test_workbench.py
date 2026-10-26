@@ -250,3 +250,41 @@ def test_local_only_preserves_local_per_role_mappings_but_refuses_hosted(wb):
     wb.save_settings({"role_models": {"backend": "gemini"}})
     with pytest.raises(ValueError, match="conflicts with local-only"):
         wb.configure(load_config(wb.workspace), wb.prepare({}), "default:8b")
+
+
+def test_metrics_gpu_structured_multiple_devices_and_unknown_readings(wb, monkeypatch):
+    monkeypatch.setattr("nexus.workbench.shutil.which", lambda _: "/test-only/nvidia-smi")
+    def sample(argv, timeout=4):
+        assert argv[0] == "nvidia-smi"
+        return '"Example GPU, one", 25, 1024, 8192\nExample GPU two, [N/A], [Not Supported], 16384\n'
+    monkeypatch.setattr(wb, "command", sample)
+    data = wb.metrics()["data"]
+    assert data["gpu_devices"][0] == {"name": "Example GPU, one", "utilization_percent": 25,
+        "memory_used_mib": 1024, "memory_total_mib": 8192}
+    assert data["gpu_devices"][1]["utilization_percent"] is None
+    assert data["gpu_devices"][1]["memory_used_mib"] is None
+    assert data["gpu_error"] is None
+    assert data["ram"]["total"] > 0 and data["disk"]["total"] > 0
+    assert data["nexus_process_rss"] > 0
+
+
+def test_gpu_failure_is_reported_without_inventing_zeroes(wb, monkeypatch):
+    monkeypatch.setattr("nexus.workbench.shutil.which", lambda _: "/test-only/nvidia-smi")
+    def fail(*args, **kwargs):
+        raise ValueError("Driver unavailable")
+    monkeypatch.setattr(wb, "command", fail)
+    data = wb.metrics()["data"]
+    assert data["gpu"] is None and data["gpu_devices"] == []
+    assert data["gpu_error"] == "Driver unavailable"
+
+
+def test_hardware_permission_failure_is_explicit_not_fake_zero(wb, monkeypatch):
+    import psutil
+
+    monkeypatch.setattr("nexus.workbench.shutil.which", lambda _: None)
+    def denied(*args, **kwargs):
+        raise psutil.AccessDenied(pid=123)
+    monkeypatch.setattr(psutil, "Process", denied)
+    data = wb.metrics()["data"]
+    assert "measurement_error" in data
+    assert data["cpu_percent"] is None and data["ram"] is None

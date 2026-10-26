@@ -37,3 +37,10 @@ mobile visual graph construction and version saves, dry-run controls, discoverab
 live child approvals, clarification answers, actionable runtime failures, and
 closing Studio when a normal approval arrives. All model/API fixtures are test-only;
 production Studio pages read their authenticated live services.
+
+Hardware/live-process coverage checks removal of setup instructions, measured
+CPU/RAM/GPU rendering, missing GPU values, stale-reading clearing, stdout/stderr
+before completion, stop acknowledgement/failure retry, bounded expandable tool
+output, applied diffs, event deduplication, tool filters and hostile-output escaping.
+Actual subprocess/process-group and HTTP/SSE cancellation tests are separate in
+`tests/test_live_process.py` and `tests/test_server.py`.

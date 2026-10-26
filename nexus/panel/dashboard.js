@@ -13,6 +13,7 @@
   const token = new URLSearchParams(location.search).get("token") || "";
   const REDUCED = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   const MAX_STEPS = 400;
+  const processCards = new Map();
 
   const state = {
     stats: null,
@@ -137,8 +138,7 @@
     $("metaRouting").textContent = s.dashboard_policy?.local_only ? "local-only" : window.nexusLocalModel?.() ? "selected local" : s.prefer_local ? "local-first" : "configured";
     $("metaUptime").textContent = "up " + Math.round(s.uptime_s || 0) + "s";
     $("sbVersion").textContent = "nexus " + (s.version || "?");
-    $("globeNodes").textContent = Object.keys(s.agents || {}).length + " configured endpoints";
-    $("statRegions").textContent = "Unavailable";
+    $("globeNodes").textContent = Object.keys(s.agents || {}).length + " configured agents";
     $("orchCount").textContent = Object.keys(state.agents).length + " agents";
     renderOrch();
     renderKeys();
@@ -383,7 +383,7 @@
   const KIND_FILTER = {
     think: "model", text: "model", agent: "model", route: "system", role: "system",
     status: "system", memory: "system", done: "system", error: "system",
-    tool_call: "tools", tool_result: "tools",
+    tool_call: "tools", tool_result: "tools", tool_output: "tools", process: "tools", file_change: "tools",
   };
 
   function addStep(kind, tag, icon, bodyHtml, meta) {
@@ -391,7 +391,7 @@
     if (empty) empty.remove();
     const el = document.createElement("div");
     el.className = "step " + kind;
-    el.dataset.kind = KIND_FILTER[kind] || "system";
+    el.dataset.kind = KIND_FILTER[kind.split(" ")[0]] || "system";
     el.innerHTML = `<span class="tag"><i>${icon}</i>${esc(tag)}</span>
       <span class="body">${bodyHtml}${meta ? `<span class="meta">${esc(meta)}</span>` : ""}</span>`;
     const stream = $("stream");
@@ -401,6 +401,50 @@
     if (atBottom) stream.scrollTop = stream.scrollHeight;
     applyFilter(el);
     return el;
+  }
+
+  function processCard(event) {
+    const id = event.process_id || event.call_id;
+    if (!id) return null;
+    let card = processCards.get(id);
+    if (!card || !card.isConnected) {
+      card = addStep("process", "using shell", "⌘",
+        `<div class="live-process-head"><b class="live-process-status">Running command</b><button type="button" class="btn live-process-stop">Stop command &amp; task</button></div><pre class="live-command"></pre><div class="live-process-meta"></div><details class="live-output" open><summary>stdout</summary><pre data-stream="stdout"></pre></details><details class="live-output" open><summary>stderr</summary><pre data-stream="stderr"></pre></details><pre class="live-process-notice"></pre>`, ts());
+      card.dataset.processId = id;
+      const taskId = state.taskId, button = card.querySelector(".live-process-stop");
+      button.disabled = !state.running;
+      button.addEventListener("click", async () => {
+        if (taskId !== state.taskId || !state.running) { button.disabled = true; return; }
+        button.disabled = true;
+        const accepted = await cancel();
+        if (!accepted && state.running && taskId === state.taskId) button.disabled = false;
+        else button.textContent = "Stop requested";
+      });
+      processCards.set(id, card);
+      while (processCards.size > 64) processCards.delete(processCards.keys().next().value);
+    }
+    return card;
+  }
+
+  function showProcess(event) {
+    const card = processCard(event); if (!card) return;
+    if (event.command) card.querySelector(".live-command").textContent = event.command;
+    if (event.cwd) card.querySelector(".live-process-meta").textContent = "cwd: " + event.cwd + " · pid: " + event.pid;
+    const active = event.status === "running";
+    card.querySelector(".live-process-status").textContent = active ? "Running command" : (event.status || "Process update") + (event.exit_code != null ? " · exit " + event.exit_code : "");
+    card.querySelector(".live-process-stop").disabled = !active || !state.running;
+    if (!active) card.querySelector(".live-process-stop").hidden = true;
+  }
+
+  function showOutput(event) {
+    const card = processCard(event); if (!card) return;
+    const target = event.stream === "stderr" ? card.querySelector('[data-stream="stderr"]') : event.stream === "stdout" ? card.querySelector('[data-stream="stdout"]') : card.querySelector(".live-process-notice");
+    const stream = $("stream"), follow = stream.scrollTop + stream.clientHeight >= stream.scrollHeight - 80;
+    const text = String(event.text || "");
+    const remaining = Math.max(0, 64_000 - target.textContent.length);
+    target.textContent += text.slice(0, remaining);
+    if (text.length > remaining) card.querySelector(".live-process-notice").textContent = "Live output display capped at 64,000 characters per stream.";
+    if (follow) stream.scrollTop = stream.scrollHeight;
   }
 
   function applyFilter(el) {
@@ -477,7 +521,7 @@
         }
         addStep("think", "think", "◉",
           `thinking · <b>${esc(e.agent || "")}</b> <span class="pill">${esc(e.model || "")}</span>`,
-          ts() + "turn " + (e.turn || "?") + "/" + (e.max_turns || "?"));
+          ts() + "turn " + (e.turn || "?") + "/" + (e.max_turns || "?") + " · waiting for model response");
         setPhase("thinking", "thinking · " + (e.agent || "") + " · " + (e.model || ""),
           "turn " + (e.turn || "?") + "/" + (e.max_turns || "?"));
         updateTelemetry();
@@ -508,7 +552,8 @@
         const isCmd = /^\$|^git |^npm |^python|^pytest|^ls |^cat /m.test(preview.slice(0, 40));
         addStep("tool_call", e.tool || "tool", "✎",
           `<b>${esc(e.tool)}</b> <span class="pill ${risk === "danger" ? "danger" : risk === "read" ? "" : "warn"}">${esc(risk)}</span>` +
-          (preview ? `<span class="cmd">${esc(trunc(preview, 900))}</span>` : ""),
+          (preview ? `<span class="cmd">${esc(trunc(preview, 900))}</span>` : "") +
+          (e.args ? `<details class="live-output"><summary>Arguments</summary><pre>${esc(trunc(JSON.stringify(e.args, null, 2), 24_000))}</pre></details>` : ""),
           ts() + "executing" + (isCmd ? " shell command" : ""));
         setPhase("tool", "running " + (e.tool || "tool"), trunc(preview.replace(/\s+/g, " "), 70));
         break;
@@ -519,7 +564,8 @@
         if (ms !== null) pushSpark("latency", ms);
         const out = String(e.preview || "");
         addStep("tool_result" + (e.is_error ? " error" : ""), e.is_error ? "result ✗" : "result", e.is_error ? "✗" : "✓",
-          `<span class="txt">${esc(trunc(out, 1200))}</span>`,
+          `<span class="txt">${esc(trunc(out, 1200))}</span>` +
+          (e.output ? `<details class="live-output"><summary>Retained tool output (${Number(e.chars) || String(e.output).length} characters)</summary><pre>${esc(trunc(e.output, 64_000))}</pre></details>` : ""),
           ts() + (ms ? ms + " ms" : ""));
         if (e.is_error) {
           state.counters.errors++;
@@ -527,6 +573,17 @@
           pushSec("bad", "tool error: " + trunc(out, 80));
         }
         setPhase("thinking", "thinking · " + (state.activeAgent || ""), "");
+        break;
+      }
+      case "process":
+        showProcess(e);
+        break;
+      case "tool_output":
+        showOutput(e);
+        break;
+      case "file_change": {
+        const diff = String(e.diff || "").slice(0, 24_000).split("\n").map(line => `<span class="${line.startsWith("+") ? "diff-add" : line.startsWith("-") ? "diff-remove" : "diff-context"}">${esc(line)}</span>`).join("\n");
+        addStep("file_change", "code edit", "✎", `<b>${esc(e.action || "updated")} ${esc(e.path)}</b><details class="live-output" open><summary>Applied diff</summary><pre class="live-diff">${diff}</pre></details>`, ts() + (e.note || "Applied file change"));
         break;
       }
       case "text_delta": {
@@ -611,6 +668,7 @@
       default:
         addStep("status", e.type, "·", esc(JSON.stringify(e).slice(0, 300)));
     }
+    renderRunMetrics();
     updateSecurityLevel();
   }
 
@@ -682,6 +740,7 @@
 
   function resetRunState() {
     window.dispatchEvent(new CustomEvent("nexus:run-reset"));
+    processCards.clear();
     state.counters = { toolCalls: 0, danger: 0, denied: 0, errors: 0, events: 0, modelCalls: 0 };
     state.tokens = { in: 0, out: 0 };
     state.telemetry.turns = 0;
@@ -701,9 +760,11 @@
     Object.keys(state.agents).forEach((n) => setAgentStatus(n, "idle"));
     setActiveAgent(null);
     drawAllSparks();
+    renderRunMetrics();
   }
 
   function stream(id) {
+    renderRunMetrics();
     if (state.es) state.es.close();
     const url = "/api/events/" + id + (token ? "?token=" + encodeURIComponent(token) : "");
     const es = new EventSource(url);
@@ -711,6 +772,7 @@
     setUplink("streaming", "ok");
     es.onopen = () => setUplink("streaming", "ok");
     es.onmessage = (msg) => {
+      if (state.es !== es || state.taskId !== id) return;
       try { onEvent(JSON.parse(msg.data)); } catch (err) { actionError("Event could not be displayed: " + err.message); }
     };
     es.onerror = () => {
@@ -726,6 +788,7 @@
   function finishRun(e) {
     stopElapsed();
     state.running = false;
+    processCards.forEach(card => { card.querySelector(".live-process-stop").disabled = true; });
     if (state.es) { state.es.close(); state.es = null; }
     $("runBtn").disabled = !state.liveReady;
     $("cancelBtn").disabled = true;
@@ -735,9 +798,10 @@
     Object.keys(state.agents).forEach((n) => setAgentStatus(n, "idle"));
     const r = e.result || {};
     const ok = r.ok === true && e.status === "done";
+    const outcome = e.status === "cancelled" ? "run cancelled" : ok ? "run complete" : "run failed";
     $("telState").textContent = e.status || (ok ? "done" : "error");
     $("sbState").textContent = e.status || "done";
-    setPhase(ok ? "done" : "error", (e.status === "cancelled" ? "run cancelled" : ok ? "run complete" : "run failed") + " · " + (r.role || "") + " · " + (r.agent || ""),
+    setPhase(e.status === "cancelled" ? "cancelled" : ok ? "done" : "error", outcome + " · " + (r.role || "") + " · " + (r.agent || ""),
       (r.duration_s != null ? r.duration_s + "s" : ""));
     setUplink("online", "ok");
 
@@ -757,7 +821,7 @@
     const steps = Array.isArray(r.steps) ? r.steps : [];
     const summary = r.error || r.summary || r.text || "";
     addStep("done", "done", ok ? "✔" : "✗",
-      `<b>${ok ? "run complete" : "run failed"}</b> · ${esc(summary ? trunc(summary, 1200) : "no summary")}`,
+      `<b>${esc(outcome)}</b> · ${esc(summary ? trunc(summary, 1200) : "no summary")}`,
       ts() + [r.role, r.agent, r.turns != null ? r.turns + " turns" : "",
         r.tool_calls != null ? r.tool_calls + " tools" : "",
         r.duration_s != null ? r.duration_s + "s" : ""].filter(Boolean).join(" · "));
@@ -773,18 +837,21 @@
   }
 
   async function cancel() {
-    if (!state.taskId || !state.running) return;
+    if (!state.taskId || !state.running) return false;
+    const taskId = state.taskId;
     $("cancelBtn").disabled = true;
-    const {ok, body} = await api("/api/cancel/" + state.taskId, {method: "POST", body: "{}"});
-    if (!state.running) return;
+    const {ok, body} = await api("/api/cancel/" + taskId, {method: "POST", body: "{}"});
+    if (!state.running || state.taskId !== taskId) return false;
     if (!ok) {
       actionError(body.error || "Stop failed. Please retry.");
       $("cancelBtn").disabled = false;
-      return;
+      return false;
     }
     hideApproval();
     actionError("");
-    setPhase("waiting", "stop requested · waiting for current operation to return", "no further tools will start");
+    addStep("status", "stop process", "■", "Stop requested for this task; awaiting actual process termination events.", ts());
+    setPhase("waiting", "stop requested · cancelling current operation", "no further tools will start; model/network requests may wait for timeout");
+    return true;
   }
 
   function updateTelemetry() {
@@ -819,11 +886,19 @@
     state.counters.events = 0;
     if (state.running) pushSpark("events", evPerSec);
     $("monEvents").textContent = String(evPerSec);
+    renderRunMetrics();
+  }
+
+  function renderRunMetrics() {
     $("statCalls").textContent = String(state.counters.modelCalls);
-    $("statLatency").textContent = state.spark.latency.length
-      ? Math.round(state.spark.latency.slice(-3).reduce((a, b) => a + b, 0) / Math.min(3, state.spark.latency.length)) + "ms"
-      : "—";
-    $("monLatency").textContent = $("statLatency").textContent;
+    $("statToolCalls").textContent = String(state.counters.toolCalls);
+    const samples = state.spark.latency.slice(-3);
+    const average = samples.length ? Math.round(samples.reduce((a, b) => a + b, 0) / samples.length) + "ms" : null;
+    $("statLatency").textContent = average || "No results yet";
+    $("monLatency").textContent = average || "—";
+    $("liveRunNote").textContent = state.taskId
+      ? "Task " + state.taskId + (state.running ? " · live server events. Tool timing appears after completion." : " · retained run events. Open another run from History to view its metrics.")
+      : "No Nexus task selected. Start a task here or open one from History. These metrics do not track this Arena chat.";
   }
 
   const SPARK_COLORS = {

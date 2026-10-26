@@ -56,12 +56,12 @@
 
 
     <section class="card globe-card">
-      <div class="card-head"><span class="sq"></span>LIVE RUN DATA<span class="spacer"></span><span class="micro" id="globeNodes">unavailable</span></div>
-      <p class="mem-body">Run metrics come from server events. Endpoint configuration is not an online health check. Network geolocation and threat scanning are not collected.</p>
+      <div class="card-head"><span class="sq"></span>LIVE RUN DATA<span class="spacer"></span><span class="micro" id="globeNodes" title="Configured agent entries; endpoints may be shared. Not an online health check.">Loading configuration…</span></div>
+      <p class="mem-body" id="liveRunNote" role="status">No Nexus task selected. Start a task here or open one from History. These metrics do not track this Arena chat.</p>
       <div class="stat-row">
-        <div class="stat"><span class="stat-k">tool duration</span><b id="statLatency">—</b></div>
+        <div class="stat"><span class="stat-k" title="Mean duration of the last three completed tools in this run">avg tool · last 3</span><b id="statLatency">No results yet</b></div>
         <div class="stat"><span class="stat-k">model turns</span><b id="statCalls">0</b></div>
-        <div class="stat"><span class="stat-k">geolocation</span><b id="statRegions">Unavailable</b></div>
+        <div class="stat"><span class="stat-k">tool calls</span><b id="statToolCalls">0</b></div>
       </div>
     </section>
 

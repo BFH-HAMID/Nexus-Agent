@@ -234,3 +234,12 @@ Dashboard-এর উপরে repository selector, current branch, প্রক�
 তারপর প্রদর্শিত confirmation হুবহু লিখে execute করুন। Repo select শুধু Git controls
 বদলায়; agent workspace বা branch বদলায় না। Force push/auto-merge/admin bypass নেই।
 বিস্তারিত: [Repository toolbar](repository-toolbar.md)।
+
+### হার্ডওয়্যার ও live execution
+
+Dashboard-এর GitHub connection ও VS Code installation-এর লেখার বদলে বাস্তব server
+CPU/RAM, disk, Nexus process RAM এবং পাওয়া গেলে NVIDIA GPU/VRAM দেখা যায়।
+Command চলার সময় stdout/stderr, actual exit/stop status এবং applied code diff
+দেখানো হয়। **Stop command & task** বর্তমান task-এর managed command বন্ধ করে;
+approval বা isolation bypass করে না। Thinking মানে model response-এর অপেক্ষা,
+গোপন reasoning নয়। সীমা ও পরীক্ষার বিবরণ: [Live dashboard](live-dashboard.md)।

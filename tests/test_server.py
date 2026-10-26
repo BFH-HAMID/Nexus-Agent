@@ -758,3 +758,52 @@ def test_repository_toolbar_api_uses_existing_auth(server):
     ident = body['data'][0]['id']
     status, body = server.get('/api/workbench/repository/status?repo=' + ident, token='repository-test-token')
     assert status == 200 and body['data']['branch'] == 'main'
+
+
+def test_real_command_stdout_sse_then_cancel_reports_process_termination(server, monkeypatch):
+    """Script only the model; exercise real approved tool execution, SSE and cancel."""
+    import shlex
+    import sys
+
+    from nexus.tools import ApprovalGate, PathGuard, ToolContext, build_tools
+
+    def run(self, task, **kwargs):
+        ctx = ToolContext(self.workspace, PathGuard(self.workspace), ApprovalGate(mode="auto"),
+                          emit=self.emit, cancel_event=self.cancel_event)
+        cmd = f"{shlex.quote(sys.executable)} -u -c " + shlex.quote("import time;print('SSE command ready');time.sleep(30)")
+        output, error = build_tools(ctx).call("run_command", {"command": cmd})
+        return RunResult(text=output, ok=not error, role="backend", agent="fixture")
+    monkeypatch.setattr(FakeAgent, "run", run)
+    status, body = server.post("/api/task", {"task": "test-only live command"})
+    assert status == 202
+    ident = body["task_id"]
+    events, failures = [], []
+    output_seen = threading.Event()
+    def subscriber():
+        try:
+            with urllib.request.urlopen(server.base + "/api/events/" + ident, timeout=10) as response:
+                for raw in response:
+                    if not raw.startswith(b"data:"):
+                        continue
+                    event = json.loads(raw[5:])
+                    events.append(event)
+                    if event["type"] == "tool_output" and "SSE command ready" in event.get("text", ""):
+                        output_seen.set()
+                    if event["type"] == "done":
+                        break
+        except Exception as exc:
+            failures.append(exc)
+    reader = threading.Thread(target=subscriber, daemon=True)
+    reader.start()
+    try:
+        assert output_seen.wait(5)
+        assert not any(e["type"] == "tool_result" for e in events), "Output arrived only after completion"
+        assert server.post("/api/cancel/" + ident, {})[0] == 200
+        reader.join(5)
+        assert not reader.is_alive() and failures == []
+        assert any(e["type"] == "process" and e["status"] == "cancelled" for e in events)
+        assert events[-1]["type"] == "done" and events[-1]["status"] == "cancelled"
+    finally:
+        session = server.state.get(ident)
+        session.cancel.set()
+        reader.join(5)
