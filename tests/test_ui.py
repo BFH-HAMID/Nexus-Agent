@@ -174,3 +174,16 @@ def test_ui_renders_skill_events(capsys):
     out = capsys.readouterr().out
     assert "my-skill" in out
     assert "remembered" in out
+
+
+def test_core_prompt_and_binary_logo():
+    terminal = ui.TerminalUI(_colorless(), spinner=False)
+    assert terminal.prompt("auto") == "[NEXUS_CORE@SYSTEM:~]$ "
+    assert all(set(row) <= {"0", "1", " "} for row in ui.LOGO)
+    assert any("10" in row for row in ui.LOGO)
+
+
+def test_boot_progress_is_silent_when_not_tty(monkeypatch, capsys):
+    monkeypatch.setattr(ui, "_tty", lambda: False)
+    ui.boot_progress(_colorless())
+    assert capsys.readouterr().out == ""

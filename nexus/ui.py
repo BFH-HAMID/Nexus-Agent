@@ -243,7 +243,7 @@ class TerminalUI:
     def prompt(self, hint: str) -> str:
         self.stop_spinner()
         self._streaming = False
-        return self.c.bold(f"nexus[{hint}]") + self.c.cyan(" ❯ ")
+        return self.c.cyan("[NEXUS_CORE@SYSTEM:~]$ ")
 
     @property
     def usage(self) -> tuple[int, int]:
@@ -254,13 +254,30 @@ class TerminalUI:
 # banner / footer / help
 # --------------------------------------------------------------------------- #
 
-LOGO = (
-    " _  _ _____ _   _ _   _ ____  ",
-    "|\\ | | ____| | | | | | / ___| ",
-    "| \\| |  _| | | | | | | \\___ \\ ",
-    "| |\\  | |___| |_| | |_| |___) |",
-    "|_| \\_|_____|\\___/ \\___/|____/ ",
+# Binary pixels form N E X U S without claiming simulated agents are online.
+_GLYPHS = (
+    ("10001", "11001", "10101", "10011", "10001"),
+    ("11111", "10000", "11110", "10000", "11111"),
+    ("10001", "01010", "00100", "01010", "10001"),
+    ("10001", "10001", "10001", "10001", "01110"),
+    ("01111", "10000", "01110", "00001", "11110"),
 )
+LOGO = tuple(" ".join("".join("10" if bit == "1" else "  " for bit in glyph[row])
+                      for glyph in _GLYPHS) for row in range(5))
+
+
+def boot_progress(colors: Any) -> None:
+    """Brief visual boot sequence, not a fabricated model health check."""
+    import os
+
+    if not _tty() or os.environ.get("NO_COLOR") or os.environ.get("NEXUS_NO_ANIMATION"):
+        return
+    for filled in range(21):
+        bar = "1" * filled + "·" * (20 - filled)
+        print(colors.cyan(f"\r  CORE_UI_BOOT [{bar}] {filled * 5:3d}%"), end="", flush=True)
+        time.sleep(0.018)
+    print()
+
 
 
 def banner(colors: Any, agent: Any, *, version: str, workspace: str) -> None:
@@ -273,6 +290,8 @@ def banner(colors: Any, agent: Any, *, version: str, workspace: str) -> None:
     def add(label: str, value: str, color: str = "") -> None:
         lines.append((label, str(value), color))
 
+    add("core", "NEXUS CORE AI NET", "green")
+    add("registry", f"{len(cfg.roles)} specialists loaded (not a health check)", "green")
     add("workspace", workspace)
     add("agent", f"{cfg.default_agent} · {cfg.agents[cfg.default_agent].model}"
         if cfg.default_agent in cfg.agents else cfg.default_agent, "cyan")
@@ -301,7 +320,7 @@ def banner(colors: Any, agent: Any, *, version: str, workspace: str) -> None:
     print()
     print(colors.cyan(top))
     for art in LOGO:
-        print(colors.cyan("│ ") + colors.bold(art.ljust(width - 4)) + colors.cyan(" │"))
+        print(colors.cyan("│ ") + colors.green(art[:width - 4].ljust(width - 4)) + colors.cyan(" │"))
     print(colors.cyan("│ ") + colors.dim("one CLI · a whole team of routed specialists".ljust(width - 4)) + colors.cyan(" │"))
     print(colors.cyan("├" + "─" * (width - 2) + "┤"))
     for label, value, color in lines:
@@ -317,6 +336,7 @@ def banner(colors: Any, agent: Any, *, version: str, workspace: str) -> None:
     print(colors.cyan("│ ") + colors.dim(hints[:width - 4].ljust(width - 4)) + colors.cyan(" │"))
     print(colors.cyan(bottom))
     print(colors.dim(f"  Nexus v{version}"))
+    boot_progress(colors)
 
 
 def _has_key(family: str) -> bool:

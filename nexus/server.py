@@ -69,6 +69,7 @@ class Session:
     read_only: bool = False
     pipeline: str | None = None
     auto_yes: bool = False
+    local_model: str | None = None
     status: str = "queued"          # queued | running | awaiting_approval | done | error | cancelled
     events: queue.Queue[dict[str, Any]] = field(default_factory=queue.Queue)
     pending: dict[str, Any] | None = None
@@ -275,9 +276,9 @@ class ServerState:
         }
 
     def create(self, task: str, role: str | None, read_only: bool, pipeline: str | None = None,
-               auto_yes: bool = False) -> Session:
+               auto_yes: bool = False, local_model: str | None = None) -> Session:
         session = Session(task_id=uuid.uuid4().hex[:12], task=task, role=role, read_only=read_only,
-                          pipeline=pipeline, auto_yes=auto_yes)
+                          pipeline=pipeline, auto_yes=auto_yes, local_model=local_model)
         with self.lock:
             self.sessions[session.task_id] = session
         return session
@@ -330,8 +331,13 @@ class ServerState:
     def _run(self, session: Session) -> None:
         try:
             auto_yes = self.auto_yes or session.auto_yes
+            config = load_config(self.workspace)
+            if session.local_model:
+                from .integrations import use_local_model
+
+                use_local_model(config, session.local_model)
             agent = NexusAgent(
-                load_config(self.workspace),
+                config,
                 workspace=self.workspace,
                 emit=self._emit(session),
                 approval_callback=None if auto_yes else self._approval(session),
@@ -496,6 +502,14 @@ def make_handler(state: ServerState):
                     "auto_yes": state.auto_yes,
                     "auth_required": bool(state.token),
                 })
+            if path == "/api/ollama":
+                from .integrations import ollama_models
+
+                return self._send_json(ollama_models())
+            if path == "/api/github":
+                from .integrations import github_status
+
+                return self._send_json(github_status(state.workspace))
             if path == "/api/roles":
                 return self._send_json([r.to_dict() for r in state.config.roles.roles.values()])
             if path == "/api/agents":
@@ -595,9 +609,17 @@ def make_handler(state: ServerState):
                     return self._send_json(
                         {"error": f"unknown pipeline '{wanted_pipeline}' "
                                   f"(known: {', '.join(sorted(state.config.pipelines)) or 'none'})"}, 400)
+                local_model = payload.get("local_model") or None
+                if local_model:
+                    from .integrations import ollama_models
+
+                    local = ollama_models()
+                    if not isinstance(local_model, str) or local_model not in local["models"]:
+                        return self._send_json({"error": local.get("error") or
+                                                "Model is not installed in Ollama. Refresh the model list."}, 400)
                 session = state.create(task, payload.get("role"), bool(payload.get("read_only")),
                                        pipeline=wanted_pipeline,
-                                       auto_yes=bool(payload.get("auto_yes")))
+                                       auto_yes=bool(payload.get("auto_yes")), local_model=local_model)
                 state.start(session)
                 return self._send_json({"task_id": session.task_id, "status": session.status}, 202)
 

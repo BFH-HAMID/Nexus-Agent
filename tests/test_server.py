@@ -518,3 +518,34 @@ def test_dashboard_ships_the_learning_panel(server):
     assert status == 200
     assert "LEARNING BRAIN" in body
     assert 'id="brainSkills"' in body
+
+
+def test_local_model_selection(server, monkeypatch):
+    from nexus import integrations
+
+    monkeypatch.setattr(integrations, "ollama_models", lambda: {
+        "connected": True, "models": ["custom-dolphin:latest"], "url": "http://localhost:11434"})
+    assert server.get("/api/ollama")[1]["models"] == ["custom-dolphin:latest"]
+    status, _ = server.post("/api/task", {"task": "hello", "local_model": "not-installed"})
+    assert status == 400
+    status, body = server.post("/api/task", {
+        "task": "hello", "local_model": "custom-dolphin:latest", "auto_yes": True})
+    assert status == 202
+    server.sse(body["task_id"])
+    config = server.created[-1].config
+    assert config.agents[config.default_agent].model == "custom-dolphin:latest"
+    assert config.agents[config.default_agent].fallback is None
+
+
+def test_integration_routes_require_auth(server):
+    server.state.token = "secret"
+    for route in ("/api/ollama", "/api/github"):
+        assert server.get(route)[0] == 401
+
+
+def test_setup_controls_in_both_panels(server):
+    for route in ("/dashboard", "/panel"):
+        status, html = server.get(route)
+        assert status == 200
+        assert 'id="integrations"' in html
+        assert "integrations.js" in html
