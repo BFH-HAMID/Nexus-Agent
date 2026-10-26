@@ -176,11 +176,28 @@ def test_managed_process_real_start_logs_and_stop(studio):
     assert not result[0]['running']
 
 
+def enable_encryption_with_capability_check(studio):
+    """Exercise the fail-closed contract on Python/SQLite without serialize."""
+    from nexus import studio_crypto
+
+    before = studio.wb.path.read_bytes()
+    if not hasattr(studio_crypto.sqlite3.Connection, 'serialize'):
+        with pytest.raises(ValueError, match='lacks serialize'):
+            studio.post('encryption-enable', {'confirm': 'ENCRYPT DASHBOARD STATE', 'single_server': True})
+        assert studio.wb.path.read_bytes() == before
+        assert not studio_crypto.enabled(studio.wb.path)
+        assert not studio.encrypted()
+        return None
+    return studio.post('encryption-enable', {'confirm': 'ENCRYPT DASHBOARD STATE', 'single_server': True})
+
+
 def test_actual_encrypted_database_roundtrip_and_tamper_failure(studio, monkeypatch):
     from nexus import studio_crypto
     monkeypatch.setattr(studio_crypto, 'os_key', lambda *a, **k: b'x' * 32)
     studio.post('template', {'text': 'private template text'})
-    result = studio.post('encryption-enable', {'confirm': 'ENCRYPT DASHBOARD STATE', 'single_server': True})
+    result = enable_encryption_with_capability_check(studio)
+    if result is None:
+        return  # Unsupported builds have asserted refusal and unchanged plaintext.
     assert result['data']['enabled']
     data = studio.wb.path.read_bytes()
     assert data.startswith(studio_crypto.MAGIC) and b'private template' not in data
@@ -296,7 +313,8 @@ def test_plaintext_cli_recording_not_used_for_encrypted_dashboard(studio, monkey
     from nexus.config import load_config
     monkeypatch.setattr(studio_crypto, 'os_key', lambda *a, **k: b'y' * 32)
     studio.items('template')
-    studio.post('encryption-enable', {'confirm': 'ENCRYPT DASHBOARD STATE', 'single_server': True})
+    if enable_encryption_with_capability_check(studio) is None:
+        return  # No encrypted session can exist on an unsupported SQLite build.
     agent = NexusAgent(load_config(studio.root), workspace=studio.root)
     s = studio.state.create('secure', None, False, options=studio.wb.prepare({}))
     studio.attach(agent, s)
@@ -394,3 +412,12 @@ def test_backup_restores_history_as_archived_and_only_safe_ui_preferences(studio
     assert studio.wb.settings()['language'] == 'bn'
     assert studio.wb.settings()['local_only'] is True
     assert studio.wb.settings()['write_paths'] == ['app']
+
+
+def test_missing_sqlite_serialization_refuses_without_changing_database(studio, monkeypatch):
+    from nexus import studio_crypto
+
+    studio.post('template', {'text': 'must remain unchanged on refusal'})
+    monkeypatch.setattr(studio_crypto, 'os_key', lambda *a, **k: b'z' * 32)
+    monkeypatch.setattr(studio_crypto.sqlite3, 'Connection', type('WithoutSerialization', (), {}))
+    assert enable_encryption_with_capability_check(studio) is None
