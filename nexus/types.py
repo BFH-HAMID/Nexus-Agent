@@ -281,6 +281,9 @@ class EventType(str, Enum):
     TEXT = "text"                # assistant prose (complete message)
     TEXT_DELTA = "text_delta"    # streaming slice of assistant prose
     TOOL_CALL = "tool_call"
+    TOOL_OUTPUT = "tool_output"    # bounded stdout/stderr while a command runs
+    PROCESS = "process"            # actual command lifecycle, including cancellation
+    FILE_CHANGE = "file_change"    # applied file change with bounded unified diff
     TOOL_RESULT = "tool_result"
     APPROVAL = "approval"        # waiting for the human
     ERROR = "error"

@@ -44,7 +44,7 @@ from . import __version__
 from .agent import NexusAgent
 from .config import load_config
 from .tools import ApprovalDecision
-from .types import Event
+from .types import Event, EventType
 
 PANEL_DIR = Path(__file__).resolve().parent / "panel"
 APPROVAL_TIMEOUT = 600.0
@@ -326,7 +326,7 @@ class ServerState:
     # ------------------------------------------------------------------ #
     def _emit(self, session: Session):
         def handler(event: Event) -> None:
-            if session.cancel.is_set():
+            if session.cancel.is_set() and event.type not in {EventType.TOOL_OUTPUT, EventType.PROCESS, EventType.TOOL_RESULT, EventType.FILE_CHANGE}:
                 raise RuntimeError("run cancelled")
             serialized = event.to_json()
             self.workbench.studio.checkpoint(session, serialized)
@@ -386,6 +386,7 @@ class ServerState:
                 approval_callback=None if auto_yes else self._approval(session),
                 auto_yes=auto_yes,
             )
+            agent.cancel_event = session.cancel
             if hasattr(agent, "gate"):
                 agent.gate.policy = self.workbench.studio.policy(agent, session, self.workbench.write_policy(session.options["policy"]))
                 agent.gate.callback = self._approval(session)

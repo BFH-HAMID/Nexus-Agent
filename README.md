@@ -721,3 +721,11 @@ merge/squash/rebase. Use the diff chip to review files and the **⋯** menu for
 commit/push/PR actions. Every mutation requires an expiring preview and typed
 confirmation. See [Repository toolbar](docs/repository-toolbar.md) for safe usage
 and the distinction between Git selection and the agent workspace.
+
+### Hardware monitoring and live activity
+
+The dashboard shows real server CPU/RAM, workspace disk, Nexus process memory and
+available NVIDIA GPU telemetry in place of GitHub/VS Code setup instructions.
+Approved command stdout/stderr now stream while commands run, with observed
+exit/stop status, expandable tool output and applied code diffs. See
+[hardware and live execution](docs/live-dashboard.md) for limits and verification.

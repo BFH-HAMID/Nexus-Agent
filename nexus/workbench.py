@@ -5,6 +5,7 @@ The local-only switch controls model routing, not an OS network sandbox.
 """
 from __future__ import annotations
 
+import csv
 import difflib
 import hashlib
 import ipaddress
@@ -361,21 +362,36 @@ class Workbench:
         return observation(result, "Ollama show" + (" + explicit small inference test" if smoke else ""))
 
     def metrics(self) -> dict:
+        data = {"cpu_percent": None, "cpu_cores": None, "ram": None, "swap": None,
+                "disk": None, "nexus_process_rss": None, "uptime_s": None,
+                "gpu": None, "gpu_devices": [], "gpu_error": "NVIDIA monitoring unavailable"}
         try:
             import psutil
-            data = {"cpu_percent": psutil.cpu_percent(interval=.15),
-                    "ram": dict(psutil.virtual_memory()._asdict()),
-                    "nexus_process_rss": psutil.Process().memory_info().rss}
-        except (ImportError, OSError):
-            data = {"cpu_percent": None, "ram": None, "nexus_process_rss": None}
-        data["gpu"] = None
+            data.update(cpu_percent=psutil.cpu_percent(interval=.15), cpu_cores=psutil.cpu_count(),
+                        ram=dict(psutil.virtual_memory()._asdict()), swap=dict(psutil.swap_memory()._asdict()),
+                        disk=dict(psutil.disk_usage(str(self.state.workspace))._asdict()),
+                        nexus_process_rss=psutil.Process().memory_info().rss,
+                        uptime_s=max(0, time.time() - psutil.boot_time()))
+        except Exception as exc:  # Monitoring failure must not break dashboard controls.
+            data["measurement_error"] = str(exc)[:300]
         if shutil.which("nvidia-smi"):
             try:
                 data["gpu"] = self.command(["nvidia-smi", "--query-gpu=name,utilization.gpu,memory.used,memory.total",
                                             "--format=csv,noheader,nounits"], timeout=4).strip()
-            except ValueError:
-                pass
-        data["note"] = "Server machine measurements; GPU unavailable unless nvidia-smi succeeds. RAM bytes, GPU MiB."
+                def number(value):
+                    try:
+                        parsed = float(value.strip())
+                        return parsed if math.isfinite(parsed) and parsed >= 0 else None
+                    except ValueError:
+                        return None
+                for row in csv.reader(data["gpu"].splitlines()):
+                    if len(row) == 4:
+                        data["gpu_devices"].append({"name": row[0].strip(), "utilization_percent": number(row[1]),
+                            "memory_used_mib": number(row[2]), "memory_total_mib": number(row[3])})
+                data["gpu_error"] = None if data["gpu_devices"] else "No readable NVIDIA GPU measurements"
+            except (ValueError, OSError, subprocess.TimeoutExpired) as exc:
+                data["gpu_error"] = str(exc)[:300]
+        data["note"] = "Server environment measurements, not browser hardware. Container/VM totals may reflect the host. RAM/disk bytes; GPU MiB. Non-NVIDIA GPU monitoring is unavailable."
         return observation(data, "psutil + optional nvidia-smi")
 
     def launch_job(self, kind: str, action) -> dict:

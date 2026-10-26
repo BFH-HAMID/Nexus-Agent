@@ -237,6 +237,7 @@ class NexusAgent:
             config=self.config,
             providers=self.providers,
             emit=self.emit,  # tool_call / tool_result events must reach the CLI + sidebar
+            cancel_event=getattr(self, "cancel_event", None),
             max_output_chars=self.config.settings.max_output_chars,
             max_read_chars=self.config.settings.max_read_chars,
             command_timeout=self.config.settings.command_timeout,

@@ -14,11 +14,14 @@ from __future__ import annotations
 
 import fnmatch
 import json
+import math
 import os
 import re
 import shlex
 import subprocess
+import threading
 import time
+import uuid
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -256,6 +259,7 @@ class ToolContext:
     config: Any = None                      # NexusConfig (optional; for memory/ask_agent)
     providers: Any = None                   # ProviderRegistry (optional; for ask_agent)
     emit: EventHandler = field(default=lambda _e: None)
+    cancel_event: threading.Event | None = None
     max_output_chars: int = 24_000
     max_read_chars: int = 120_000
     command_timeout: float = 120.0
@@ -340,8 +344,11 @@ class ToolRegistry:
                 message += " You are in plan mode - describe the change instead of applying it."
             return message, True
 
+        call_id = uuid.uuid4().hex
+        self.ctx.state["active_call_id"] = call_id
+        self.ctx.state["active_tool"] = name
         self.ctx.emit(Event(EventType.TOOL_CALL, {
-            "tool": name, "args": args, "preview": preview_args(tool.spec, args),
+            "call_id": call_id, "tool": name, "args": args, "preview": preview_args(tool.spec, args),
             "risk": tool.spec.risk.value,
         }))
         started = time.monotonic()
@@ -357,7 +364,8 @@ class ToolRegistry:
             result, is_error = f"{exc.__class__.__name__}: {exc}", True
         result = clip(str(result if result is not None else ""), self.ctx.max_output_chars)
         self.ctx.emit(Event(EventType.TOOL_RESULT, {
-            "tool": name, "is_error": is_error, "preview": clip(result, 1200),
+            "call_id": call_id, "tool": name, "is_error": is_error, "preview": clip(result, 1200),
+            "output": clip(result, 64_000), "output_truncated": len(result) > 64_000,
             "chars": len(result), "duration_ms": round((time.monotonic() - started) * 1000, 2),
         }))
         return result, is_error
@@ -942,7 +950,9 @@ def tool_write_file(ctx: ToolContext, args: dict[str, Any]) -> str:
         path.write_text(content, encoding="utf-8")
         action = "updated" if existed else "created"
     ctx.state.setdefault("changed_files", set()).add(ctx.guard.rel(path))
-    detail = unified_diff_snippet(ctx.guard.rel(path), old, content) if not append and existed else ""
+    updated = old + content if append else content
+    detail = unified_diff_snippet(ctx.guard.rel(path), old, updated, max_lines=400)
+    emit_file_change(ctx, path, detail, "created" if not existed else "updated")
     return f"{action} {ctx.guard.rel(path)} ({len(content):,} chars)\n{detail}".strip()
 
 
@@ -974,7 +984,9 @@ def tool_edit_file(ctx: ToolContext, args: dict[str, Any]) -> str:
         raise ToolFailure("no change produced (old_text == new_text)")
     path.write_text(updated, encoding="utf-8")
     ctx.state.setdefault("changed_files", set()).add(ctx.guard.rel(path))
-    return f"edited {ctx.guard.rel(path)} ({count} occurrence(s))\n{unified_diff_snippet(ctx.guard.rel(path), original, updated)}"
+    detail = unified_diff_snippet(ctx.guard.rel(path), original, updated, max_lines=400)
+    emit_file_change(ctx, path, detail, "updated")
+    return f"edited {ctx.guard.rel(path)} ({count} occurrence(s))\n{detail}"
 
 
 def _fuzzy_find(haystack: str, needle: str) -> str | None:
@@ -987,16 +999,42 @@ def _fuzzy_find(haystack: str, needle: str) -> str | None:
     return match.group(0) if match else None
 
 
+def emit_file_change(ctx: ToolContext, path: Path, diff: str, action: str) -> None:
+    ctx.emit(Event(EventType.FILE_CHANGE, {"call_id": ctx.state.get("active_call_id", ""),
+        "path": ctx.guard.rel(path), "action": action, "diff": clip(diff, 24_000),
+        "note": "Applied change; diff may be bounded, not a complete workspace snapshot"}))
+
+
 def tool_delete_file(ctx: ToolContext, args: dict[str, Any]) -> str:
     path = ctx.guard.resolve(args["path"], must_exist=True)
     if path.is_dir() and any(path.iterdir()):
         raise ToolFailure(f"{path.name} is a non-empty directory - refusing to delete recursively")
+    diff = "Deleted directory; no text diff"
+    if path.is_file():
+        size = path.stat().st_size
+        diff = f"Deleted file ({size} bytes); text diff omitted for size or binary content"
+        if size <= 500_000:
+            try:
+                old = path.read_text(encoding="utf-8")
+                if "\x00" not in old:
+                    diff = unified_diff_snippet(ctx.guard.rel(path), old, "", max_lines=400)
+            except UnicodeError:
+                pass
     if path.is_dir():
         path.rmdir()
     else:
         path.unlink()
+    emit_file_change(ctx, path, diff, "deleted")
     ctx.state.setdefault("changed_files", set()).add(ctx.guard.rel(path))
     return f"deleted {ctx.guard.rel(path)}"
+
+
+def run_live_command(ctx: ToolContext, command: str, cwd: Path, timeout: float) -> tuple[str, int]:
+    from .live_process import stream_shell
+
+    return stream_shell(command, cwd, timeout=min(timeout, ctx.command_timeout), emit=ctx.emit,
+        cancel=ctx.cancel_event, call_id=ctx.state.get("active_call_id", ""), max_chars=ctx.max_output_chars,
+        tool=ctx.state.get("active_tool", "run_command"))
 
 
 def tool_run_command(ctx: ToolContext, args: dict[str, Any]) -> str:
@@ -1005,9 +1043,11 @@ def tool_run_command(ctx: ToolContext, args: dict[str, Any]) -> str:
         raise ToolFailure("command must not be empty")
     cwd = ctx.guard.resolve(args.get("cwd") or ".")
     cwd.mkdir(parents=True, exist_ok=True)
-    timeout = float(args.get("timeout") or ctx.command_timeout)
-    output, code = run_shell(command, cwd, timeout=timeout)
-    ctx.state.setdefault("last_exit_code", code)
+    timeout = float(ctx.command_timeout if args.get("timeout") is None else args["timeout"])
+    if not math.isfinite(timeout) or timeout <= 0:
+        raise ToolFailure("timeout must be a positive finite number")
+    output, code = run_live_command(ctx, command, cwd, timeout)
+    ctx.state["last_exit_code"] = code
     prefix = f"$ {command}\n"
     return prefix + (output or "(no output)")
 
@@ -1029,8 +1069,8 @@ def tool_git(ctx: ToolContext, args: dict[str, Any]) -> str:
     if parts[0].startswith("-"):
         raise ToolFailure("pass git subcommands, not bare flags")
     sub = parts[0]
-    output, code = run_git(parts, ctx.workspace)
-    ctx.state.setdefault("last_exit_code", code)
+    output, code = run_live_command(ctx, "git " + shlex.join(parts), ctx.workspace, 60)
+    ctx.state["last_exit_code"] = code
     note = "" if sub in GIT_READ_ONLY else f" (git {sub})"
     return f"$ git {' '.join(shlex.quote(p) for p in parts)}{note}\n{output or '(no output)'}"
 
@@ -1227,7 +1267,7 @@ def tool_gh_create_pr(ctx: ToolContext, args: dict[str, Any], *, role: str) -> s
             cmd += ["--label", str(label)]
         for reviewer in args.get("reviewers") or []:
             cmd += ["--reviewer", str(reviewer)]
-        output, code = run_shell(shlex.join(cmd), ctx.workspace, timeout=120)
+        output, code = run_live_command(ctx, shlex.join(cmd), ctx.workspace, 120)
         if code == 0:
             ctx.state["last_pr"] = output.strip().splitlines()[-1] if output.strip() else ""
             return f"pull request created:\n{output.strip()}"
@@ -1267,7 +1307,7 @@ def tool_gh(ctx: ToolContext, args: dict[str, Any]) -> str:
     parts = [str(a) for a in (args.get("args") or [])]
     if not parts:
         raise ToolFailure("no gh arguments given")
-    output, code = run_shell(shlex.join(["gh", *parts]), ctx.workspace, timeout=120)
+    output, code = run_live_command(ctx, shlex.join(["gh", *parts]), ctx.workspace, 120)
     return f"$ gh {' '.join(shlex.quote(p) for p in parts)}\n{output.strip() or '(no output)'}"
 
 
@@ -1286,7 +1326,7 @@ def tool_gh_merge_pr(ctx: ToolContext, args: dict[str, Any]) -> str:
         cmd = ["gh", "pr", "merge", str(number), f"--{method}"]
         if args.get("delete_branch"):
             cmd.append("--delete-branch")
-    output, code = run_shell(shlex.join(cmd), ctx.workspace, timeout=180)
+    output, code = run_live_command(ctx, shlex.join(cmd), ctx.workspace, 180)
     return f"$ {' '.join(shlex.quote(c) for c in cmd)}\n{output.strip() or '(no output)'}"
 
 

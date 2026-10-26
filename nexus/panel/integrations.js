@@ -4,25 +4,26 @@
   const root = document.getElementById("integrations");
   if (!root) return;
   root.innerHTML = `
-    <details open><summary>Connections &amp; local models</summary>
+    <details open><summary>Local models</summary>
       <p>Choose a downloaded model, or keep automatic hosted routing.</p>
       <label for="localModel">Ollama model</label>
       <select id="localModel"><option value="">Auto · configured agents</option></select>
       <button type="button" id="refreshLocal">Refresh models</button>
       <p id="ollamaStatus" role="status">Checking Ollama…</p>
       <small>Selected local models use text-mode tools, including models without native tool support. No cloud fallback. Ollama must run on the same machine as the Nexus server (not necessarily your browser).</small>
-      <hr><b>GitHub account</b>
-      <button type="button" id="refreshGithub">Check connection</button>
-      <p id="githubStatus" role="status">Checking GitHub CLI…</p>
-      <p>Connect in a terminal on the machine running Nexus:</p>
-      <pre>gh auth login --hostname github.com --web\ngh auth setup-git\ngh auth status</pre>
-      <small>Follow the browser sign-in opened by GitHub CLI, then check connection. No token needs to be pasted here. Git/commit/PR tools use this account; writes still require approval.</small>
-      <hr><b>VS Code sidebar</b>
-      <p>From the repository:</p>
-      <pre>cd vscode-extension\nnpm install\nnpm run package</pre>
-      <p>In VS Code: Extensions → … → Install from VSIX → choose the generated .vsix. Open the Nexus activity-bar icon.</p>
-      <small>Included: send selection, ask about current file, role/pipeline picker, live tool log and approve/deny. A source checkout alone does not install the extension.</small>
-    </details>`;
+    </details>
+    <section id="serverMonitor" aria-label="Server hardware monitoring">
+      <hr><div class="hardware-head"><b>SERVER HARDWARE</b><button type="button" id="refreshHardware">Refresh</button></div>
+      <p id="hardwareStatus" role="status">Reading server measurements…</p>
+      <div class="hardware-grid">
+        <label>CPU <b id="hardwareCpu">Unavailable</b><meter id="hardwareCpuMeter" min="0" max="100" value="0" hidden></meter></label>
+        <label>RAM <b id="hardwareRam">Unavailable</b><meter id="hardwareRamMeter" min="0" max="100" value="0" hidden></meter></label>
+        <label>Workspace disk <b id="hardwareDisk">Unavailable</b></label>
+        <label>Nexus process RAM <b id="hardwareProcess">Unavailable</b></label>
+      </div>
+      <div id="hardwareGpu">GPU measurements unavailable</div>
+      <small id="hardwareNote">Actual server environment, not this browser. Refreshes every 5 seconds while visible.</small>
+    </section>`;
   const select = document.getElementById("localModel");
   const token = new URLSearchParams(location.search).get("token") || "";
   async function get(path) {
@@ -53,16 +54,43 @@
         : data.error;
     } catch (error) { status.textContent = error.message; }
   }
-  async function refreshGithub() {
-    const status = document.getElementById("githubStatus");
-    status.textContent = "Checking GitHub…";
-    try {
-      const data = await get("/api/github");
-      status.textContent = data.connected ? `Connected as ${data.login}` : data.message;
-    } catch (error) { status.textContent = error.message; }
+  const $ = id => document.getElementById(id);
+  const finite = v => typeof v === "number" && Number.isFinite(v);
+  function bytes(v) { return finite(v) ? (v / 1073741824).toFixed(2) + " GiB" : "Unavailable"; }
+  function meter(id, value) { $(id).hidden = !finite(value); $(id).value = finite(value) ? value : 0; }
+  function unavailable(message) {
+    ["hardwareCpu", "hardwareRam", "hardwareDisk", "hardwareProcess"].forEach(id => $(id).textContent = "Unavailable");
+    meter("hardwareCpuMeter", null); meter("hardwareRamMeter", null);
+    $("hardwareGpu").textContent = "GPU measurements unavailable";
+    $("hardwareStatus").textContent = message;
   }
-  document.getElementById("refreshLocal").addEventListener("click", refreshLocal);
-  document.getElementById("refreshGithub").addEventListener("click", refreshGithub);
-  refreshLocal();
-  refreshGithub();
+  let measuring = false;
+  async function refreshHardware() {
+    if (measuring) return;
+    measuring = true; $("refreshHardware").disabled = true;
+    try {
+      const observed = await get("/api/workbench/metrics"), data = observed.data;
+      if (!data || typeof data !== "object") throw new Error("Server measurements unavailable");
+      $("hardwareCpu").textContent = finite(data.cpu_percent) ? data.cpu_percent.toFixed(1) + "%" + (data.cpu_cores ? " · " + data.cpu_cores + " cores" : "") : "Unavailable";
+      $("hardwareRam").textContent = data.ram ? bytes(data.ram.used) + " / " + bytes(data.ram.total) : "Unavailable";
+      $("hardwareDisk").textContent = data.disk ? bytes(data.disk.used) + " / " + bytes(data.disk.total) : "Unavailable";
+      $("hardwareProcess").textContent = bytes(data.nexus_process_rss);
+      meter("hardwareCpuMeter", data.cpu_percent); meter("hardwareRamMeter", data.ram?.percent);
+      $("hardwareGpu").replaceChildren();
+      for (const gpu of data.gpu_devices || []) {
+        const row = document.createElement("p");
+        row.textContent = gpu.name + " · GPU " + (finite(gpu.utilization_percent) ? gpu.utilization_percent + "%" : "unavailable") + " · VRAM " + (finite(gpu.memory_used_mib) ? gpu.memory_used_mib + " MiB" : "unavailable") + " / " + (finite(gpu.memory_total_mib) ? gpu.memory_total_mib + " MiB" : "unavailable");
+        $("hardwareGpu").append(row);
+      }
+      if (!$("hardwareGpu").childElementCount) $("hardwareGpu").textContent = data.gpu_error || "GPU monitoring unavailable; no readable NVIDIA device";
+      $("hardwareStatus").textContent = "Measured " + (finite(observed.checked_at) ? new Date(observed.checked_at * 1000).toLocaleTimeString() : "now") + " · " + (observed.source || "server") + (data.measurement_error ? " · partial measurements unavailable" : "");
+      $("hardwareNote").textContent = (data.note || "Actual server environment, not this browser.") + " Refreshes every 5 seconds while visible.";
+    } catch (error) { unavailable("Measurements unavailable: " + error.message); }
+    finally { measuring = false; $("refreshHardware").disabled = false; }
+  }
+  $("refreshLocal").addEventListener("click", refreshLocal);
+  $("refreshHardware").addEventListener("click", refreshHardware);
+  setInterval(() => { if (!document.hidden) refreshHardware(); }, 5000);
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) refreshHardware(); });
+  refreshLocal(); refreshHardware();
 })();

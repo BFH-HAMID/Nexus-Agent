@@ -111,7 +111,7 @@ test('approval controls stay visible and click failures keep the request retryab
 test('side cards do not collapse, pipeline survives stats refresh, recall errors are shown', async () => {
   const {page, context, errors, setFailure} = await setup();
   try {
-    for (const id of ['telTools', 'brainQuery', 'refreshLocal', 'refreshGithub']) {
+    for (const id of ['telTools', 'brainQuery', 'refreshLocal', 'refreshHardware']) {
       const box = await page.locator('#' + id).boundingBox();
       assert.ok(box?.height > 0, id);
     }
@@ -198,9 +198,10 @@ test('model picker, refresh, filters, map selection and reset are wired to real 
     assert.equal(await page.locator('#metaRouting').textContent(), 'selected local');
     await page.locator('#refreshLocal').click();
     assert.equal(await page.inputValue('#localModel'), 'test-model:8b');
-    const githubChecks = requests.filter(r => r.path === '/api/github').length;
-    await page.locator('#refreshGithub').click();
-    assert.ok(requests.filter(r => r.path === '/api/github').length > githubChecks);
+    const measurements = requests.filter(r => r.path === '/api/workbench/metrics').length;
+    await page.locator('#refreshHardware').click();
+    assert.ok(requests.filter(r => r.path === '/api/workbench/metrics').length > measurements);
+    assert.equal(await page.locator('#refreshGithub').count(), 0);
     await page.locator('#map .node').first().focus();
     await page.keyboard.press('Enter');
     assert.equal(await page.locator('#ndName').textContent(), 'local');
@@ -451,3 +452,77 @@ for(const viewport of [{width:1568,height:770},{width:430,height:780}]){
     }finally{await context.close();}
   });
 }
+
+test('setup instructions are removed; server hardware uses real readings and clears stale failures',async()=>{
+  const {page,context,errors,requests}=await setup();
+  try{
+    await page.waitForFunction(()=>document.querySelector('#hardwareCpu').textContent.includes('12.0%'));
+    assert.equal(await page.locator('#integrations').getByText('GitHub account',{exact:true}).count(),0);
+    assert.equal(await page.locator('#integrations').getByText('VS Code sidebar',{exact:true}).count(),0);
+    assert.ok(!(await page.locator('#integrations').textContent()).includes('gh auth login'));
+    assert.equal(requests.filter(r=>r.path==='/api/github').length,0);
+    assert.ok((await page.locator('#hardwareGpu').textContent()).includes('unavailable'));
+    await page.route('**/api/workbench/metrics',async route=>route.fulfill({json:{data:{cpu_percent:33.5,cpu_cores:4,ram:{total:8589934592,used:2147483648,percent:25},nexus_process_rss:1073741824,disk:{used:1073741824,total:4294967296},gpu_devices:[{name:'<img src=x onerror=alert(1)>',utilization_percent:70,memory_used_mib:2048,memory_total_mib:8192}]},source:'test-only hardware fixture',checked_at:1700000000}}));
+    await page.click('#refreshHardware');
+    await page.waitForFunction(()=>document.querySelector('#hardwareCpu').textContent.includes('33.5%'));
+    assert.equal(await page.locator('#hardwareRam').textContent(),'2.00 GiB / 8.00 GiB');
+    assert.equal(await page.locator('#hardwareProcess').textContent(),'1.00 GiB');
+    assert.ok((await page.locator('#hardwareGpu').textContent()).includes('70%'));
+    assert.equal(await page.locator('#hardwareGpu img').count(),0);
+    await page.route('**/api/workbench/metrics',async route=>route.fulfill({status:503,json:{error:'Collector unavailable'}}));
+    await page.click('#refreshHardware');
+    await page.waitForFunction(()=>document.querySelector('#hardwareStatus').textContent.includes('Collector unavailable'));
+    assert.equal(await page.locator('#hardwareCpu').textContent(),'Unavailable');
+    assert.equal(await page.locator('#hardwareRam').textContent(),'Unavailable');
+    assert.ok((await page.locator('#hardwareGpu').textContent()).includes('unavailable'));
+    assert.deepEqual(errors,[]);
+  }finally{await context.close();}
+});
+
+test('command stdout/stderr stream live, stopping is acknowledged, and applied code diffs stay escaped',async()=>{
+  const {page,context,errors,setFailure,requests}=await setup();
+  try{
+    await start(page);
+    await page.evaluate(()=>{
+      window.sendEvent({type:'think',event_id:1,agent:'local',model:'test-model',turn:1});
+      window.sendEvent({type:'tool_call',event_id:2,tool:'run_command',call_id:'call-1',risk:'write',args:{command:'echo hello'},preview:'$ echo hello'});
+      window.sendEvent({type:'process',event_id:3,call_id:'call-1',process_id:'proc-1',status:'running',command:'echo hello',cwd:'/test-only',pid:42});
+      window.sendEvent({type:'tool_output',event_id:4,call_id:'call-1',process_id:'proc-1',stream:'stdout',text:'first output <img src=x onerror=alert(1)>\n'});
+      window.sendEvent({type:'tool_output',event_id:4,call_id:'call-1',process_id:'proc-1',stream:'stdout',text:'DUPLICATE'});
+      window.sendEvent({type:'tool_output',event_id:5,call_id:'call-1',process_id:'proc-1',stream:'stderr',text:'diagnostic\n'});
+    });
+    const card=page.locator('[data-process-id="proc-1"]');
+    assert.ok((await page.locator('#stream .think').textContent()).includes('waiting for model response'));
+    assert.ok((await card.locator('[data-stream="stdout"]').textContent()).includes('first output'));
+    assert.ok(!(await card.textContent()).includes('DUPLICATE'));
+    assert.equal(await card.locator('[data-stream="stderr"]').textContent(),'diagnostic\n');
+    assert.equal(await card.locator('img').count(),0);
+    assert.equal(await page.locator('#stream .tool_result').count(),0);
+    await page.locator('[data-f="tools"]').click();assert.equal(await card.isVisible(),true);
+    setFailure('cancel',true);await card.locator('.live-process-stop').click();
+    await page.waitForFunction(()=>document.querySelector('#actionError').textContent.includes('Stop failed'));
+    assert.equal(await card.locator('.live-process-stop').isEnabled(),true);
+    setFailure('cancel',false);await card.locator('.live-process-stop').click();
+    await page.waitForFunction(()=>document.querySelector('.live-process-stop').textContent==='Stop requested');
+    assert.equal(await card.locator('.live-process-status').textContent(),'Running command');
+    assert.ok(requests.some(r=>r.path==='/api/cancel/test-task'));
+    await page.evaluate(()=>{
+      window.sendEvent({type:'process',event_id:6,call_id:'call-1',process_id:'proc-1',status:'cancelled',exit_code:-15});
+      window.sendEvent({type:'tool_result',event_id:7,call_id:'call-1',tool:'run_command',is_error:true,preview:'command cancelled',output:'line\n'.repeat(500)+'RETAINED TAIL',chars:2520});
+      window.sendEvent({type:'file_change',event_id:8,path:'safe.txt',action:'updated',diff:'--- a/safe.txt\n+++ b/safe.txt\n-old\n+<img src=x onerror=alert(1)>',note:'Applied change'});
+    });
+    assert.equal(await card.locator('.live-process-status').textContent(),'cancelled · exit -15');
+    assert.equal(await card.locator('.live-process-stop').isVisible(),false);
+    const result=page.locator('#stream .tool_result');assert.equal(await result.isVisible(),true);
+    await result.locator('summary').click();assert.ok((await result.locator('pre').textContent()).endsWith('RETAINED TAIL'));
+    assert.ok((await page.locator('#stream .file_change').textContent()).includes('safe.txt'));
+    assert.equal(await page.locator('#stream img').count(),0);
+    await page.evaluate(()=>{
+      window.sendEvent({type:'done',event_id:9,status:'cancelled',result:{ok:false}});
+      window.sendEvent({type:'tool_output',event_id:10,process_id:'proc-1',stream:'stdout',text:'STALE POST-COMPLETION OUTPUT'});
+    });
+    assert.ok((await page.locator('#stream .done').textContent()).includes('run cancelled'));
+    assert.ok(!(await card.textContent()).includes('STALE POST-COMPLETION OUTPUT'));
+    assert.deepEqual(errors,[]);
+  }finally{await context.close();}
+});
