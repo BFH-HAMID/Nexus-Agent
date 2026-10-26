@@ -1,0 +1,43 @@
+#wbOpen { margin: 0 8px; }
+#workbench { position: fixed; inset: 5vh 3vw; width: 94vw; height: 90vh; max-width: none; max-height: none; padding: 0; color: #d9fff2; background: #071314; border: 1px solid #28736a; border-radius: 12px; z-index: 50; box-shadow: 0 20px 100px #000c; }
+#workbench::backdrop { background: #000b; }
+.wb-shell { height: 100%; display: grid; grid-template: auto 1fr / 180px 1fr; }
+.wb-header { grid-column: 1/-1; display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-bottom: 1px solid #26433c; }
+.wb-header h2 { margin: 0; font-size: 16px; flex: 1; }
+.wb-nav { padding: 12px; border-right: 1px solid #26433c; overflow: auto; }
+.wb-nav button { display: block; width: 100%; text-align: left; margin-bottom: 8px; }
+.wb-main { padding: 16px 22px; overflow: auto; min-width: 0; }
+.wb-pane[hidden] { display: none; }
+.wb-pane h3 { color: #22e3ff; font-size: 15px; }
+.wb-pane p, .wb-note { font-size: 12px; line-height: 1.6; color: #a7c8be; }
+#workbench button, #wbPalette button { padding: 8px 12px; border: 1px solid #315b50; border-radius: 5px; background: #0e2823; color: #d9fff2; cursor: pointer; font: inherit; }
+#workbench button:disabled { opacity: .5; cursor: wait; }
+#workbench button[aria-selected="true"] { border-color: #00ffa3; color: #00ffa3; }
+.wb-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 12px 0; }
+.wb-pane label { display: flex; flex-direction: column; gap: 5px; margin: 10px 0; font-size: 12px; }
+.wb-pane label.wb-check { flex-direction: row; align-items: center; }
+.wb-pane input:not([type="checkbox"]), .wb-pane select, .wb-pane textarea, #wbSearch { background: #04100f; color: #d9fff2; border: 1px solid #315b50; border-radius: 5px; padding: 9px; font: inherit; min-width: 0; max-width: 100%; }
+.wb-pane textarea { width: 100%; min-height: 90px; resize: vertical; }
+.wb-output { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 48vh; overflow: auto; padding: 12px; background: #020b0b; border: 1px solid #23453c; font: 12px/1.6 var(--mono); }
+.wb-error { color: #ffbda5; }
+.wb-list { display: grid; gap: 8px; }
+.wb-list button { text-align: left; overflow-wrap: anywhere; }
+#wbPalette { background: #071314; color: #d9fff2; width: min(560px, 92vw); border: 1px solid #28736a; border-radius: 10px; }
+#wbPalette input { width: 100%; margin: 10px 0; }
+#wbCommands { display: grid; gap: 8px; max-height: 55vh; overflow: auto; }
+body.wb-focus .col-left, body.wb-focus .col-right, body.wb-focus .map-card { display: none; }
+body.wb-focus .deck { grid-template-columns: minmax(0,1fr); }
+body.wb-focus .col-center { grid-template-rows: minmax(0,1fr); grid-column: 1/-1; }
+.card.wb-resizable { resize: vertical; overflow: auto; min-height: 90px; }
+@media(max-width: 700px) {
+  #workbench { inset: 2vh 2vw; width: 96vw; height: 96vh; }
+  .wb-shell { grid-template: auto auto 1fr / 1fr; }
+  .wb-nav { display: flex; gap: 6px; overflow-x: auto; border-right: 0; }
+  .wb-nav button { white-space: nowrap; width: auto; margin: 0; }
+  .wb-main { padding: 10px; }
+}
+
+.card[hidden] { display: none !important; }
+
+#nexusStudio{width:min(1200px,96vw);height:90vh;background:var(--bg,#10151c);color:var(--text,#e0e8ef);border:1px solid #34434d;padding:0} #nexusStudio::backdrop{background:#0009} #nexusStudio .wb-main{overflow:auto} #nexusStudio button{margin:5px} #nexusStudio label{display:block;margin:10px 0} #nexusStudio textarea{display:block;width:100%;min-height:90px} #nexusStudio .wb-output{white-space:pre-wrap;overflow-wrap:anywhere;max-height:450px;overflow:auto}
+#nexusStudio button{padding:8px 12px;border:1px solid #315b50;border-radius:5px;background:#0e2823;color:#d9fff2;cursor:pointer;font:inherit} #nexusStudio input:not([type=checkbox]),#nexusStudio textarea,#nexusStudio select{background:#04100f;color:#d9fff2;border:1px solid #315b50;padding:8px;max-width:100%;box-sizing:border-box} #stError{color:#ffb5a8} @media(max-width:700px){#nexusStudio .wb-shell{grid-template:auto auto 1fr / 1fr}#nexusStudio .wb-nav{display:flex;flex-wrap:wrap;padding:4px}#nexusStudio .wb-nav button{width:auto}#nexusStudio .wb-main{padding:12px}}

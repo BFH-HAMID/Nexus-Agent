@@ -70,12 +70,18 @@ LOCAL_HOSTS = ("localhost", "127.0.0.1", "0.0.0.0", "::1", "host.docker.internal
 # --------------------------------------------------------------------------- #
 
 
+class RequestBlocked(ValueError):
+    """A pre-send safety refusal: never retry it or invoke provider fallback."""
+
+
 def _retry(fn, *, attempts: int = 3, base_delay: float = 0.6):
     """Retry transient failures with a small linear backoff."""
     last: Exception | None = None
     for i in range(attempts):
         try:
             return fn()
+        except RequestBlocked:
+            raise
         except ProviderError as exc:
             last = exc
             if not exc.retryable or i == attempts - 1:
@@ -282,6 +288,8 @@ class AnthropicProvider(Provider):
         return completion
 
     def _post(self, payload: dict[str, Any]) -> dict[str, Any]:
+        if getattr(self, "payload_guard", None):
+            self.payload_guard(payload)
         url = f"{self.base_url}/v1/messages"
         if self._client is not None:  # injected transport
             response = self._client.post(url, json=payload, headers=self._headers())
@@ -567,6 +575,8 @@ class OpenAICompatProvider(Provider):
         raise last or ProviderError(f"{self.name}: streaming failed")
 
     def _stream_once(self, payload: dict[str, Any], model: str, on_text: Any) -> Completion:
+        if getattr(self, "payload_guard", None):
+            self.payload_guard(payload)
         text_parts: list[str] = []
         slots: dict[int, dict[str, Any]] = {}
         usage: dict[str, Any] = {}
@@ -675,6 +685,8 @@ class OpenAICompatProvider(Provider):
         )
 
     def _post(self, payload: dict[str, Any]) -> dict[str, Any]:
+        if getattr(self, "payload_guard", None):
+            self.payload_guard(payload)
         try:
             response = self._http.post(self.chat_url, json=payload, headers=self._headers())
         except Exception as exc:
@@ -866,6 +878,10 @@ class ProviderRegistry:
         self.agents = agents
         self._cache: dict[str, Provider] = {}
         self._factories = factories or {}
+        self.request_guard = None
+        self.response_observer = None
+        self.error_observer = None
+        self.wire_guard = None
 
     def get(self, name: str) -> Provider:
         if name in self._cache:
@@ -921,6 +937,8 @@ class ProviderRegistry:
         while current and current not in tried:
             tried.append(current)
             provider = self.get(current)
+            if self.wire_guard:
+                provider.payload_guard = lambda payload, name=current: self.wire_guard(name, payload)
             emitted: list[str] = []
 
             def relay(piece: str, _sink=emitted) -> None:
@@ -937,9 +955,17 @@ class ProviderRegistry:
             if on_text is not None and _accepts_on_text(provider):
                 kwargs["on_text"] = relay
             try:
+                if self.request_guard:
+                    output_cap = self.request_guard(current, system, messages, tools)
+                    if type(output_cap) is int:
+                        kwargs["max_tokens"] = min(kwargs.get("max_tokens") or self.agents[current].max_tokens, output_cap)
                 completion = provider.complete(system, messages, tools, **kwargs)
+                if self.response_observer:
+                    self.response_observer(current, completion)
                 return provider, completion
             except ProviderError as exc:
+                if self.error_observer:
+                    self.error_observer(current, exc)
                 last_error = exc
                 if on_event is not None:
                     on_event(Event(EventType.AGENT, {"level": "warn", "agent": current, "error": str(exc)}))

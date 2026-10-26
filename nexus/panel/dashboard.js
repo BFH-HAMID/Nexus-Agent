@@ -134,7 +134,7 @@
     $("runBtn").disabled = state.running || !state.liveReady;
     $("metaMode").textContent = s.demo ? "blocked: demo server" : "live";
     $("chipMode").className = "chip" + (s.demo ? "" : " live");
-    $("metaRouting").textContent = window.nexusLocalModel?.() ? "selected local" : s.prefer_local ? "local-first" : "configured";
+    $("metaRouting").textContent = s.dashboard_policy?.local_only ? "local-only" : window.nexusLocalModel?.() ? "selected local" : s.prefer_local ? "local-first" : "configured";
     $("metaUptime").textContent = "up " + Math.round(s.uptime_s || 0) + "s";
     $("sbVersion").textContent = "nexus " + (s.version || "?");
     $("globeNodes").textContent = Object.keys(s.agents || {}).length + " configured endpoints";
@@ -422,6 +422,7 @@
     }
     if (e.type === "ping") return;
     state.counters.events++;
+    window.dispatchEvent(new CustomEvent("nexus:event", {detail:e}));
     if (e.agent && e.model && !state.agents[e.agent]) {
       state.agents[e.agent] = {model: e.model, provider: e.provider || "openai-compatible", tool_mode: e.tool_mode || "text"};
       renderOrch(); buildMap();
@@ -582,7 +583,8 @@
         $("apTool").textContent = e.tool || "?";
         $("apRisk").textContent = e.risk || "write";
         $("apRisk").className = "pill " + (e.risk === "danger" ? "danger" : "warn");
-        $("apPreview").textContent = e.preview || JSON.stringify(e.args || {}, null, 2);
+        $("apPreview").textContent = (e.preview || JSON.stringify(e.args || {}, null, 2)) +
+          "\n\n" + (e.proposal?.available ? e.proposal.diff : e.proposal?.reason || "Diff unavailable for this tool");
         addStep("tool_call", "approval", "⚠",
           `<b>${esc(e.tool)}</b> is waiting for your approval <span class="pill warn">${esc(e.risk || "")}</span>`,
           ts());
@@ -659,7 +661,7 @@
     addStep("role", "task", "▶", esc(task), body.pipeline ? "pipeline " + body.pipeline : "one-shot run");
     startElapsed();
 
-    const { ok, body: res } = await api("/api/task", { method: "POST", body: JSON.stringify({ ...body, local_model: window.nexusLocalModel?.() || null }) });
+    const { ok, body: res } = await api("/api/task", { method: "POST", body: JSON.stringify({ ...body, ...window.nexusWorkbenchOptions?.(), local_model: window.nexusLocalModel?.() || null }) });
     if (!ok || !res.task_id) {
       state.running = false;
       $("runBtn").disabled = false;
@@ -679,6 +681,7 @@
   }
 
   function resetRunState() {
+    window.dispatchEvent(new CustomEvent("nexus:run-reset"));
     state.counters = { toolCalls: 0, danger: 0, denied: 0, errors: 0, events: 0, modelCalls: 0 };
     state.tokens = { in: 0, out: 0 };
     state.telemetry.turns = 0;
@@ -1010,6 +1013,19 @@
     actionError("");
     setPhase("thinking", approved ? "approval received · resuming" : "denial received", "");
   }
+
+  window.nexusAttachTask = async id => {
+    const {ok, body} = await api("/api/task/" + encodeURIComponent(id));
+    if (!ok) throw new Error(body.error || "Run is no longer live; inspect durable history instead");
+    if (state.es) state.es.close();
+    resetRunState(); state.lastEventId = 0; state.taskId = id; state.running = true;
+    state.startedAt = body.created * 1000;
+    $("stream").innerHTML = "";
+    $("runBtn").disabled = true; $("clearBtn").disabled = true; $("cancelBtn").disabled = false;
+    $("taskId").textContent = "task " + id;
+    try { sessionStorage.setItem("nexus.activeTask", id); } catch (_) {}
+    startElapsed(); stream(id);
+  };
 
   async function restoreRun() {
     let id;
