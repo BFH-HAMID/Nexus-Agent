@@ -18,6 +18,13 @@ The replacement **SERVER HARDWARE** panel reads the existing authenticated
   the tab is visible, or on **Refresh**. Requests do not overlap. Failed requests
   clear old readings instead of displaying them as current measurements.
 
+The panel uses theme-matched resource cards, a measured CPU ring, RAM/disk usage
+bars, a separate process-memory tile, GPU availability badge, and collapsible
+measurement details. Bars/rings transition only to sampled values. Refresh rotation
+and the status pulse run only during an actual request; sampled cards briefly
+highlight on completion. Reduced-motion preferences disable these animations.
+Unavailable samples clear the visual gauges rather than leaving stale usage bars.
+
 These are **server environment** readings, not the browser's hardware. Virtual
 machines and containers can report host totals; the panel does not claim these
 are container allocation limits. Non-NVIDIA GPU telemetry is not implemented.
@@ -79,3 +86,15 @@ and cancellation through the actual server endpoints, with only the model
 scripted. Browser tests use explicit test-only API/events to check display,
 stop failures/retry, HTML escaping, GPU-unavailable/failure states and stale data
 clearing. No production demo data or simulated hardware is installed.
+
+## Live run data versus configuration
+
+The configured-agent count is configuration inventory, not a count of online
+services. Several agents can share an endpoint. The **LIVE RUN DATA** card only
+tracks the selected Nexus task's real events, not activity in an external Arena
+chat. Without a selected run it explains how to start/open one. Model turns count
+observed model-request events; tool calls count actual tool-call events. Average
+tool duration uses the latest three completed-tool duration measurements, and
+shows **No results yet** until a timed result arrives. Values update immediately
+on events as well as on the normal display timer. Geolocation is not collected;
+the old permanently unavailable geolocation placeholder is replaced by tool calls.

@@ -153,7 +153,8 @@ test('live dashboard refuses demo mode; no fabricated globe data', async () => {
   try {
     assert.equal(await page.locator('#runBtn').isDisabled(), true);
     assert.equal(await page.locator('#globe').count(), 0);
-    assert.equal(await page.locator('#statRegions').textContent(), 'Unavailable');
+    assert.equal(await page.locator('#statRegions').count(), 0);
+    assert.equal(await page.locator('#statToolCalls').textContent(), '0');
     assert.match(await page.locator('#liveNotice').textContent(), /disabled/);
     assert.deepEqual(errors, []);
   } finally {await context.close();}
@@ -523,6 +524,64 @@ test('command stdout/stderr stream live, stopping is acknowledged, and applied c
     });
     assert.ok((await page.locator('#stream .done').textContent()).includes('run cancelled'));
     assert.ok(!(await card.textContent()).includes('STALE POST-COMPLETION OUTPUT'));
+    assert.deepEqual(errors,[]);
+  }finally{await context.close();}
+});
+
+test('hardware cards fit desktop/mobile, animate only measurements, and respect reduced motion',async()=>{
+  for(const width of [1568,430]){
+    const {page,context,errors}=await setup({width,height:900});let release;
+    try{
+      await page.waitForFunction(()=>document.querySelector('#hardwareState').textContent==='SAMPLED');
+      assert.equal(await page.locator('#hardwareCpuDial').evaluate(el=>el.style.getPropertyValue('--usage')),'12%');
+      assert.equal(await page.locator('#hardwareRamFill').evaluate(el=>el.style.getPropertyValue('--usage')),'20%');
+      assert.equal(await page.locator('#hardwareGpuState').textContent(),'UNAVAILABLE');
+      assert.equal(await page.locator('.hardware-details').getAttribute('open'),null);
+      await page.locator('#serverMonitor').scrollIntoViewIfNeeded();
+      for(const card of await page.locator('#serverMonitor .hardware-card').all()){
+        const box=await card.boundingBox();assert.ok(box.width>80&&box.x>=0&&box.x+box.width<=width);
+      }
+      await page.emulateMedia({reducedMotion:'reduce'});
+      await page.route('**/api/workbench/metrics',async route=>{
+        await new Promise(resolve=>{release=resolve;});
+        await route.fulfill({status:503,json:{error:'Test-only collector failure'}});
+      });
+      await page.click('#refreshHardware');
+      await page.waitForFunction(()=>document.querySelector('#serverMonitor').getAttribute('aria-busy')==='true');
+      assert.equal(await page.locator('#serverMonitor').getAttribute('data-state'),'loading');
+      assert.equal(await page.locator('#refreshHardware span').evaluate(el=>getComputedStyle(el).animationName),'none');
+      release();release=null;
+      await page.waitForFunction(()=>document.querySelector('#hardwareState').textContent==='OFFLINE');
+      assert.equal(await page.locator('#hardwareCpuDial').evaluate(el=>el.style.getPropertyValue('--usage')),'0%');
+      assert.equal(await page.locator('#hardwareCpu').textContent(),'Unavailable');
+      assert.deepEqual(errors,[]);
+    }finally{if(release)release();await context.close();}
+  }
+});
+
+test('live-run metrics explain idle state and update immediately from observed events',async()=>{
+  const {page,context,errors}=await setup();
+  try{
+    assert.ok((await page.locator('#liveRunNote').textContent()).includes('No Nexus task selected'));
+    assert.equal(await page.locator('#statLatency').textContent(),'No results yet');
+    assert.equal(await page.locator('#statToolCalls').textContent(),'0');
+    assert.equal(await page.locator('#statRegions').count(),0);
+    await start(page);
+    await page.evaluate(()=>{
+      window.sendEvent({type:'think',event_id:1,agent:'local',model:'test-model',turn:1});
+      window.sendEvent({type:'tool_call',event_id:2,tool:'read_file',risk:'read',preview:'hello.txt'});
+    });
+    assert.equal(await page.locator('#statCalls').textContent(),'1');
+    assert.equal(await page.locator('#statToolCalls').textContent(),'1');
+    assert.equal(await page.locator('#statLatency').textContent(),'No results yet');
+    assert.ok((await page.locator('#liveRunNote').textContent()).includes('Task test-task'));
+    await page.evaluate(()=>{
+      window.sendEvent({type:'tool_result',event_id:3,tool:'read_file',duration_ms:80,preview:'hello'});
+      window.sendEvent({type:'tool_result',event_id:4,tool:'read_file',duration_ms:120,preview:'hello'});
+    });
+    assert.equal(await page.locator('#statLatency').textContent(),'100ms');
+    await page.evaluate(()=>window.sendEvent({type:'done',event_id:5,status:'done',result:{ok:true}}));
+    assert.ok((await page.locator('#liveRunNote').textContent()).includes('retained run events'));
     assert.deepEqual(errors,[]);
   }finally{await context.close();}
 });

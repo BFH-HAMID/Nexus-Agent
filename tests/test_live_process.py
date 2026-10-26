@@ -110,7 +110,14 @@ def test_cancel_kills_descendants_even_if_shell_exits(repo):
     code = "import subprocess,sys,time; p=subprocess.Popen([sys.executable,'-c','import time;time.sleep(30)']); print(p.pid); time.sleep(30)"
     with pytest.raises(RuntimeError, match="cancelled"):
         stream_shell(command(code), repo, timeout=10, emit=emit, cancel=cancelled)
-    assert children and no_live_pid(children[0])
+    assert children
+    # Signal delivery is asynchronous; under browser/CI load descendants may
+    # briefly remain runnable after killpg returns. Still require actual exit.
+    for _ in range(200):
+        if no_live_pid(children[0]):
+            break
+        threading.Event().wait(.01)
+    assert no_live_pid(children[0])
 
 
 def test_new_and_appended_file_diff_and_full_tool_result_are_observable(repo):

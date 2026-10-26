@@ -138,8 +138,7 @@
     $("metaRouting").textContent = s.dashboard_policy?.local_only ? "local-only" : window.nexusLocalModel?.() ? "selected local" : s.prefer_local ? "local-first" : "configured";
     $("metaUptime").textContent = "up " + Math.round(s.uptime_s || 0) + "s";
     $("sbVersion").textContent = "nexus " + (s.version || "?");
-    $("globeNodes").textContent = Object.keys(s.agents || {}).length + " configured endpoints";
-    $("statRegions").textContent = "Unavailable";
+    $("globeNodes").textContent = Object.keys(s.agents || {}).length + " configured agents";
     $("orchCount").textContent = Object.keys(state.agents).length + " agents";
     renderOrch();
     renderKeys();
@@ -669,6 +668,7 @@
       default:
         addStep("status", e.type, "·", esc(JSON.stringify(e).slice(0, 300)));
     }
+    renderRunMetrics();
     updateSecurityLevel();
   }
 
@@ -760,9 +760,11 @@
     Object.keys(state.agents).forEach((n) => setAgentStatus(n, "idle"));
     setActiveAgent(null);
     drawAllSparks();
+    renderRunMetrics();
   }
 
   function stream(id) {
+    renderRunMetrics();
     if (state.es) state.es.close();
     const url = "/api/events/" + id + (token ? "?token=" + encodeURIComponent(token) : "");
     const es = new EventSource(url);
@@ -884,11 +886,19 @@
     state.counters.events = 0;
     if (state.running) pushSpark("events", evPerSec);
     $("monEvents").textContent = String(evPerSec);
+    renderRunMetrics();
+  }
+
+  function renderRunMetrics() {
     $("statCalls").textContent = String(state.counters.modelCalls);
-    $("statLatency").textContent = state.spark.latency.length
-      ? Math.round(state.spark.latency.slice(-3).reduce((a, b) => a + b, 0) / Math.min(3, state.spark.latency.length)) + "ms"
-      : "—";
-    $("monLatency").textContent = $("statLatency").textContent;
+    $("statToolCalls").textContent = String(state.counters.toolCalls);
+    const samples = state.spark.latency.slice(-3);
+    const average = samples.length ? Math.round(samples.reduce((a, b) => a + b, 0) / samples.length) + "ms" : null;
+    $("statLatency").textContent = average || "No results yet";
+    $("monLatency").textContent = average || "—";
+    $("liveRunNote").textContent = state.taskId
+      ? "Task " + state.taskId + (state.running ? " · live server events. Tool timing appears after completion." : " · retained run events. Open another run from History to view its metrics.")
+      : "No Nexus task selected. Start a task here or open one from History. These metrics do not track this Arena chat.";
   }
 
   const SPARK_COLORS = {
