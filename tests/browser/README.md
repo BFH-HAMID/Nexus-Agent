@@ -1,0 +1,28 @@
+# Dashboard interaction regressions
+
+Runs the real dashboard JavaScript and layout in headless Chromium at desktop and
+mobile sizes. API responses and SSE events are **test-only fixtures**, intercepted
+inside the test browser. No model inference, credentials, code generation, or tool
+execution is performed. Production dashboard code does not contain these fixtures.
+
+Requires Node 22.17+ and a local Nexus server in **live** mode:
+
+```sh
+python -m nexus serve --port 8787 --quiet
+# in another terminal
+cd tests/browser
+npm ci
+npm test
+```
+
+Default test URL is `http://127.0.0.1:8787`; override with `NEXUS_TEST_URL`.
+On Linux the npm-packaged Chromium requires the usual browser shared libraries
+(including libnspr4 and libnss3). Alternatively set `CHROMIUM_EXECUTABLE_PATH` to a
+locally installed Chromium/Chrome executable (also the option for Windows/macOS).
+The npm browser dependency is development-only and does not ship with Nexus.
+
+Coverage: approval visibility/clicks, failed-request retry, acknowledgement races,
+side-card sizing, pipeline selection persistence, recall errors, stop errors,
+clear-during-run protection, duplicate SSE handling, live-only task gating, and
+refresh recovery at mobile width. Backend HTTP/SSE and permission-gate regression
+coverage lives in `tests/test_server.py` and `tests/test_tools.py`.

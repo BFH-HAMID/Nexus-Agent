@@ -1,0 +1,7 @@
+{
+  "name": "nexus-dashboard-regressions",
+  "private": true,
+  "type": "module",
+  "scripts": {"test": "node --test dashboard.test.mjs"},
+  "devDependencies": {"playwright-core": "^1.58.0", "@sparticuz/chromium": "^153.0.0"}
+}

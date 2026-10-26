@@ -563,3 +563,21 @@ body { border: 1px solid rgba(34,227,255,.32); border-radius: 14px;
   #map { transform: none !important; }
   .card { backdrop-filter: none; }
 }
+
+/* Side cards must scroll, never shrink their controls down to their headers. */
+.col-left > .card, .col-right > .card { flex: 0 0 auto; }
+.orch-list { max-height: 260px; overflow-y: auto; }
+.card-head, .phase-banner, .composer { flex-shrink: 0; }
+/* Approval lives above the log, outside the independently scrolling right rail. */
+.approval-card { flex: 0 0 auto; max-height: 45vh; overflow-y: auto; border-radius: 6px; }
+.approval-card .ap-preview { flex: 1 1 auto; min-height: 40px; overflow-y: auto; }
+.ap-actions { flex: 0 0 auto; flex-wrap: wrap; position: sticky; bottom: 0; background: #10201d; }
+.ap-actions .btn { min-height: 36px; }
+#actionError { margin: 0; padding: 8px 14px; color: #ffbfa0; background: #301b15; }
+#liveNotice { padding: 6px 14px; color: var(--amber); }
+.btn:disabled { cursor: not-allowed; opacity: .5; }
+#map .edge { fill: none; }
+
+.pipe { width: 100%; text-align: left; background: transparent; color: inherit; font: inherit; border: 0; border-left: 2px solid transparent; }
+/* Very short windows / large approval previews remain scrollable, not clipped. */
+.process-card { overflow-y: auto; }

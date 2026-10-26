@@ -32,6 +32,10 @@
     return body;
   }
   window.nexusLocalModel = () => select.value;
+  select.addEventListener("change", () => {
+    const routing = document.getElementById("metaRouting");
+    if (routing) routing.textContent = select.value ? "selected local" : "configured";
+  });
   async function refreshLocal() {
     const status = document.getElementById("ollamaStatus");
     const previous = select.value;
@@ -40,7 +44,10 @@
       const data = await get("/api/ollama");
       select.replaceChildren(new Option("Auto · configured agents", ""));
       for (const model of data.models || []) select.add(new Option(model, model));
-      if ([...select.options].some(o => o.value === previous)) select.value = previous;
+      if (previous && ![...select.options].some(o => o.value === previous)) {
+        select.add(new Option(previous + " (unavailable — refresh or change model)", previous));
+      }
+      select.value = previous;
       status.textContent = data.connected
         ? `${data.models.length} downloaded model(s) · ${data.url}` + (data.models.length ? "" : " · Download a model with ollama pull <model>.")
         : data.error;

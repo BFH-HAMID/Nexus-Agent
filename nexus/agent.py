@@ -587,6 +587,7 @@ class NexusAgent:
         *,
         pipeline: Pipeline | None = None,
         max_turns: int | None = None,
+        read_only: bool = False,
     ) -> list[RunResult]:
         results: list[RunResult] = []
         handoff = ""
@@ -594,13 +595,13 @@ class NexusAgent:
         for index, step in enumerate(steps, 1):
             role_name = str(step.get("role") or "general")
             instruction = str(step.get("instruction") or step.get("task") or "")
-            read_only = bool(step.get("read_only", False))
+            step_read_only = read_only or bool(step.get("read_only", False))
             prompt = self._compose_step_prompt(task, instruction, handoff, index, len(steps), label)
             self.status(f"▶ [{label}] step {index}/{len(steps)}: {role_name}")
             result = self.run(
                 prompt,
                 role=role_name,
-                read_only=read_only,
+                read_only=step_read_only,
                 max_turns=int(step.get("max_turns") or max_turns or 0) or None,
             )
             results.append(result)
