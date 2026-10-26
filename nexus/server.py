@@ -31,7 +31,6 @@ from __future__ import annotations
 
 import json
 import os
-import queue
 import threading
 import time
 import uuid
@@ -39,7 +38,7 @@ from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
-from urllib.parse import parse_qs, unquote, urlparse
+from urllib.parse import parse_qs, unquote, urlencode, urlparse
 
 from . import __version__
 from .agent import NexusAgent
@@ -71,7 +70,6 @@ class Session:
     auto_yes: bool = False
     local_model: str | None = None
     status: str = "queued"          # queued | running | awaiting_approval | done | error | cancelled
-    events: queue.Queue[dict[str, Any]] = field(default_factory=queue.Queue)
     pending: dict[str, Any] | None = None
     approval_event: threading.Event = field(default_factory=threading.Event)
     approval_decision: ApprovalDecision | None = None
@@ -81,13 +79,17 @@ class Session:
     agent: NexusAgent | None = None
     thread: threading.Thread | None = None
     log: list[dict[str, Any]] = field(default_factory=list)
+    changed: threading.Condition = field(default_factory=threading.Condition)
+    sequence: int = 0
 
     def push(self, event: dict[str, Any]) -> None:
-        stamped = {"ts": time.time(), **event}
-        self.log.append(stamped)
-        if len(self.log) > 4000:
-            self.log = self.log[-3000:]
-        self.events.put(stamped)
+        with self.changed:
+            self.sequence += 1
+            stamped = {"ts": time.time(), **event, "event_id": self.sequence}
+            self.log.append(stamped)
+            if len(self.log) > 4000:
+                self.log = self.log[-3000:]
+            self.changed.notify_all()
 
     def snapshot(self) -> dict[str, Any]:
         return {
@@ -98,7 +100,7 @@ class Session:
             "status": self.status,
             "created": self.created,
             "result": self.result,
-            "events": len(self.log),
+            "events": self.sequence,
         }
 
 
@@ -296,6 +298,8 @@ class ServerState:
     # ------------------------------------------------------------------ #
     def _emit(self, session: Session):
         def handler(event: Event) -> None:
+            if session.cancel.is_set():
+                raise RuntimeError("run cancelled")
             session.push(event.to_json())
             if not self.quiet:
                 kind = event.type.value
@@ -305,31 +309,32 @@ class ServerState:
 
     def _approval(self, session: Session):
         def callback(spec, args, risk, preview) -> ApprovalDecision:
-            if session.cancel.is_set():
-                return ApprovalDecision(False, reason="cancelled")
-            session.status = "awaiting_approval"
-            session.pending = {
-                "tool": spec.name,
-                "risk": risk.value,
-                "args": args,
-                "preview": preview,
-            }
-            session.approval_event.clear()
-            session.approval_decision = None
-            session.push({"type": "approval_request", **session.pending})
+            with session.changed:
+                if session.cancel.is_set():
+                    return ApprovalDecision(False, reason="cancelled")
+                session.approval_event.clear()
+                session.approval_decision = None
+                session.status = "awaiting_approval"
+                session.pending = {
+                    "approval_id": uuid.uuid4().hex,
+                    "tool": spec.name, "risk": risk.value, "args": args, "preview": preview,
+                }
+                session.push({"type": "approval_request", **session.pending})
             got = session.approval_event.wait(APPROVAL_TIMEOUT)
-            session.pending = None
-            session.status = "running"
-            if not got:
-                return ApprovalDecision(False, reason="approval timed out")
-            decision = session.approval_decision or ApprovalDecision(False, reason="no decision")
+            with session.changed:
+                session.pending = None
+                session.status = "cancelled" if session.cancel.is_set() else "running"
+                decision = (session.approval_decision if got else None) or ApprovalDecision(
+                    False, reason="no decision" if got else "approval timed out")
             session.push({"type": "approval_response", "tool": spec.name, "approved": decision.approved,
-                          "scope": decision.scope})
+                          "scope": decision.scope, "reason": decision.reason})
             return decision
         return callback
 
     def _run(self, session: Session) -> None:
         try:
+            if session.cancel.is_set():
+                raise RuntimeError("run cancelled")
             auto_yes = self.auto_yes or session.auto_yes
             config = load_config(self.workspace)
             if session.local_model:
@@ -355,7 +360,7 @@ class ServerState:
             if session.pipeline:
                 session.push({"type": "status",
                               "message": f"pipeline '{session.pipeline}' -> {session.task}"})
-                results = agent.run_pipeline(session.pipeline, session.task)
+                results = agent.run_pipeline(session.pipeline, session.task, read_only=session.read_only)
                 steps = [
                     {"role": r.role, "agent": r.agent, "ok": r.ok, "summary": r.summary,
                      "tool_calls": r.tool_calls, "turns": r.turns}
@@ -390,12 +395,11 @@ class ServerState:
             }
             session.status = "cancelled" if session.cancel.is_set() else ("done" if result.ok else "error")
         except Exception as exc:  # noqa: BLE001
-            session.status = "error"
+            session.status = "cancelled" if session.cancel.is_set() else "error"
             session.result = {"ok": False, "error": f"{exc.__class__.__name__}: {exc}"}
             session.push({"type": "error", "message": str(exc)})
         finally:
             session.push({"type": "done", "status": session.status, "result": session.result})
-            session.events.put(None)  # sentinel: close SSE streams
 
 
 # --------------------------------------------------------------------------- #
@@ -445,6 +449,7 @@ def make_handler(state: ServerState):
             self.send_response(status)
             self.send_header("Content-Type", content_type)
             self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-store")
             self.send_header("Access-Control-Allow-Origin", "*")
             self.end_headers()
             self.wfile.write(body)
@@ -486,7 +491,7 @@ def make_handler(state: ServerState):
                 return self._send_json({"error": "invalid or missing token"}, 401)
 
             if path == "/":
-                return self._redirect("/dashboard")
+                return self._redirect("/dashboard" + ("?" + parsed.query if parsed.query else ""))
 
             if path in {"/health", "/api/health"}:
                 cfg = state.config
@@ -601,6 +606,8 @@ def make_handler(state: ServerState):
             payload = self._read_json()
 
             if path == "/api/task":
+                if state.demo:
+                    return self._send_json({"error": "Dashboard requires live mode. Restart Nexus without --demo and unset NEXUS_DEMO."}, 409)
                 task = str(payload.get("task") or "").strip()
                 if not task:
                     return self._send_json({"error": "task is required"}, 400)
@@ -639,23 +646,32 @@ def make_handler(state: ServerState):
                 session = state.get(path.rsplit("/", 1)[-1])
                 if session is None or session.pending is None:
                     return self._send_json({"error": "no pending approval"}, 409)
-                session.approval_decision = ApprovalDecision(
-                    approved=bool(payload.get("approved")),
-                    scope=str(payload.get("scope") or "once"),
-                    reason=str(payload.get("reason") or ""),
-                )
-                session.approval_event.set()
+                scope = payload.get("scope") or "once"
+                if not isinstance(payload.get("approved"), bool) or scope not in {"once", "session"}:
+                    return self._send_json({"error": "approved must be boolean; scope must be once or session"}, 400)
+                with session.changed:
+                    if (session.pending is None or session.approval_event.is_set()
+                            or session.cancel.is_set()
+                            or (payload.get("approval_id") and
+                                payload["approval_id"] != session.pending["approval_id"])):
+                        return self._send_json({"error": "approval is no longer pending; refresh task status"}, 409)
+                    session.approval_decision = ApprovalDecision(
+                        approved=payload["approved"], scope=scope,
+                        reason=str(payload.get("reason") or ""),
+                    )
+                    session.approval_event.set()
                 return self._send_json({"ok": True})
 
             if path.startswith("/api/cancel/"):
                 session = state.get(path.rsplit("/", 1)[-1])
                 if session is None:
                     return self._send_json({"error": "unknown task"}, 404)
-                session.cancel.set()
-                if session.pending is not None:
-                    session.approval_decision = ApprovalDecision(False, reason="cancelled")
-                    session.approval_event.set()
-                session.status = "cancelled"
+                with session.changed:
+                    session.cancel.set()
+                    if session.pending is not None:
+                        session.approval_decision = ApprovalDecision(False, reason="cancelled")
+                        session.approval_event.set()
+                    session.status = "cancelled"
                 return self._send_json({"ok": True, "status": session.status})
 
             return self._send_json({"error": f"no route for {path}"}, 404)
@@ -692,37 +708,44 @@ def make_handler(state: ServerState):
             self.send_response(200)
             self.send_header("Content-Type", "text/event-stream; charset=utf-8")
             self.send_header("Cache-Control", "no-cache, no-transform")
-            self.send_header("Connection", "keep-alive")
+            self.close_connection = True
+            self.send_header("Connection", "close")
             self.send_header("Access-Control-Allow-Origin", "*")
             self.send_header("X-Accel-Buffering", "no")
             self.end_headers()
 
             def write(obj: dict[str, Any]) -> bool:
                 try:
-                    self.wfile.write(f"data: {json.dumps(obj, ensure_ascii=False, default=str)}\n\n".encode())
+                    prefix = f"id: {obj['event_id']}\n" if "event_id" in obj else ""
+                    self.wfile.write(f"{prefix}data: {json.dumps(obj, ensure_ascii=False, default=str)}\n\n".encode())
                     self.wfile.flush()
                     return True
                 except (BrokenPipeError, ConnectionResetError, OSError):
                     return False
 
-            # replay what already happened, then follow live
-            for entry in list(session.log):
-                if not write(entry):
-                    return
-            if session.status in {"done", "error", "cancelled"}:
-                write({"type": "done", "status": session.status, "result": session.result})
-                return
+            # Each subscriber follows its own cursor. A shared queue duplicated replay
+            # and made simultaneous browser/sidebar subscribers steal each other's events.
+            try:
+                cursor = max(0, int(self.headers.get("Last-Event-ID") or 0))
+            except ValueError:
+                cursor = 0
             while True:
-                try:
-                    item = session.events.get(timeout=15)
-                except queue.Empty:
+                with session.changed:
+                    entries = [entry for entry in session.log if entry["event_id"] > cursor]
+                    if not entries:
+                        if session.log and session.log[-1]["type"] == "done":
+                            return
+                        session.changed.wait(timeout=15)
+                        entries = [entry for entry in session.log if entry["event_id"] > cursor]
+                if not entries:
                     if not write({"type": "ping", "status": session.status}):
                         return
-                    continue
-                if item is None:
-                    return
-                if not write(item):
-                    return
+                for entry in entries:
+                    if not write(entry):
+                        return
+                    cursor = entry["event_id"]
+                    if entry["type"] == "done":
+                        return
 
     return Handler
 
@@ -742,19 +765,20 @@ def serve(*, host: str = "127.0.0.1", port: int = 8787, workspace: Path | None =
         )
     print(f"nexus server {__version__} on http://{host}:{port}  (workspace {ws})")
     print(f"  dashboard  http://{host}:{port}/dashboard   <- the GUI")
-    print(f"  console    http://{host}:{port}/console     <- simulation-only CLI look")
+    print(f"  console    http://{host}:{port}/console     <- read-only registry view")
     print(f"  panel      http://{host}:{port}/panel       (compact / VS Code)")
     print(f"  health     http://{host}:{port}/health")
     print(f"  roles      {len(state.config.roles)} | agents {sorted(state.config.agents)}")
     if state.demo:
-        print("  mode       DEMO (scripted runs - no API key or local model needed)")
+        print("  mode       DEMO configured; live dashboard task submission is disabled")
     elif not any(state.config.agents[name].resolved_api_key for name in state.config.agents):
         print("  api keys   NONE - run `nexus keys set gemini` (or deepseek / openrouter) first")
     if open_panel:
         try:
             import webbrowser
 
-            webbrowser.open(f"http://{'127.0.0.1' if host == '0.0.0.0' else host}:{port}/dashboard")
+            query = "?" + urlencode({"token": state.token}) if state.token else ""
+            webbrowser.open(f"http://{'127.0.0.1' if host == '0.0.0.0' else host}:{port}/dashboard{query}")
         except Exception:  # noqa: BLE001
             pass
     try:

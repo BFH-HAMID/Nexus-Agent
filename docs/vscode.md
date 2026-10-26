@@ -127,3 +127,24 @@ by this UI. Repository permissions and tool approvals still apply.
 
 To install the extension after packaging, use **Extensions → … → Install from
 VSIX** and choose the generated `.vsix` file. A source checkout is not an install.
+
+### Approval reliability and live-only dashboard
+
+The browser dashboard's approval controls now sit above the live log, not inside
+the shrinking right column. Approve/deny requests stay visible and retryable on
+HTTP/network failure; acknowledgements cannot dismiss a newer pending approval.
+“Allow for this run” is scoped to the current run, not a permanent policy change.
+The compact sidebar likewise checks request success and sends its auto-approve
+checkbox state to the server. Read-only and dangerous-command restrictions remain.
+
+Dashboard metrics are derived from actual events; tool durations are measured on
+the server. Geographic nodes, globe traffic, and simulated network packets have
+been removed. Configuration is not model health. Demo-server task submissions are
+rejected: restart without `--demo` and unset `NEXUS_DEMO` for dashboard use. The
+separate offline CLI demo is unchanged.
+
+Refreshing the dashboard in the same tab reconnects its active task using the
+server's event history. This requires the same server process; it is not durable
+session resume. Stop prevents subsequent tools, but cannot forcibly interrupt an
+already running model request or command. Browser regression tests and setup are
+in `tests/browser/README.md`.

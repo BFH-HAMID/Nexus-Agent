@@ -163,3 +163,26 @@ preference মানা হয়। Map কেবল configured model দেখা
 করতে তার provider/model config লাগবে; decorative globe/world map বাস্তব network
 traffic নয়। এটি ব্যবহারযোগ্য dashboard, monitor/keyboard-এর স্থির photorealistic
 ছবি নয়।
+
+## Dashboard approval ও live-only data (সর্বশেষ পরিবর্তন)
+
+- Approval panel এখন live log-এর উপরে, ডান পাশের scroll rail-এর মধ্যে নয়।
+  **Approve** একবার tool চালানোর অনুমতি দেয়; **allow for this run** শুধু বর্তমান
+  run-এ ওই tool অনুমোদন করে; **Deny** tool call প্রত্যাখ্যান করে। Read-only mode
+  এবং dangerous-command restrictions আগের মতোই কার্যকর।
+- Request ব্যর্থ হলে approval panel বন্ধ হয় না; error দেখায় এবং retry করা যায়।
+  Page refresh করলে একই browser tab-এর চলমান task ও pending approval ফিরে আসে,
+  যতক্ষণ Nexus server restart হয়নি। এটি server restart-এর পর session resume নয়।
+- Side card-গুলো আর ছোট হয়ে controls লুকায় না—ডান/বাম column scroll করুন।
+- Run চলাকালে Clear disabled থাকে। Stop পরের tool শুরু হওয়া আটকায়; ইতিমধ্যে
+  চলমান model request/command ফিরতে সময় লাগতে পারে, তাই তা সঙ্গে সঙ্গে kill করার
+  দাবি UI করে না। Pipeline-তেও read-only checkbox সব step-এ প্রযোজ্য।
+- Dashboard থেকে simulated traffic, globe nodes ও geographic connection-এর
+  বানানো তথ্য সরানো হয়েছে। Counters/graphs server event ও measured tool duration
+  থেকে আসে; geolocation/threat scan সংগ্রহ করা হয় না, তাই unavailable বলা হয়।
+  Configured endpoint মানে model online আছে এমন নয়।
+- Dashboard task API এখন demo server-এ task চালায় না। `--demo` ছাড়া চালান, এবং
+  environment-এ `NEXUS_DEMO` থাকলে সরান। CLI-এর আলাদা offline demo এখনও আছে।
+
+Update করা version চালানোর পর আগের server বন্ধ করে আবার `nexus gui` চালান এবং
+browser-এ `Ctrl+F5` চাপুন। নিরাপদ পরীক্ষার task: `Create hello.txt containing Hello Nexus`।

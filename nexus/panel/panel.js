@@ -8,12 +8,15 @@
   let taskId = null;
   let es = null;
   let streamEl = null;
+  let lastEventId = 0;
+  let approvalId = null;
 
   function api(path, options) {
     const opts = options || {};
     opts.headers = Object.assign({ "Content-Type": "application/json" }, opts.headers || {});
     if (token) opts.headers["X-Nexus-Token"] = token;
-    return fetch(path, opts).then((r) => r.json().catch(() => ({})).then((j) => ({ ok: r.ok, status: r.status, body: j })));
+    return fetch(path, opts).then((r) => r.json().catch(() => ({})).then((j) => ({ ok: r.ok, status: r.status, body: j })))
+      .catch(error => ({ok: false, body: {error: error.message}}));
   }
 
   function ev(cls, tag, text) {
@@ -81,6 +84,8 @@
   }
 
   function showApproval(data) {
+    approvalId = data.approval_id || null;
+    ["apYes", "apAlways", "apNo"].forEach(id => { $(id).disabled = false; });
     $("approval").classList.remove("hidden");
     $("apTool").textContent = data.tool || "";
     $("apRisk").textContent = data.risk || "";
@@ -96,19 +101,31 @@
   }
 
   function hideApproval() {
+    approvalId = null;
     $("approval").classList.add("hidden");
   }
 
-  function decide(approved, scope) {
-    if (!taskId) return;
-    api("/api/approve/" + taskId, {
-      method: "POST",
-      body: JSON.stringify({ approved: approved, scope: scope || "once" }),
+  async function decide(approved, scope) {
+    if (!taskId || $("approval").classList.contains("hidden")) return;
+    const submittedId = approvalId;
+    ["apYes", "apAlways", "apNo"].forEach(id => { $(id).disabled = true; });
+    const {ok, body} = await api("/api/approve/" + taskId, {
+      method: "POST", body: JSON.stringify({approved, scope: scope || "once", approval_id: submittedId}),
     });
+    if (approvalId !== submittedId) return;
+    if (!ok) {
+      ev("error", "approval", body.error || "Approval not received. Retry.");
+      ["apYes", "apAlways", "apNo"].forEach(id => { $(id).disabled = false; });
+      return;
+    }
     hideApproval();
   }
 
   function handleEvent(data) {
+    if (data.event_id) {
+      if (data.event_id <= lastEventId) return;
+      lastEventId = data.event_id;
+    }
     const t = data.type;
     if (t === "role") {
       $("curRole").textContent = data.role || "?";
@@ -204,6 +221,8 @@
   }
 
   function run() {
+    if ($("run").disabled) return;
+    lastEventId = 0;
     const task = $("task").value.trim();
     if (!task) { ev("error", "error", "write a task first"); return; }
     const pipeline = $("pipeline").value;
@@ -211,6 +230,7 @@
       task: task,
       role: $("role").value || null,
       read_only: $("readonly").checked,
+      auto_yes: $("yes").checked,
       pipeline: pipeline || null,
     };
     $("log").innerHTML = "";
@@ -233,10 +253,12 @@
     });
   }
 
-  function cancel() {
+  async function cancel() {
     if (!taskId) return;
-    api("/api/cancel/" + taskId, { method: "POST", body: "{}" });
-    setStatus("cancelling", false);
+    const {ok, body} = await api("/api/cancel/" + taskId, { method: "POST", body: "{}" });
+    if (!ok) { ev("error", "stop", body.error || "Stop failed. Retry."); return; }
+    hideApproval();
+    setStatus("stop requested; waiting for current operation", false);
   }
 
   $("run").addEventListener("click", run);

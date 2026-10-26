@@ -339,6 +339,7 @@ class ToolRegistry:
             "tool": name, "args": args, "preview": preview_args(tool.spec, args),
             "risk": tool.spec.risk.value,
         }))
+        started = time.monotonic()
         result = ""
         is_error = False
         try:
@@ -352,7 +353,7 @@ class ToolRegistry:
         result = clip(str(result if result is not None else ""), self.ctx.max_output_chars)
         self.ctx.emit(Event(EventType.TOOL_RESULT, {
             "tool": name, "is_error": is_error, "preview": clip(result, 1200),
-            "chars": len(result),
+            "chars": len(result), "duration_ms": round((time.monotonic() - started) * 1000, 2),
         }))
         return result, is_error
 

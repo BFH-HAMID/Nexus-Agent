@@ -51,7 +51,7 @@ class FakeAgent:
                          tool_calls=1, summary="wrote x.py", changed_files=["x.py"],
                          stopped_reason="finish", duration_s=0.01, ok=True)
 
-    def run_pipeline(self, name: str, task: str) -> list[RunResult]:
+    def run_pipeline(self, name: str, task: str, **kwargs) -> list[RunResult]:
         self.emit(Event(EventType.STATUS, {"message": f"pipeline '{name}' -> {task}"}))
         return [
             RunResult(text="step done", role=step, agent="gemini", turns=1, tool_calls=0,
@@ -549,3 +549,118 @@ def test_setup_controls_in_both_panels(server):
         assert status == 200
         assert 'id="integrations"' in html
         assert "integrations.js" in html
+
+
+def test_demo_server_rejects_dashboard_tasks(server):
+    server.state.demo = True
+    status, body = server.post("/api/task", {"task": "Create hello.txt"})
+    assert status == 409
+    assert "live mode" in body["error"]
+    assert not server.created
+
+
+def test_task_auto_approve_reaches_agent(server):
+    status, body = server.post("/api/task", {"task": "Create hello.txt", "auto_yes": True})
+    assert status == 202
+    server.sse(body["task_id"])
+    assert server.created[-1].auto_yes is True
+    assert server.created[-1].approval_callback is None
+
+
+def test_approval_rejects_wrong_id_and_malformed_decision(server):
+    _, body = server.post("/api/task", {"task": "Create hello.txt"})
+    task_id = body["task_id"]
+    session = server.state.get(task_id)
+    server.wait_for(lambda: session.pending is not None)
+    pending_id = session.pending["approval_id"]
+    assert server.post(f"/api/approve/{task_id}", {
+        "approved": True, "scope": "once", "approval_id": "stale-id"})[0] == 409
+    assert not session.approval_event.is_set()
+    assert server.post(f"/api/approve/{task_id}", {"approved": "false"})[0] == 400
+    assert server.post(f"/api/approve/{task_id}", {"approved": True, "scope": "forever"})[0] == 400
+    assert server.post(f"/api/approve/{task_id}", {
+        "approved": False, "scope": "once", "approval_id": pending_id})[0] == 200
+    events = server.sse(task_id)
+    assert events[-1]["result"]["ok"] is False
+    assert server.post(f"/api/approve/{task_id}", {"approved": True})[0] == 409
+
+
+def test_approval_timeout_emits_denial_and_clears_pending(server, monkeypatch):
+    monkeypatch.setattr(server_module, "APPROVAL_TIMEOUT", 0.02)
+    _, body = server.post("/api/task", {"task": "Create hello.txt"})
+    events = server.sse(body["task_id"])
+    response = next(e for e in events if e["type"] == "approval_response")
+    assert response["approved"] is False
+    assert response["reason"] == "approval timed out"
+    assert server.state.get(body["task_id"]).pending is None
+
+
+def test_sse_has_no_duplicate_replay_and_broadcasts_to_each_view(server):
+    from concurrent.futures import ThreadPoolExecutor
+
+    _, body = server.post("/api/task", {"task": "Create hello.txt"})
+    task_id = body["task_id"]
+    session = server.state.get(task_id)
+    server.wait_for(lambda: session.pending is not None)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        views = [pool.submit(server.sse, task_id) for _ in range(2)]
+        assert server.post(f"/api/approve/{task_id}", {"approved": True})[0] == 200
+        for future in views:
+            events = future.result(timeout=10)
+            ids = [e["event_id"] for e in events]
+            assert ids == sorted(set(ids))
+            assert events[-1]["type"] == "done"
+            assert sum(e["type"] == "approval_request" for e in events) == 1
+            assert sum(e["type"] == "approval_response" for e in events) == 1
+
+
+def test_sse_resume_after_last_event_id(server):
+    _, body = server.post("/api/task", {"task": "Create hello.txt", "auto_yes": True})
+    task_id = body["task_id"]
+    all_events = server.sse(task_id)
+    cursor = all_events[-2]["event_id"]
+    request = urllib.request.Request(server.base + f"/api/events/{task_id}", headers={"Last-Event-ID": str(cursor)})
+    with urllib.request.urlopen(request, timeout=10) as response:
+        wire = ""
+        while True:
+            line = response.readline().decode()
+            wire += line
+            if line.startswith("data: ") and json.loads(line[6:])["type"] == "done":
+                break
+    remaining = [json.loads(line[6:]) for line in wire.splitlines() if line.startswith("data: ")]
+    assert [e["event_id"] for e in remaining] == [all_events[-1]["event_id"]]
+    assert f"id: {all_events[-1]['event_id']}" in wire
+
+
+def test_cancelled_run_cannot_emit_later_tool_calls(server):
+    _, body = server.post("/api/task", {"task": "Create hello.txt"})
+    session = server.state.get(body["task_id"])
+    server.wait_for(lambda: session.pending is not None)
+    server.post(f"/api/cancel/{session.task_id}", {})
+    events = server.sse(session.task_id)
+    assert events[-1]["status"] == "cancelled"
+    assert not any(e["type"] == "tool_call" for e in events)
+
+
+def test_pipeline_read_only_override_applies_to_every_step(repo, monkeypatch):
+    from nexus.agent import NexusAgent
+    from nexus.config import load_config
+
+    agent = NexusAgent(load_config(repo), workspace=repo, auto_yes=True)
+    seen = []
+
+    def run(task, *, role=None, read_only=False, **kwargs):
+        seen.append(read_only)
+        return RunResult(ok=True, summary="read-only check", role=role)
+
+    monkeypatch.setattr(agent, "run", run)
+    results = agent.run_pipeline("ship-feature", "Inspect only", read_only=True)
+    assert len(results) > 1
+    assert all(seen)
+
+
+def test_redirect_preserves_ui_auth_query(server):
+    opener = urllib.request.build_opener(NoRedirect)
+    with pytest.raises(urllib.error.HTTPError) as exc:
+        opener.open(server.base + "/?token=example", timeout=10)
+    assert exc.value.headers["Location"] == "/dashboard?token=example"

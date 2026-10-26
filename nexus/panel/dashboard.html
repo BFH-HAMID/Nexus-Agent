@@ -12,22 +12,7 @@
 <body>
 
 <!-- ── ambient layers ───────────────────────────────────────────────── -->
-<canvas id="rain" class="fx-rain" aria-hidden="true"></canvas>
-<svg class="world-overlay" viewBox="0 0 1200 600" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
-  <defs><pattern id="geoGrid" width="40" height="30" patternUnits="userSpaceOnUse"><path d="M40 0H0V30" fill="none" stroke="currentColor" stroke-width=".5"/></pattern></defs>
-  <g fill="url(#geoGrid)" stroke="currentColor" stroke-width="1.3">
-    <path d="M95 130L170 70 280 65 335 110 302 150 255 164 235 223 193 244 164 204 120 190Z"/>
-    <path d="M246 255L300 260 340 307 326 358 294 416 273 478 250 432 238 363 213 300Z"/>
-    <path d="M485 125L533 95 594 111 627 152 590 178 550 170 524 199 486 173Z"/>
-    <path d="M505 210L565 191 623 222 644 286 610 340 580 399 551 368 529 307 488 262Z"/>
-    <path d="M600 103L704 60 833 80 920 118 1056 161 1030 210 957 216 920 257 866 242 830 201 785 230 750 274 704 243 670 180 624 165Z"/>
-    <path d="M909 348L976 324 1034 355 1056 401 1015 430 951 413 916 388Z"/>
-  </g>
-  <g fill="currentColor"><circle cx="570" cy="150" r="4"/><circle cx="250" cy="160" r="4"/><circle cx="810" cy="227" r="4"/><circle cx="970" cy="387" r="4"/></g>
-  <path d="M250 160Q410 30 570 150T810 227T970 387" fill="none" stroke="currentColor" stroke-dasharray="4 9"/>
-</svg>
 <div class="fx-grid" aria-hidden="true"></div>
-<div class="fx-mesh"><canvas id="mesh" aria-hidden="true"></canvas></div>
 <div class="fx-scan" aria-hidden="true"></div>
 <div class="fx-vignette" aria-hidden="true"></div>
 
@@ -69,19 +54,12 @@
 
 
     <section class="card globe-card">
-      <div class="card-head"><span class="sq"></span>GLOBAL DATA ACCESS<span class="spacer"></span><span class="micro" id="globeNodes">— nodes</span></div>
-      <div class="globe-wrap">
-        <canvas id="globe" width="440" height="440" aria-label="rotating holographic globe"></canvas>
-        <div class="globe-ring"></div>
-        <div class="globe-labels">
-          <span class="globe-label l1">VISUAL GEO MESH</span>
-          <span class="globe-label l2">DECORATIVE OVERLAY</span>
-        </div>
-      </div>
+      <div class="card-head"><span class="sq"></span>LIVE RUN DATA<span class="spacer"></span><span class="micro" id="globeNodes">unavailable</span></div>
+      <p class="mem-body">Run metrics come from server events. Endpoint configuration is not an online health check. Network geolocation and threat scanning are not collected.</p>
       <div class="stat-row">
-        <div class="stat"><span class="stat-k">latency</span><b id="statLatency">—</b></div>
-        <div class="stat"><span class="stat-k">calls</span><b id="statCalls">0</b></div>
-        <div class="stat"><span class="stat-k">visual nodes</span><b id="statRegions">12</b></div>
+        <div class="stat"><span class="stat-k">tool duration</span><b id="statLatency">—</b></div>
+        <div class="stat"><span class="stat-k">model turns</span><b id="statCalls">0</b></div>
+        <div class="stat"><span class="stat-k">geolocation</span><b id="statRegions">Unavailable</b></div>
       </div>
     </section>
 
@@ -136,6 +114,7 @@
     </section>
 
     <section class="card process-card">
+      <div id="liveNotice" role="status">Connecting to live server…</div>
       <div class="card-head">
         <span class="sq"></span>LIVE PROCESS
         <span class="pill phase" id="phaseChip">idle</span>
@@ -154,6 +133,17 @@
         <span class="phase-meta" id="phaseMeta"></span>
       </div>
 
+      <section class="card approval-card hidden" id="approvalCard" aria-label="Tool approval" role="region" tabindex="-1">
+      <div class="card-head warn"><span class="sq"></span>APPROVAL GATE<span class="spacer"></span><span class="pill danger" id="apRisk">write</span></div>
+      <div class="ap-tool"><b id="apTool">—</b></div>
+      <pre class="ap-preview" id="apPreview"></pre>
+      <div class="ap-actions">
+        <button class="btn primary" id="apYes">approve</button>
+        <button class="btn" id="apAlways" title="Approve this tool for the current run only">allow for this run</button>
+        <button class="btn danger" id="apNo">deny</button>
+      </div>
+    </section>
+      <p id="actionError" role="alert" class="hidden"></p>
       <div class="stream" id="stream" aria-live="polite">
         <div class="stream-empty" id="streamEmpty">
           <span class="big">◈</span>
@@ -191,9 +181,9 @@
   <aside class="col col-right">
 
     <section class="card monitor-card">
-      <div class="card-head"><span class="sq"></span>SYSTEM MONITOR<span class="spacer"></span><span class="micro">live</span></div>
+      <div class="card-head"><span class="sq"></span>RUN EVENT MONITOR<span class="spacer"></span><span class="micro">live</span></div>
       <div class="mon">
-        <div class="mon-head"><span>EVENTS / MIN</span><b id="monEvents">0</b></div>
+        <div class="mon-head"><span>RECEIVED EVENTS / SEC</span><b id="monEvents">0</b></div>
         <canvas class="spark" id="sparkEvents" height="46"></canvas>
       </div>
       <div class="mon">
@@ -201,7 +191,7 @@
         <canvas class="spark" id="sparkTokens" height="46"></canvas>
       </div>
       <div class="mon">
-        <div class="mon-head"><span>TOOL LATENCY</span><b id="monLatency">—</b></div>
+        <div class="mon-head"><span>TOOL DURATION (SERVER)</span><b id="monLatency">—</b></div>
         <canvas class="spark" id="sparkLatency" height="46"></canvas>
       </div>
     </section>
@@ -220,16 +210,6 @@
       <div class="tel-foot"><span id="telAgent">agent —</span><span id="telRoute">route —</span></div>
     </section>
 
-    <section class="card approval-card hidden" id="approvalCard">
-      <div class="card-head warn"><span class="sq"></span>APPROVAL GATE<span class="spacer"></span><span class="pill danger" id="apRisk">write</span></div>
-      <div class="ap-tool"><b id="apTool">—</b></div>
-      <pre class="ap-preview" id="apPreview"></pre>
-      <div class="ap-actions">
-        <button class="btn primary" id="apYes">approve</button>
-        <button class="btn" id="apAlways">always</button>
-        <button class="btn danger" id="apNo">deny</button>
-      </div>
-    </section>
 
     <section class="card pipes-card">
       <div class="card-head"><span class="sq"></span>PIPELINES<span class="spacer"></span><span class="micro" id="pipeCount">0</span></div>

@@ -34,9 +34,11 @@
     tokens: { in: 0, out: 0 },
     telemetry: { turns: 0, maxTurns: 24, tools: 0, route: "—" },
     spark: { events: [], tokens: [], latency: [] },
-    lastToolAt: 0,
     filter: "all",
     pendingApproval: false,
+    approvalId: null,
+    lastEventId: 0,
+    liveReady: false,
   };
 
   /* ── tiny utils ───────────────────────────────────────────────────── */
@@ -44,7 +46,6 @@
     .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
   const clamp = (n, a, b) => Math.max(a, Math.min(b, n));
-  const now = () => performance.now();
   const hhmmss = (d) => d.toTimeString().slice(0, 8);
   const stamp = () => new Date().toTimeString().slice(0, 8);
   const fmt = (n) => {
@@ -77,7 +78,8 @@
   /* ── boot ─────────────────────────────────────────────────────────── */
   async function boot() {
     startClock();
-    startEffects();
+    // No synthetic telemetry, geographic nodes or animated traffic.
+
     wireUi();
     const [stats, roles] = await Promise.all([api("/api/stats"), api("/api/roles")]);
     if (stats.ok) {
@@ -92,10 +94,10 @@
     }
     refreshMemory();
     refreshBrain();
+    await restoreRun();
     setInterval(refreshStats, 15000);
     setInterval(refreshBrain, 30000);
     setInterval(tickMeters, 1000);
-    requestAnimationFrame(tickPackets);
   }
 
   async function refreshStats() {
@@ -115,7 +117,9 @@
 
   function applyStats(s) {
     state.stats = s;
-    state.agents = s.agents || {};
+    const runtime = state.activeAgent && state.agents[state.activeAgent];
+    state.agents = { ...(s.agents || {}) };
+    if (runtime && !state.agents[state.activeAgent]) state.agents[state.activeAgent] = runtime;
     state.keys = s.keys || {};
     state.pipelines = s.pipelines || {};
     state.telemetry.maxTurns = (s.settings && s.settings.max_turns) || 24;
@@ -123,13 +127,18 @@
     $("metaWs").title = s.workspace || "";
     $("metaRoles").textContent = s.roles;
     $("metaAgents").textContent = Object.keys(state.agents).length;
-    $("metaMode").textContent = s.demo ? "scripted" : "live";
+    state.liveReady = !s.demo;
+    $("liveNotice").textContent = s.demo
+      ? "Live dashboard disabled: restart Nexus without --demo and unset NEXUS_DEMO. No simulated task will run."
+      : "Live server events only · model availability is not inferred from configuration.";
+    $("runBtn").disabled = state.running || !state.liveReady;
+    $("metaMode").textContent = s.demo ? "blocked: demo server" : "live";
     $("chipMode").className = "chip" + (s.demo ? "" : " live");
-    $("metaRouting").textContent = s.prefer_local ? "local-first" : "hosted";
+    $("metaRouting").textContent = window.nexusLocalModel?.() ? "selected local" : s.prefer_local ? "local-first" : "configured";
     $("metaUptime").textContent = "up " + Math.round(s.uptime_s || 0) + "s";
     $("sbVersion").textContent = "nexus " + (s.version || "?");
-    $("globeNodes").textContent = Object.keys(state.agents).length + " nodes";
-    $("statRegions").textContent = String(GLOBE_NODES.length);
+    $("globeNodes").textContent = Object.keys(s.agents || {}).length + " configured endpoints";
+    $("statRegions").textContent = "Unavailable";
     $("orchCount").textContent = Object.keys(state.agents).length + " agents";
     renderOrch();
     renderKeys();
@@ -166,15 +175,18 @@
   function renderPipelines() {
     const names = Object.keys(state.pipelines).sort();
     $("pipeCount").textContent = names.length + " defined";
+    const selected = $("pipelineSelect").value;
     $("pipelineSelect").innerHTML = ['<option value="">none</option>']
       .concat(names.map((n) => `<option value="${esc(n)}">${esc(n)}</option>`)).join("");
     $("pipeList").innerHTML = names.length
       ? names.map((n) => {
         const p = state.pipelines[n] || {};
-        return `<div class="pipe" data-pipe="${esc(n)}"><b>${esc(n)}</b>
-          <span>${esc((p.steps || []).join(" → ") || "single step")}</span></div>`;
+        return `<button type="button" class="pipe" data-pipe="${esc(n)}"><b>${esc(n)}</b>
+          <span>${esc((p.steps || []).join(" → ") || "single step")}</span></button>`;
       }).join("")
       : '<div class="mem-body">no pipelines defined</div>';
+    if (names.includes(selected)) $("pipelineSelect").value = selected;
+    $("pipeList").querySelectorAll(".pipe").forEach(p => p.classList.toggle("on", p.dataset.pipe === selected));
   }
 
   function renderKeys() {
@@ -351,22 +363,6 @@
     $("ndBody").textContent = "select a node on the map";
   }
 
-  function tickPackets() {
-    const pkt = $("pkt");
-    if (pkt && state.running && state.activeAgent && state.positions[state.activeAgent]) {
-      const p = state.positions[state.activeAgent];
-      const cycle = 1500;
-      const t = (now() % cycle) / cycle;
-      const back = state.phase === "tool";
-      const e = back ? 1 - t : t;
-      pkt.setAttribute("cx", (MAP.cx + (p.x - MAP.cx) * e).toFixed(1));
-      pkt.setAttribute("cy", (MAP.cy + (p.y - MAP.cy) * e).toFixed(1));
-      pkt.setAttribute("opacity", String(0.25 + 0.75 * Math.sin(Math.PI * t)));
-    } else if (pkt) {
-      pkt.setAttribute("opacity", "0");
-    }
-    requestAnimationFrame(tickPackets);
-  }
 
   /* ── phase banner ─────────────────────────────────────────────────── */
   function setPhase(phase, text, meta) {
@@ -420,7 +416,16 @@
 
   /* ── live event handling ──────────────────────────────────────────── */
   function onEvent(e) {
+    if (e.event_id) {
+      if (e.event_id <= state.lastEventId) return;
+      state.lastEventId = e.event_id;
+    }
+    if (e.type === "ping") return;
     state.counters.events++;
+    if (e.agent && e.model && !state.agents[e.agent]) {
+      state.agents[e.agent] = {model: e.model, provider: e.provider || "openai-compatible", tool_mode: e.tool_mode || "text"};
+      renderOrch(); buildMap();
+    }
     switch (e.type) {
       case "role": {
         state.activeRole = e.role;
@@ -489,7 +494,6 @@
       case "tool_call": {
         state.counters.toolCalls++;
         state.telemetry.tools++;
-        state.lastToolAt = now();
         if (state.activeAgent) setAgentStatus(state.activeAgent, "tool");
         const risk = e.risk || "write";
         if (risk === "danger") {
@@ -510,8 +514,8 @@
       }
       case "tool_result": {
         if (state.activeAgent) setAgentStatus(state.activeAgent, state.running ? "thinking" : "idle");
-        const ms = state.lastToolAt ? Math.round(now() - state.lastToolAt) : 0;
-        if (ms) pushSpark("latency", ms);
+        const ms = Number.isFinite(e.duration_ms) ? e.duration_ms : null;
+        if (ms !== null) pushSpark("latency", ms);
         const out = String(e.preview || "");
         addStep("tool_result" + (e.is_error ? " error" : ""), e.is_error ? "result ✗" : "result", e.is_error ? "✗" : "✓",
           `<span class="txt">${esc(trunc(out, 1200))}</span>`,
@@ -574,8 +578,7 @@
         break;
       }
       case "approval_request": {
-        state.pendingApproval = true;
-        $("approvalCard").classList.remove("hidden");
+        showApproval(e);
         $("apTool").textContent = e.tool || "?";
         $("apRisk").textContent = e.risk || "write";
         $("apRisk").className = "pill " + (e.risk === "danger" ? "danger" : "warn");
@@ -583,12 +586,11 @@
         addStep("tool_call", "approval", "⚠",
           `<b>${esc(e.tool)}</b> is waiting for your approval <span class="pill warn">${esc(e.risk || "")}</span>`,
           ts());
-        setPhase("waiting", "waiting for approval · " + (e.tool || ""), "approve or deny on the right");
+        setPhase("waiting", "waiting for approval · " + (e.tool || ""), "approve or deny above the log");
         break;
       }
       case "approval_response": {
-        state.pendingApproval = false;
-        $("approvalCard").classList.add("hidden");
+        hideApproval();
         if (e.approved === false) {
           state.counters.denied++;
           $("secDenied").textContent = state.counters.denied;
@@ -629,6 +631,8 @@
 
   /* ── run lifecycle ────────────────────────────────────────────────── */
   async function run() {
+    if (state.running || !state.liveReady) return;
+    actionError("");
     const task = $("taskInput").value.trim();
     if (!task) { $("taskInput").focus(); return; }
     const body = {
@@ -638,6 +642,9 @@
       auto_yes: $("autoYes").checked,
       pipeline: $("pipelineSelect").value || null,
     };
+    state.taskId = null;
+    state.lastEventId = 0;
+    $("clearBtn").disabled = true;
     $("stream").innerHTML = "";
     $("secLog").innerHTML = "";
     resetRunState();
@@ -657,6 +664,8 @@
       state.running = false;
       $("runBtn").disabled = false;
       $("cancelBtn").disabled = true;
+      $("clearBtn").disabled = false;
+      actionError(res.error || "Could not start task");
       stopElapsed();
       addStep("error", "error", "✗", esc((res && res.error) || "could not start the task"));
       setPhase("error", "could not start the task", "");
@@ -664,6 +673,7 @@
       return;
     }
     state.taskId = res.task_id;
+    try { sessionStorage.setItem("nexus.activeTask", state.taskId); } catch (_) {}
     $("taskId").textContent = "task " + state.taskId;
     stream(state.taskId);
   }
@@ -674,8 +684,7 @@
     state.telemetry.turns = 0;
     state.telemetry.tools = 0;
     state.spark = { events: [], tokens: [], latency: [] };
-    state.pendingApproval = false;
-    $("approvalCard").classList.add("hidden");
+    hideApproval();
     ["secToolCalls", "secDanger", "secDenied", "secErrors"].forEach((id) => ($(id).textContent = "0"));
     ["telTurns", "telTools", "telIn", "telOut"].forEach((id) => ($(id).textContent = "0"));
     $("telTime").textContent = "0.0s";
@@ -699,11 +708,14 @@
     setUplink("streaming", "ok");
     es.onopen = () => setUplink("streaming", "ok");
     es.onmessage = (msg) => {
-      try { onEvent(JSON.parse(msg.data)); } catch (err) { /* ignore malformed frame */ }
+      try { onEvent(JSON.parse(msg.data)); } catch (err) { actionError("Event could not be displayed: " + err.message); }
     };
     es.onerror = () => {
       if (!es || es.readyState === EventSource.CLOSED) {
         setUplink("stream closed", "warn");
+      } else {
+        setUplink("reconnecting", "warn");
+        actionError("Connection interrupted. Reconnecting; approval is not assumed successful.");
       }
     };
   }
@@ -712,15 +724,17 @@
     stopElapsed();
     state.running = false;
     if (state.es) { state.es.close(); state.es = null; }
-    $("runBtn").disabled = false;
+    $("runBtn").disabled = !state.liveReady;
     $("cancelBtn").disabled = true;
-    $("approvalCard").classList.add("hidden");
+    $("clearBtn").disabled = false;
+    hideApproval();
+    try { sessionStorage.removeItem("nexus.activeTask"); } catch (_) {}
     Object.keys(state.agents).forEach((n) => setAgentStatus(n, "idle"));
     const r = e.result || {};
-    const ok = r.ok !== false && e.status !== "error";
+    const ok = r.ok === true && e.status === "done";
     $("telState").textContent = e.status || (ok ? "done" : "error");
     $("sbState").textContent = e.status || "done";
-    setPhase(ok ? "done" : "error", (ok ? "run complete" : "run failed") + " · " + (r.role || "") + " · " + (r.agent || ""),
+    setPhase(ok ? "done" : "error", (e.status === "cancelled" ? "run cancelled" : ok ? "run complete" : "run failed") + " · " + (r.role || "") + " · " + (r.agent || ""),
       (r.duration_s != null ? r.duration_s + "s" : ""));
     setUplink("online", "ok");
 
@@ -755,10 +769,19 @@
     refreshStats();
   }
 
-  function cancel() {
-    if (!state.taskId) return;
-    api("/api/cancel/" + state.taskId, { method: "POST", body: "{}" });
-    setPhase("waiting", "cancelling…", "");
+  async function cancel() {
+    if (!state.taskId || !state.running) return;
+    $("cancelBtn").disabled = true;
+    const {ok, body} = await api("/api/cancel/" + state.taskId, {method: "POST", body: "{}"});
+    if (!state.running) return;
+    if (!ok) {
+      actionError(body.error || "Stop failed. Please retry.");
+      $("cancelBtn").disabled = false;
+      return;
+    }
+    hideApproval();
+    actionError("");
+    setPhase("waiting", "stop requested · waiting for current operation to return", "no further tools will start");
   }
 
   function updateTelemetry() {
@@ -792,7 +815,7 @@
     const evPerSec = state.counters.events;
     state.counters.events = 0;
     if (state.running) pushSpark("events", evPerSec);
-    $("monEvents").textContent = String(evPerSec * 60);
+    $("monEvents").textContent = String(evPerSec);
     $("statCalls").textContent = String(state.counters.modelCalls);
     $("statLatency").textContent = state.spark.latency.length
       ? Math.round(state.spark.latency.slice(-3).reduce((a, b) => a + b, 0) / Math.min(3, state.spark.latency.length)) + "ms"
@@ -811,7 +834,7 @@
     if (!canvas) return;
     const dpr = window.devicePixelRatio || 1;
     const w = canvas.clientWidth || 260;
-    const h = canvas.height || 46;
+    const h = 46;
     if (canvas.width !== Math.round(w * dpr)) canvas.width = Math.round(w * dpr);
     canvas.height = Math.round(h * dpr);
     const ctx = canvas.getContext("2d");
@@ -862,7 +885,7 @@
     const target = role || state.activeRole || $("roleSelect").value || "general";
     $("memRole").textContent = target;
     const { ok, body } = await api("/api/memory/" + encodeURIComponent(target));
-    if (!ok || !body) return;
+    if (!ok || !body) { $("memBody").textContent = "Unavailable: " + (body.error || "memory request failed"); return; }
     $("memPath").textContent = body.path || "—";
     const text = String(body.text || "").trim();
     $("memBody").textContent = text || (body.enabled === false
@@ -873,7 +896,7 @@
   /* ── learning brain (skills + memory + recall) ───────────────────── */
   async function refreshBrain() {
     const { ok, body } = await api("/api/brain");
-    if (!ok || !body || !body.skills) return;
+    if (!ok || !body || !body.skills) { $("brainPill").textContent = "unavailable"; renderBrainList([], body.error || "Learning data unavailable"); return; }
     const skills = body.skills || {};
     const mem = body.memory || {};
     const runs = body.sessions || {};
@@ -882,9 +905,9 @@
     const entries = ((mem.memory || {}).entries || []).length + ((mem.user || {}).entries || []).length;
     $("brainMemo").textContent = fmt(entries);
     const learning = body.learning || {};
-    $("brainPill").textContent = learning.enabled === false ? "paused" : "learning";
+    $("brainPill").textContent = learning.enabled === false ? "disabled" : "enabled";
     $("brainMeta").textContent = (skills.categories || []).length + " categories · " +
-      (runs.fts ? "FTS5 recall" : "recall") + (learning.agent ? " · " + learning.agent : "");
+      (runs.fts ? "FTS5 recall" : "recall") + (learning.agent ? " · configured: " + learning.agent : "");
     renderBrainList((skills.recent || []).slice(0, 8).map((s) => ({
       title: s.name, sub: s.description, tag: (s.uses ? s.uses + "×" : s.category || "skill"),
     })), "no skills yet — the agent writes them after non-trivial runs (or `nexus hermes install`)");
@@ -904,7 +927,7 @@
   async function recall(query) {
     const path = "/api/recall" + (query ? "?q=" + encodeURIComponent(query) : "");
     const { ok, body } = await api(path);
-    if (!ok || !Array.isArray(body)) return;
+    if (!ok || !Array.isArray(body)) { renderBrainList([], body.error || "Recall unavailable"); return; }
     renderBrainList(body.map((row) => ({
       title: (row.role || "run") + " · " + new Date((row.created || 0) * 1000).toISOString().slice(0, 10),
       sub: row.task || row.summary || "",
@@ -917,6 +940,7 @@
     $("runBtn").addEventListener("click", run);
     $("cancelBtn").addEventListener("click", cancel);
     $("clearBtn").addEventListener("click", () => {
+      if (state.running) return;
       $("stream").innerHTML = '<div class="stream-empty" id="streamEmpty"><span class="big">◈</span><p>Cleared. Describe a task below and press run.</p></div>';
     });
     $("taskInput").addEventListener("keydown", (e) => {
@@ -925,6 +949,9 @@
     $("apYes").addEventListener("click", () => decide(true, "once"));
     $("apAlways").addEventListener("click", () => decide(true, "session"));
     $("apNo").addEventListener("click", () => decide(false, "once"));
+    $("pipelineSelect").addEventListener("change", () => {
+      $("pipeList").querySelectorAll(".pipe").forEach(p => p.classList.toggle("on", p.dataset.pipe === $("pipelineSelect").value));
+    });
     $("roleSelect").addEventListener("change", () => refreshMemory($("roleSelect").value || null));
     $("brainGo").addEventListener("click", () => recall($("brainQuery").value.trim()));
     $("brainQuery").addEventListener("keydown", (e) => {
@@ -944,16 +971,62 @@
       $("pipelineSelect").value = $("pipelineSelect").value === name ? "" : name;
       $("pipeList").querySelectorAll(".pipe").forEach((p) => p.classList.toggle("on", p === row && $("pipelineSelect").value === name));
     });
-    window.addEventListener("resize", () => { drawAllSparks(); resizeRain(); });
+    window.addEventListener("resize", () => { drawAllSparks(); });
+  }
+
+  function actionError(message) {
+    $("actionError").textContent = message;
+    $("actionError").classList.toggle("hidden", !message);
+  }
+
+  function showApproval(pending) {
+    state.pendingApproval = true;
+    state.approvalId = pending.approval_id || null;
+    $("approvalCard").classList.remove("hidden");
+    ["apYes", "apAlways", "apNo"].forEach(id => { $(id).disabled = false; });
+    $("approvalCard").focus({preventScroll: true});
+  }
+
+  function hideApproval() {
+    state.pendingApproval = false;
+    state.approvalId = null;
+    $("approvalCard").classList.add("hidden");
   }
 
   async function decide(approved, scope) {
-    if (!state.taskId) return;
-    await api("/api/approve/" + state.taskId, {
-      method: "POST", body: JSON.stringify({ approved: approved, scope: scope }),
+    if (!state.taskId || !state.pendingApproval) return;
+    const submittedId = state.approvalId;
+    ["apYes", "apAlways", "apNo"].forEach(id => { $(id).disabled = true; });
+    const {ok, body} = await api("/api/approve/" + state.taskId, {
+      method: "POST", body: JSON.stringify({approved, scope, approval_id: submittedId}),
     });
-    $("approvalCard").classList.add("hidden");
-    state.pendingApproval = false;
+    if (!state.running || state.approvalId !== submittedId) return;
+    if (!ok) {
+      actionError(body.error || "Approval was not received. Please retry.");
+      ["apYes", "apAlways", "apNo"].forEach(id => { $(id).disabled = false; });
+      return;
+    }
+    hideApproval();
+    actionError("");
+    setPhase("thinking", approved ? "approval received · resuming" : "denial received", "");
+  }
+
+  async function restoreRun() {
+    let id;
+    try { id = sessionStorage.getItem("nexus.activeTask"); } catch (_) { return; }
+    if (!id || !state.liveReady) return;
+    const {ok, body} = await api("/api/task/" + encodeURIComponent(id));
+    if (!ok) { actionError(body.error || "Previous task unavailable"); return; }
+    state.taskId = id;
+    state.running = true;
+    state.startedAt = body.created * 1000;
+    $("runBtn").disabled = true;
+    $("clearBtn").disabled = true;
+    $("cancelBtn").disabled = false;
+    $("taskId").textContent = "task " + id;
+    $("taskInput").value = body.task || "";
+    startElapsed();
+    stream(id); // Replay actual events, including any outstanding approval.
   }
 
   // Pointer orbit gives the SVG network depth without a GPU-heavy 3D library.
@@ -982,205 +1055,7 @@
     });
   })();
 
-  /* ── ambient effects ──────────────────────────────────────────────── */
-  const GLOBE_NODES = [
-    [23.8, 90.4], [40.7, -74.0], [51.5, -0.1], [35.7, 139.7], [19.1, 72.9],
-    [37.8, -122.4], [-23.5, -46.6], [1.35, 103.8], [55.75, 37.6], [48.8, 2.35],
-    [-33.9, 151.2], [52.5, 13.4],
-  ];
-
-  let rainCtx = null, rainCols = [], rainW = 0, rainH = 0;
-
-  function resizeRain() {
-    const canvas = $("rain");
-    if (!canvas) return;
-    rainW = canvas.width = window.innerWidth;
-    rainH = canvas.height = window.innerHeight;
-    const colWidth = 16;
-    const count = Math.floor(rainW / colWidth);
-    rainCols = Array.from({ length: count }, (_, i) => ({
-      x: i * colWidth + 3,
-      y: Math.random() * rainH,
-      speed: 20 + Math.random() * 42,
-      edge: Math.min(i, count - 1 - i) / Math.max(count * 0.14, 1),  // 0 = far edge, 1 = center
-    }));
-  }
-
-  function startEffects() {
-    const canvas = $("rain");
-    if (!canvas || REDUCED) return;
-    rainCtx = canvas.getContext("2d");
-    resizeRain();
-    let last = 0;
-    const frame = (t) => {
-      if (t - last > 55) {
-        last = t;
-        const ctx = rainCtx;
-        ctx.fillStyle = "rgba(3,7,10,0.16)";
-        ctx.fillRect(0, 0, rainW, rainH);
-        ctx.font = "12px monospace";
-        rainCols.forEach((c) => {
-          const alpha = c.edge < 1 ? 0.55 - c.edge * 0.45 : 0.06;
-          ctx.fillStyle = `rgba(0,255,163,${alpha.toFixed(3)})`;
-          ctx.fillText(Math.random() > 0.5 ? "1" : "0", c.x, c.y);
-          ctx.fillStyle = `rgba(180,255,235,${(alpha * 0.9).toFixed(3)})`;
-          ctx.fillText(Math.random() > 0.5 ? "0" : "1", c.x, c.y - 14);
-          c.y += c.speed * 0.12;
-          if (c.y > rainH + 20) { c.y = -20; c.speed = 20 + Math.random() * 42; }
-        });
-      }
-      requestAnimationFrame(frame);
-    };
-    requestAnimationFrame(frame);
-    startMesh();
-    startGlobe();
-  }
-
-  function startMesh() {
-    const canvas = $("mesh");
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    let w = 0, h = 0, pts = [];
-    const seed = () => {
-      w = canvas.width = Math.floor(window.innerWidth * dpr);
-      h = canvas.height = Math.floor(window.innerHeight * dpr);
-      pts = Array.from({ length: 46 }, () => ({
-        x: Math.random() * w, y: Math.random() * h,
-        vx: (Math.random() - 0.5) * 0.06 * dpr, vy: (Math.random() - 0.5) * 0.06 * dpr,
-      }));
-    };
-    seed();
-    window.addEventListener("resize", seed);
-    let last = 0;
-    const frame = (t) => {
-      if (t - last > 90) {
-        last = t;
-        ctx.clearRect(0, 0, w, h);
-        pts.forEach((p) => { p.x += p.vx; p.y += p.vy;
-          if (p.x < 0 || p.x > w) p.vx *= -1;
-          if (p.y < 0 || p.y > h) p.vy *= -1; });
-        for (let i = 0; i < pts.length; i++) {
-          for (let j = i + 1; j < pts.length; j++) {
-            const dx = pts[i].x - pts[j].x, dy = pts[i].y - pts[j].y;
-            const d = Math.hypot(dx, dy);
-            if (d < 190 * dpr) {
-              ctx.strokeStyle = `rgba(0,255,163,${(0.10 * (1 - d / (190 * dpr))).toFixed(3)})`;
-              ctx.beginPath(); ctx.moveTo(pts[i].x, pts[i].y); ctx.lineTo(pts[j].x, pts[j].y); ctx.stroke();
-            }
-          }
-        }
-        pts.forEach((p) => {
-          ctx.fillStyle = "rgba(34,227,255,.35)";
-          ctx.beginPath(); ctx.arc(p.x, p.y, 1.4 * dpr, 0, Math.PI * 2); ctx.fill();
-        });
-      }
-      requestAnimationFrame(frame);
-    };
-    requestAnimationFrame(frame);
-  }
-
-  function startGlobe() {
-    const canvas = $("globe");
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    const size = 440;
-    canvas.width = size * dpr;
-    canvas.height = size * dpr;
-    ctx.scale(dpr, dpr);
-    const cx = size / 2, cy = size / 2, R = size * 0.36;
-    const nodes = GLOBE_NODES;
-    const arcs = [[0, 4], [2, 8], [5, 11], [7, 3], [9, 6], [1, 0], [10, 7]];
-    let angle = 0;
-    const project = (lat, lon) => {
-      const la = (lat * Math.PI) / 180;
-      const lo = ((lon + angle) * Math.PI) / 180;
-      const x = Math.cos(la) * Math.cos(lo);
-      const z = Math.cos(la) * Math.sin(lo);
-      const y = Math.sin(la);
-      return { x: cx + x * R, y: cy - y * R, z: z, vis: z > -0.1 };
-    };
-    const frame = () => {
-      angle += 0.34;
-      ctx.clearRect(0, 0, size, size);
-
-      // halo
-      const halo = ctx.createRadialGradient(cx, cy, R * 0.2, cx, cy, R * 1.22);
-      halo.addColorStop(0, "rgba(0,255,163,.14)");
-      halo.addColorStop(0.65, "rgba(34,227,255,.05)");
-      halo.addColorStop(1, "rgba(0,0,0,0)");
-      ctx.fillStyle = halo;
-      ctx.beginPath(); ctx.arc(cx, cy, R * 1.22, 0, Math.PI * 2); ctx.fill();
-
-      // sphere
-      ctx.strokeStyle = "rgba(0,255,163,.35)";
-      ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.stroke();
-
-      // latitudes
-      ctx.strokeStyle = "rgba(34,227,255,.18)";
-      for (let lat = -60; lat <= 60; lat += 30) {
-        const la = (lat * Math.PI) / 180;
-        const rr = Math.cos(la) * R;
-        const yy = cy - Math.sin(la) * R;
-        ctx.beginPath();
-        ctx.ellipse(cx, yy, rr, rr * 0.22, 0, 0, Math.PI * 2);
-        ctx.stroke();
-      }
-      // longitudes
-      for (let lon = 0; lon < 180; lon += 30) {
-        const pts = [];
-        for (let lat = -90; lat <= 90; lat += 6) {
-          const p = project(lat, lon);
-          pts.push(p);
-        }
-        ctx.beginPath();
-        pts.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)));
-        ctx.strokeStyle = "rgba(34,227,255,.16)";
-        ctx.stroke();
-      }
-
-      // arcs between nodes
-      arcs.forEach((pair, idx) => {
-        const a = nodes[pair[0]], b = nodes[pair[1]];
-        if (!a || !b) return;
-        const pa = project(a[0], a[1]);
-        const pb = project(b[0], b[1]);
-        if (!pa.vis || !pb.vis) return;
-        const mx = (pa.x + pb.x) / 2, my = (pa.y + pb.y) / 2;
-        const lift = 26;
-        ctx.beginPath();
-        ctx.moveTo(pa.x, pa.y);
-        ctx.quadraticCurveTo(mx, my - lift, pb.x, pb.y);
-        const t = ((Date.now() / 1400) + idx * 0.18) % 1;
-        ctx.strokeStyle = `rgba(0,255,163,${(0.10 + 0.22 * Math.sin(Math.PI * t)).toFixed(3)})`;
-        ctx.lineWidth = 1;
-        ctx.stroke();
-      });
-
-      // nodes
-      nodes.forEach((n) => {
-        const p = project(n[0], n[1]);
-        if (!p.vis) return;
-        const depth = clamp((p.z + 1) / 2, 0, 1);
-        ctx.fillStyle = `rgba(0,255,163,${(0.35 + depth * 0.6).toFixed(2)})`;
-        ctx.beginPath(); ctx.arc(p.x, p.y, 1.6 + depth * 1.6, 0, Math.PI * 2); ctx.fill();
-        if (depth > 0.72) {
-          ctx.strokeStyle = `rgba(0,255,163,${(depth * 0.35).toFixed(2)})`;
-          ctx.beginPath(); ctx.arc(p.x, p.y, 5 + depth * 3, 0, Math.PI * 2); ctx.stroke();
-        }
-      });
-
-      // scan line
-      const sy = cy + Math.sin(Date.now() / 900) * R;
-      ctx.strokeStyle = "rgba(0,255,163,.30)";
-      ctx.beginPath(); ctx.moveTo(cx - R, sy); ctx.lineTo(cx + R, sy); ctx.stroke();
-
-      setTimeout(() => requestAnimationFrame(frame), 45);
-    };
-    requestAnimationFrame(frame);
-  }
+  // Theme backgrounds are CSS only; no fabricated traffic or geographic nodes.
 
   window.addEventListener("error", (e) => {
     const stream = $("stream");
