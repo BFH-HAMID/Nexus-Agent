@@ -60,4 +60,24 @@ jobs:
           nexus doctor --json || true
 
       - name: Tests
-        run: python -m pytest -q
+        run: python -m pytest -q --junitxml=/tmp/nexus-pytest.xml
+
+      - name: Annotate pytest failures
+        if: failure()
+        run: |
+          python - <<'PYTEST_REPORT'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+
+          report = Path("/tmp/nexus-pytest.xml")
+          if report.exists():
+              failures = 0
+              for case in ET.parse(report).iter("testcase"):
+                  for tag in ("failure", "error"):
+                      failure = case.find(tag)
+                      if failure is not None and failures < 10:
+                          message = f"{case.get('classname', '')}.{case.get('name', '')}\n{failure.text or failure.get('message', '')}"
+                          message = message[:6000].replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+                          print("::error::" + message)
+                          failures += 1
+          PYTEST_REPORT
