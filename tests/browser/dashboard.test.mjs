@@ -45,7 +45,8 @@ async function setup({demo = false, restore = false, width = 1568, height = 770}
     if (path === '/api/stats') body = stats;
     else if (path === '/api/agents') body = stats.agents;
     else if (path === '/api/workbench/repository/list') body=envelope([{id:'repo-fixture',name:'Nexus fixture',path:'/test-only/repo',branch:'feature-test',agent_workspace:true}]);
-    else if (path === '/api/workbench/repository/status') body=envelope({id:'repo-fixture',name:'Nexus fixture',path:'/test-only/repo',branch:'feature-test',head:'test-only-head',files:['hello.txt'],additions:1,deletions:0,ahead:null,behind:null});
+    else if (path === '/api/workbench/repository/branches') body=envelope(['main','feature-test']);
+    else if (path === '/api/workbench/repository/status') body=envelope({local_available:true,can_push:true,default_branch:'main',id:'repo-fixture',name:'Nexus fixture',path:'/test-only/repo',branch:'feature-test',head:'test-only-head',files:['hello.txt'],additions:1,deletions:0,ahead:null,behind:null});
     else if (path === '/api/workbench/settings') {if(payload)preferences={...preferences,...payload};body=envelope(preferences);}
     else if (path === '/api/workbench/metrics') body=envelope({cpu_percent:12,ram:{total:1000,used:200},gpu:null});
     else if (path === '/api/workbench/health') body=envelope({reachable:true,scope:'model-list test fixture'});
@@ -401,7 +402,7 @@ test('Repository toolbar requires reviewed files and typed commit confirmation',
 
 test('Repository selection invalidates late previews; blocked merges remain disabled',async()=>{
   const {page,context,errors}=await setup({width:430,height:780});let release=null;
-  await page.route('**/api/workbench/repository/status?*',async route=>{const id=new URL(route.request().url()).searchParams.get('repo');await route.fulfill({json:{data:{id,name:id,path:'/test/'+id,branch:'feature-test',head:'fixture',files:['hello.txt'],additions:1,deletions:0,ahead:null,behind:null}}});});
+  await page.route('**/api/workbench/repository/status?*',async route=>{const id=new URL(route.request().url()).searchParams.get('repo');await route.fulfill({json:{data:{local_available:true,can_push:true,default_branch:'main',id,name:id,path:'/test/'+id,branch:'feature-test',head:'fixture',files:['hello.txt'],additions:1,deletions:0,ahead:null,behind:null}}});});
   await page.route('**/api/workbench/repository/preview',async route=>{
     const p=route.request().postDataJSON();if(p.action==='merge')return route.fulfill({status:400,json:{error:'PR has pending/failed checks; no admin bypass is offered'}});
     await new Promise(resolve=>{release=resolve;});await route.fulfill({json:{data:{id:'late',confirmation:'PUSH feature-test',repo:p.repo}}});
@@ -440,7 +441,7 @@ for(const viewport of [{width:1568,height:770},{width:430,height:780}]){
       await page.click('#repoCounts');await page.locator('#repoMessage').waitFor({state:'visible'});
       await page.click('#repoClose');
       await page.locator('#repoBar [data-repo-action="create-pr"]').click();
-      await page.fill('#repoBase','main');await page.fill('#repoTitle','Reviewed PR');await page.fill('#repoBody','Changes and test evidence');await page.click('#repoPreview');
+      await page.selectOption('#repoBase','main');await page.fill('#repoTitle','Reviewed PR');await page.fill('#repoBody','Changes and test evidence');await page.click('#repoPreview');
       await page.waitForFunction(()=>document.querySelector('#repoOutput').textContent.includes('CREATE PR feature-test'));
       assert.equal(calls[0].action,'create-pr');assert.equal(calls[0].title,'Reviewed PR');
       assert.equal(await page.locator('#repoExecute').isEnabled(),false);await page.click('#repoClose');
@@ -585,3 +586,78 @@ test('live-run metrics explain idle state and update immediately from observed e
     assert.deepEqual(errors,[]);
   }finally{await context.close();}
 });
+
+test('GitHub search retains selection; remote private repo PR uses its default base and explicit head',async()=>{
+  const {page,context,errors}=await setup({width:430,height:780});const previews=[];
+  await page.route('**/api/workbench/repository/list*',route=>route.fulfill({json:{data:[
+    {id:'repo-fixture',name:'example/local',agent_workspace:true},
+    {id:'team/secret',name:'team/secret',private:true,agent_workspace:false},
+    {id:'team/public',name:'team/public',private:false,agent_workspace:false}
+  ]}}));
+  await page.route('**/api/workbench/repository/status?*',route=>{
+    const id=new URL(route.request().url()).searchParams.get('repo');
+    return route.fulfill({json:{data:{id,name:id,local_available:false,can_push:true,branch:'trunk',default_branch:'trunk',path:null,head:null,files:[],additions:null,deletions:null}}});
+  });
+  await page.route('**/api/workbench/repository/branches?*',route=>route.fulfill({json:{data:['trunk','feature/test']}}));
+  await page.route('**/api/workbench/repository/preview',route=>{
+    const payload=route.request().postDataJSON();previews.push(payload);
+    return route.fulfill({json:{data:{id:'remote-review',confirmation:'CREATE PR team/secret feature/test',diff:'+real test-only review'}}});
+  });
+  try{
+    await page.reload();await page.waitForFunction(()=>document.querySelector('#repoSelect').options.length===4);
+    await page.fill('#repoSearch','secret');
+    assert.equal(await page.locator('#repoSelect').inputValue(),'repo-fixture');
+    assert.equal(await page.locator('#repoSelect option[value="team/public"]').count(),0);
+    assert.ok((await page.locator('#repoSelect option[value="team/secret"]').textContent()).includes('private'));
+    await page.selectOption('#repoSelect','team/secret');
+    await page.waitForFunction(()=>document.querySelector('#repoScope').textContent.includes('task workspace unchanged')&&!document.querySelector('#repoScope').hidden);
+    assert.equal(await page.locator('#repoCounts').isEnabled(),false);
+    assert.ok((await page.locator('#repoAdded').textContent()).includes('unavailable'));
+    assert.equal(await page.locator('#repoActions [data-repo-action="commit"]').isEnabled(),false);
+    assert.equal(await page.locator('#repoActions [data-repo-action="push"]').isEnabled(),false);
+    await page.locator('#repoBar [data-repo-action="create-pr"]').click();
+    await page.locator('#repoHead').waitFor();
+    assert.equal(await page.locator('#repoBase').inputValue(),'trunk');
+    await page.selectOption('#repoHead','feature/test');await page.fill('#repoTitle','Remote review');await page.fill('#repoBody','Test evidence');await page.click('#repoPreview');
+    await page.waitForFunction(()=>document.querySelector('#repoOutput').textContent.includes('remote-review'));
+    assert.deepEqual(previews,[{repo:'team/secret',action:'create-pr',base:'trunk',head:'feature/test',title:'Remote review',body:'Test evidence'}]);
+    assert.equal(await page.locator('#repoExecute').isEnabled(),false);
+    assert.deepEqual(errors,[]);
+  }finally{await context.close();}
+});
+
+test('GitHub inventory authentication errors never fall back to local projects',async()=>{
+  const {page,context,errors}=await setup();
+  await page.route('**/api/workbench/repository/list*',route=>route.fulfill({status:400,json:{error:'GitHub connection needs attention on the Nexus server'}}));
+  try{
+    await page.reload();await page.waitForFunction(()=>document.querySelector('#repoBarError').textContent.includes('GitHub connection needs attention'));
+    assert.equal(await page.locator('#repoSelect').inputValue(),'');
+    assert.equal(await page.locator('#repoBar [data-repo-action="create-pr"]').isEnabled(),false);
+    assert.equal(await page.locator('#repoActions [data-repo-action="push"]').isEnabled(),false);
+    assert.equal(await page.locator('#repoPRs').isEnabled(),false);
+    assert.deepEqual(errors,[]);
+  }finally{await context.close();}
+});
+
+for(const viewport of [{width:1568,height:770},{width:430,height:780}]){
+  test(`Compact task entry preserves more processing space (${viewport.width}px)`,async()=>{
+    const {page,context,errors}=await setup(viewport);
+    try{
+      await page.waitForFunction(()=>document.querySelector('#repoBranch').textContent.includes('feature-test'));
+      const sizes=await page.evaluate(()=>{
+        const rect=selector=>document.querySelector(selector).getBoundingClientRect();
+        const input=rect('#taskInput'),actions=rect('.composer-actions'),stream=rect('#stream'),process=rect('.process-card'),map=rect('.map-card');
+        return {input:input.height,actions:actions.height,stream:stream.height,process:process.height,map:map.height,inputRight:input.right,actionsRight:actions.right,width:innerWidth};
+      });
+      assert.ok(sizes.input<=56,JSON.stringify(sizes));
+      assert.ok(sizes.actions<70,JSON.stringify(sizes));
+      assert.ok(sizes.stream>=150,JSON.stringify(sizes));
+      assert.ok(sizes.inputRight<=sizes.width&&sizes.actionsRight<=sizes.width,JSON.stringify(sizes));
+      if(viewport.width>1180)assert.ok(sizes.process>sizes.map,JSON.stringify(sizes));
+      await page.fill('#taskInput','A longer task description\n'.repeat(15));
+      assert.equal(await page.locator('#runBtn').isVisible(),true);
+      assert.equal(await page.locator('#clearBtn').isVisible(),true);
+      assert.deepEqual(errors,[]);
+    }finally{await context.close();}
+  });
+}

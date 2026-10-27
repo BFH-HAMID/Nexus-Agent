@@ -229,10 +229,10 @@ OS sandbox নয়। Model-এর “সফল” দাবি আর প্র�
 
 ### Repository bar: Commit, Push, PR ও Merge
 
-Dashboard-এর উপরে repository selector, current branch, প্রকৃত `+ / −` পরিবর্তন,
+Dashboard-এর task composer-এ GitHub account-এর accessible public/private repo list ও search আছে—কম্পিউটারের local project list নয়। PR list/Create PR/Merge নির্বাচিত GitHub repo-তে কাজ করে। Create PR-এর head/base হলো আগে থেকেই থাকা remote branch। Server workspace-এর origin নির্বাচিত repo-র সঙ্গে মিললেই প্রকৃত `+ / −` পরিবর্তন,
 **Commit**, **Push**, **Create PR**, **PRs** ও **Merge PR** আছে। আগে preview দেখুন,
 তারপর প্রদর্শিত confirmation হুবহু লিখে execute করুন। Repo select শুধু Git controls
-বদলায়; agent workspace বা branch বদলায় না। Force push/auto-merge/admin bypass নেই।
+বদলায়; origin না মিললে local Commit/Push বন্ধ থাকে। Server-এর `gh` login ব্যবহার হয়; agent workspace বা branch বদলায় না। Force push/auto-merge/admin bypass নেই।
 বিস্তারিত: [Repository toolbar](repository-toolbar.md)।
 
 ### হার্ডওয়্যার ও live execution

@@ -749,7 +749,12 @@ def test_workflow_http_runs_keep_normal_approval_reachable(server):
         server.state.workbench.studio.workflows.cancel(run_id)
 
 
-def test_repository_toolbar_api_uses_existing_auth(server):
+def test_repository_toolbar_api_uses_existing_auth(server, monkeypatch):
+    github = server.state.workbench.repositories.github
+    records = [{"id": "example/proj", "repository": "example/proj", "name": "example/proj", "agent_workspace": True}]
+    monkeypatch.setattr(github, "catalog", lambda **_: records)
+    monkeypatch.setattr(github, "workspace_slug", lambda: "example/proj")
+    monkeypatch.setattr(github, "metadata", lambda _: {"full_name": "example/proj", "default_branch": "main", "permissions": {"push": True}})
     server.state.token = 'repository-test-token'
     status, _ = server.get('/api/workbench/repository/list')
     assert status == 401
