@@ -1,105 +1,102 @@
 # Repository toolbar
 
-The dashboard has an Arena-style compact repository strip immediately below the
-**Describe the task** input (inside its composer, not below the page header):
+The dashboard's compact repository strip is inside the task composer, immediately
+below **Describe the task**. It provides GitHub repository search/selection, branch
+information, a local diff chip when available, **Create PR**, and **⋯** actions.
+Controls wrap on mobile. Every repository, branch, count and PR is real; no demo
+repositories, local-project fallback, or invented remote checks are shown.
 
-**repository selector · current branch · +additions / −deletions · Create PR · ⋯**
+## Connected GitHub repositories
 
-Select the diff-count chip to review changed files and optionally commit them.
-The **⋯ Repository actions** popover contains **Refresh status**, **Commit selected
-files**, **Push branch**, **View pull requests**, and **Merge PR**. It supports
-keyboard focus, Escape and outside-click dismissal, and opens above the composer
-without being clipped by the task card. On small screens the controls wrap rather
-than overflowing. Status refreshes after a run finishes, without remote fetching.
+The selector lists **all repositories accessible to the GitHub CLI account on the
+Nexus server**, including public/private owned, collaborator and organization
+repositories allowed by that account's credentials/organization policies. It
+uses paginated `gh api user/repos`, not filesystem projects or sibling checkouts.
+The search field filters by owner/repository. Searching does not silently change
+the current selection: explicitly choose a result to change the target.
 
-This matches the supplied visual placement and compact interaction pattern, not
-Arena's private backend or session/workspace management. Branch selection remains
-read-only; Git-only checkout selection never silently changes the task workspace.
+Sign in with `gh auth login` on the computer running Nexus if needed. Dashboard
+requests use that server's configured GitHub CLI authentication; an Arena browser
+connection is not automatically forwarded to a separately installed local Nexus.
+No dashboard token/password field is provided. Missing authentication is reported
+as an error, never replaced by a list of local projects.
 
-Every count/branch/file/PR comes from real Git or an explicitly requested GitHub CLI
-query. There are no demo repositories or invented remote checks.
+Loading the dashboard requests GitHub inventory and selected-repository metadata.
+Inventory is cached for 60 seconds, tied to the authenticated account; **Refresh
+GitHub repositories** forces a reload. PR lists and branches follow all pages.
+Select a repository to target its PR actions even when it has no local checkout.
+The selector never clones, fetches Git refs, checks out/creates branches, changes
+the agent task workspace, or pushes automatically. The branch label is read-only:
+for a remote-only repository it shows the GitHub default branch, not a local HEAD.
 
-## Repository selection
+## Local commit and push
 
-The selector lists the current server workspace and existing non-hidden local Git
-checkouts directly beside it (bounded to 100 sibling directories). It does not
-browse arbitrary server paths or clone remote repositories. Clone/open additional
-trusted checkouts locally beside the workspace if you want them listed.
+**Commit**, **Push**, and local `+ / −` counts are available **only when the selected
+GitHub repository matches the server workspace's validated GitHub `origin`**.
+Otherwise the chip reads **Local diff unavailable** and local actions are disabled;
+PR actions remain available subject to GitHub permissions. No unrelated local
+checkout is used. Protected main/master, detached HEAD, or a workspace branch
+changed since the server first observed it cannot be mutated by the toolbar.
 
-Selection changes **Git controls only**. It does not change the agent workspace,
-start a task, create/check out a branch, or fetch remote data. The current branch
-is displayed read-only. A detached HEAD, main/master, or a branch changed since
-this server first observed the checkout cannot be mutated through this toolbar.
-The Arena session branch is never renamed or switched by these controls.
+To commit, select exact files, enter a message, preview paths/diffs, then type the
+exact confirmation. Unrelated staged changes remain staged. Deletions/new files
+are supported; symlinks/private/runtime paths and oversized reviews are refused.
+Counts include readable untracked files and label binary changes separately.
+Ahead/behind uses existing local upstream refs; unavailable is not zero.
 
-Refresh reads local refs/status/diffs. Ahead/behind values use local upstream refs;
-no upstream is shown as unavailable, not zero. Line counts include readable
-untracked files; binary changes are labelled separately. Private/runtime paths
-are not selectable for commit.
+Commits may invoke repository hooks, signing and configured tools: trust the
+workspace and configure Git author identity beforehand. Failure after staging can
+leave selected paths staged; inspect status rather than assuming rollback. No
+reset or automatic retry is performed.
 
-## Commit
+Push previews the exact committed HEAD, origin and observed remote branch HEAD.
+After confirmation it runs ordinary `git push origin <branch>`: no force-push,
+deletion, implicit commit, or branch switch. Local HEAD/index/content and origin
+are revalidated before execution.
 
-1. Select **Commit**, choose exact changed files, and enter the message.
-2. Select **Preview action**, inspect paths/diffs/content or binary size/hash, and
-   the exact repository, branch and HEAD.
-3. Type the exact displayed confirmation and select **Execute reviewed action**.
+## Create and list PRs
 
-Only selected working-tree files are committed. Unrelated staged changes remain
-staged. File deletions and new files are supported. Symlinks/private paths and
-oversized reviews are refused. Preview is bounded to 2 MB; large changes belong
-in a terminal review.
+**Create PR** targets the selected GitHub repository, with no local checkout
+required. Choose existing **remote base and head branches**, supply a reviewed
+title/body, and preview the actual GitHub comparison of their observed commit
+SHAs. The base defaults to the selected repository's default branch. Head/base
+must differ and contain different commits; push your desired branch separately
+first. Confirmation is mandatory. The server rechecks account, write permission,
+repository identity and both branch SHAs before `gh pr create --repo ... --head
+... --base ...`. It never silently pushes or clones.
 
-A commit can invoke repository hooks, Git signing, and locally configured tools:
-use only trusted checkouts. Git author identity must already be configured.
-If commit fails after staging selected files, the error explicitly warns that the
-index may have changed; inspect status rather than assuming rollback. No reset,
-automatic retry, or secret identity/configuration changes are performed.
-
-## Push and PR
-
-Push previews the exact committed HEAD, origin repository and observed remote
-branch HEAD. Typed confirmation is mandatory. It runs ordinary `git push origin
-<branch>`, never force-push, deletion, or an implicit commit.
-
-**Create PR** requires that exact HEAD already be pushed. Supply a reviewed title,
-body and base, preview, and confirm. The diff uses the local origin/base ref and
-is labelled as such. This action uses `gh pr create --repo ... --head ...`; it
-never silently pushes. **PRs** explicitly reads actual open PRs for that selected
-repository/branch and offers links and merge-review actions.
-
-Remote actions require a credential-free GitHub `origin` URL and configured Git/
-`gh` authentication. No token/password field is provided. No GitHub request runs
-merely because the page loads or a repository is selected.
+**View pull requests** lists all open PRs in that repository, not only PRs for the
+server workspace's current branch. It offers GitHub links and merge-review actions.
 
 ## Merge
 
-Supply an explicit PR number and choose merge/squash/rebase. Preview requires:
+Supply an explicit PR number and choose merge/squash/rebase. Preview requires an
+open, non-draft PR, known mergeability, CLEAN merge state, and no pending/failed
+reported checks. Review includes the remote PR metadata/checks and actual diff;
+no configured checks is **not** evidence of passing tests. The PR need not match
+the local workspace branch or commit.
 
-- Open, non-draft PR matching the exact local branch/commit.
-- Known mergeability, CLEAN merge state, no pending/failed reported checks.
-- Review of actual PR metadata/checks; no configured checks is **not** test proof.
-
-After typed confirmation, the server rechecks repo/HEAD/index, origin/remote HEAD,
-PR head, base and checks. It runs `gh pr merge <explicit-number> --repo ...
---merge|--squash|--rebase --match-head-commit <reviewed-sha>`. It never uses
-`--admin`, `--auto`, branch deletion, local checkout or a follow-up pull/reset.
-GitHub branch protection and server rules still apply. Remote changes can race a
-review; exact-head matching and GitHub's own protection remain authoritative.
+Execution revalidates the account, repository permissions, PR head/base and checks,
+then runs `gh pr merge <explicit-number> --repo ... --merge|--squash|--rebase
+--match-head-commit <reviewed-sha>`. No `--admin`, `--auto`, branch deletion, local
+checkout, or follow-up pull/reset is used. Remote branches can still race between
+API calls and a command; GitHub protections are authoritative and merge uses an
+exact-head precondition. PR creation is not an atomic branch-SHA transaction.
 
 ## Safety and validation
 
-Previews are one-use, expire after five minutes, and are invalidated by local
-HEAD/index/working-tree changes. Concurrent reuse is rejected. Switching the
-selector/forms discards old or late-arriving browser previews. Active/queued
-agents, workflows and managed dev apps block mutations. Enforced Studio isolation
-also blocks host Git/GitHub mutations; there is no host-network bypass.
+Previews are one-use, expire after five minutes, and are bounded to 2 MB. Remote
+previews recheck remote state; matching-workspace previews additionally check
+local HEAD/index/content. Concurrent reuse is rejected. Switching repository or
+editing forms discards old/late browser previews. Active/queued agents, workflows
+and managed dev apps block mutations. Enforced Studio isolation blocks GitHub
+inventory/reads and host Git/GitHub mutations; there is no network bypass.
 
-The API uses the existing server authentication and origin protections under
-`/api/workbench/repository/`. Set `NEXUS_SERVE_TOKEN` before exposing a server on
-an untrusted network. Commands run under the server OS account; repository
-selection is not an OS sandbox or multi-user RBAC boundary. External edits and
-hook side effects cannot be made a global filesystem transaction by this toolbar.
+The API uses existing authentication/origin protection under
+`/api/workbench/repository/`. Set `NEXUS_SERVE_TOKEN` before exposing a server on an
+untrusted network. Commands run as the server OS account; repository selection is
+not an OS sandbox or multi-user RBAC boundary. Hooks and external edits cannot be
+made a global filesystem transaction.
 
-Tests make real commits only in disposable fixture repositories. GitHub push/PR/
-merge transports are scripted in tests; no real commit/push/PR/merge is performed
-on the user's checkout while implementing or smoke-testing the toolbar.
+Tests use disposable local repositories and scripted GitHub transports; they do
+not mutate real GitHub repositories to verify toolbar behavior.

@@ -1,6 +1,7 @@
 """Review-first repository toolbar. No checkout, force push, auto-merge or implicit push.
 
-Repositories are existing local checkouts under the server workspace's parent.
+The public selector is backed by the authenticated GitHub account inventory.
+Local helpers operate only on the matching server workspace.
 Selecting one changes only Git controls, never an agent's workspace/branch.
 """
 from __future__ import annotations
@@ -44,10 +45,6 @@ class Repositories:
 
     def discover(self):
         candidates = [self.root]
-        try:
-            candidates.extend(sorted((p for p in self.root.parent.iterdir() if not p.name.startswith('.') and p.is_dir() and not p.is_symlink()), key=lambda p: p.name)[:100])
-        except OSError:
-            pass
         found = {}
         for path in candidates:
             path = path.resolve()
@@ -164,21 +161,16 @@ class Repositories:
             raise ValueError('Protected/detached/changed branch refused. This toolbar never checks out or creates branches')
         return branch
 
+    @property
+    def github(self):
+        with self.state.lock:
+            if not hasattr(self, '_github'):
+                from .github_repositories import GitHubRepositories
+                self._github = GitHubRepositories(self)
+            return self._github
+
     def get(self, path, query):
-        if path == 'list':
-            return observation(self.discover(), 'real server-local Git checkouts; no network discovery')
-        ident = (query.get('repo') or [''])[0]
-        if path == 'status':
-            return observation(self.status(ident), 'actual local Git refs/diff/working tree')
-        if path == 'prs':
-            if self.wb.studio.settings()['isolation']['enabled']:
-                raise ValueError('GitHub transport disabled under enforced isolation')
-            root, _ = self.resolve(ident)
-            repository = self.remote(root)
-            data = json.loads(self.command(root, ['gh', 'pr', 'list', '--repo', repository, '--head', self.branch(root),
-                '--state', 'open', '--json', 'number,title,url,state,headRefName,baseRefName,isDraft']))
-            return observation(data, 'actual GitHub PRs for the selected repository/branch')
-        raise ValueError('Unknown repository view')
+        return self.github.get(path, query)
 
     def pr(self, root, repository, number):
         if type(number) is not int or number <= 0:
@@ -289,6 +281,8 @@ class Repositories:
             if branch != preview['branch'] or self.fingerprint(root) != preview['fingerprint']:
                 raise ValueError('Repository/index/HEAD changed since preview; nothing executed, review again')
             action = preview['action']
+            if preview.get('github_repository') and self.remote(root).lower() != preview['github_repository'].lower():
+                raise ValueError('Workspace origin changed since GitHub selection; review again')
             if action != 'commit' and (self.remote(root) != preview['repository'] or self.remote_head(root, branch) != preview['remote_head']):
                 raise ValueError('Origin/remote branch changed; review again')
             self.previews.pop(ident, None)  # consumed even if an external operation fails
@@ -314,8 +308,4 @@ class Repositories:
             return observation({'action': action, 'exit_code': 0, 'output': output, 'note': 'Actual command result. No branch switch, implicit follow-up push, pull, reset or deletion.'}, 'explicit confirmed Git/GitHub command')
 
     def post(self, path, payload):
-        if path == 'preview':
-            return self.preview(payload)
-        if path == 'execute':
-            return self.execute(payload)
-        raise ValueError('Unknown repository action')
+        return self.github.post(path, payload)
