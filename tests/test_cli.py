@@ -182,7 +182,10 @@ def test_task_runs_and_prints_a_summary(repo, capsys):
 
 
 def test_task_with_injected_provider(repo, monkeypatch):
-    provider = FakeProvider("gemini", [finish_completion("wrote the endpoint")])
+    provider = FakeProvider("gemini", [
+        tool_completion([("write_file", {"path": "app/profiles.py", "content": "# fixture endpoint\n"})]),
+        finish_completion("wrote the endpoint"),
+    ])
     monkeypatch.setattr(cli, "build_parser", cli.build_parser)  # keep parser real
     args = ns(workspace=str(repo), yes=True, task=["add an api endpoint for profiles"],
               providers_factory=factory_for(provider))
@@ -429,7 +432,8 @@ def test_denied_tool_call_message_reaches_the_model(repo):
     denied = [m for m in result.messages if isinstance(m.content, list)
               and any("DENIED" in getattr(b, "content", "") for b in m.content)]
     assert denied
-    assert result.summary == "respecting the denial"
+    assert not result.ok and "approval denied" in result.stopped_reason
+    assert len(provider.calls) == 1  # Never nag the model/user to bypass a denial.
 
 
 def test_emit_console_does_not_crash_on_any_event_type(capsys):

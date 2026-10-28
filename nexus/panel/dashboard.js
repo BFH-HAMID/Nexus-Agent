@@ -126,6 +126,10 @@
     state.telemetry.maxTurns = (s.settings && s.settings.max_turns) || 24;
     $("metaWs").textContent = (s.workspace || "?").split("/").slice(-1)[0] || s.workspace;
     $("metaWs").title = s.workspace || "";
+    $("taskWorkspace").textContent = window.nexusGitHubRepository?.()
+      ? "Task target: GitHub " + window.nexusGitHubRepository() + " · new task branch after permission · no clone/local tests"
+      : "Task workspace: " + (s.workspace || "unavailable") + " · select a GitHub repo for direct remote tasks.";
+    $("taskWorkspace").title = $("taskWorkspace").textContent;
     $("metaRoles").textContent = s.roles;
     $("metaAgents").textContent = Object.keys(state.agents).length;
     state.liveReady = !s.demo;
@@ -466,6 +470,8 @@
     }
     if (e.type === "ping") return;
     state.counters.events++;
+    const remoteTask=e.type==='github_task'?e.task:e.result?.github_task;
+    if(remoteTask)state.githubRepo=remoteTask.repository;
     window.dispatchEvent(new CustomEvent("nexus:event", {detail:e}));
     if (e.agent && e.model && !state.agents[e.agent]) {
       state.agents[e.agent] = {model: e.model, provider: e.provider || "openai-compatible", tool_mode: e.tool_mode || "text"};
@@ -605,11 +611,16 @@
         break;
       }
       case "text": {
+        const txt = String(e.text || "").trim();
+        const existing = e.streamed && state.streamTxt?.isConnected ? state.streamTxt : null;
+        if (existing) {
+          if (txt) existing.textContent = trunc(txt, 4000);
+          else state.streamEl.remove(); // Parsed tool-only output is not assistant prose.
+        }
         state.streamEl = null;
         state.streamTxt = null;
         state.streamChars = 0;
-        const txt = String(e.text || "").trim();
-        if (!txt) break;
+        if (!txt || existing) break;
         addStep("text", "assistant", "▸", `<span class="txt">${esc(trunc(txt, 4000))}</span>`, ts() + (e.role || ""));
         break;
       }
@@ -701,7 +712,9 @@
       read_only: $("readOnly").checked,
       auto_yes: $("autoYes").checked,
       pipeline: $("pipelineSelect").value || null,
+      ...(window.nexusGitHubRepository?.() ? {github_repo: window.nexusGitHubRepository()} : {}),
     };
+    state.githubRepo = body.github_repo || null;
     state.taskId = null;
     state.lastEventId = 0;
     $("clearBtn").disabled = true;
@@ -797,8 +810,10 @@
     try { sessionStorage.removeItem("nexus.activeTask"); } catch (_) {}
     Object.keys(state.agents).forEach((n) => setAgentStatus(n, "idle"));
     const r = e.result || {};
-    const ok = r.ok === true && e.status === "done";
-    const outcome = e.status === "cancelled" ? "run cancelled" : ok ? "run complete" : "run failed";
+    const blocked = r.execution?.state === "blocked";
+    const ok = r.ok === true && e.status === "done" && !blocked;
+    const outcome = e.status === "cancelled" ? "run cancelled" : blocked ? "run blocked" : ok ?
+      (r.execution?.required ? "run finished · acceptance unverified" : "run complete") : "run failed";
     $("telState").textContent = e.status || (ok ? "done" : "error");
     $("sbState").textContent = e.status || "done";
     setPhase(e.status === "cancelled" ? "cancelled" : ok ? "done" : "error", outcome + " · " + (r.role || "") + " · " + (r.agent || ""),
@@ -819,7 +834,7 @@
     if (r.agent) $("telAgent").textContent = "agent " + r.agent;
 
     const steps = Array.isArray(r.steps) ? r.steps : [];
-    const summary = r.error || r.summary || r.text || "";
+    const summary = r.error || (blocked ? r.stopped_reason : "") || r.summary || r.text || "";
     addStep("done", "done", ok ? "✔" : "✗",
       `<b>${esc(outcome)}</b> · ${esc(summary ? trunc(summary, 1200) : "no summary")}`,
       ts() + [r.role, r.agent, r.turns != null ? r.turns + " turns" : "",
@@ -1089,11 +1104,12 @@
     setPhase("thinking", approved ? "approval received · resuming" : "denial received", "");
   }
 
+  window.nexusSelectedTask = () => ({id:state.taskId, github_repo:state.githubRepo || null});
   window.nexusAttachTask = async id => {
     const {ok, body} = await api("/api/task/" + encodeURIComponent(id));
     if (!ok) throw new Error(body.error || "Run is no longer live; inspect durable history instead");
     if (state.es) state.es.close();
-    resetRunState(); state.lastEventId = 0; state.taskId = id; state.running = true;
+    resetRunState(); state.lastEventId = 0; state.taskId = id; state.githubRepo = body.github_repo || body.options?.github_repo || body.result?.github_task?.repository || null; state.running = true;
     state.startedAt = body.created * 1000;
     $("stream").innerHTML = "";
     $("runBtn").disabled = true; $("clearBtn").disabled = true; $("cancelBtn").disabled = false;
@@ -1109,6 +1125,7 @@
     const {ok, body} = await api("/api/task/" + encodeURIComponent(id));
     if (!ok) { actionError(body.error || "Previous task unavailable"); return; }
     state.taskId = id;
+    state.githubRepo = body.github_repo || body.options?.github_repo || body.result?.github_task?.repository || null;
     state.running = true;
     state.startedAt = body.created * 1000;
     $("runBtn").disabled = true;

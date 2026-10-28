@@ -98,6 +98,7 @@ class Session:
             "task": self.task,
             "role": self.role,
             "pipeline": self.pipeline,
+            "github_repo": self.options.get("github_repo"),
             "status": self.status,
             "created": self.created,
             "result": self.result,
@@ -348,8 +349,11 @@ class ServerState:
                 try:
                     from .workbench import proposal
 
-                    diff = proposal(self.workspace, spec.name, args)
+                    diff = (self.workbench.repositories.github.tasks.proposal(session, spec.name, args)
+                            if session.options.get("github_repo") else proposal(self.workspace, spec.name, args))
                 except (ValueError, OSError, UnicodeError) as exc:
+                    if session.options.get("github_repo"):
+                        return ApprovalDecision(False, reason="Remote approval preview failed: " + str(exc))
                     diff = {"available": False, "reason": str(exc)}
                 session.pending = {
                     "proposal": diff,
@@ -391,6 +395,10 @@ class ServerState:
                 agent.gate.policy = self.workbench.studio.policy(agent, session, self.workbench.write_policy(session.options["policy"]))
                 agent.gate.callback = self._approval(session)
                 self.workbench.studio.attach(agent, session)
+            if session.options.get("github_repo"):
+                remote = self.workbench.repositories.github.tasks
+                record = remote.start(session)
+                remote.attach(agent, session, record)
             if self.demo:
                 from .demo import patch_agent_for_demo
 
@@ -398,7 +406,7 @@ class ServerState:
                 session.push({"type": "status", "message": "DEMO MODE - scripted run, no model called"})
             session.agent = agent
             session.status = "running"
-            session.push({"type": "status", "message": f"starting run in {self.workspace}"})
+            session.push({"type": "status", "message": f"starting run in {getattr(agent, 'remote_workspace', self.workspace)}"})
             steps: list[dict[str, Any]] = []
             if session.pipeline:
                 session.push({"type": "status",
@@ -426,6 +434,7 @@ class ServerState:
                 )
             session.result = {
                 "ok": result.ok,
+                "execution": result.execution,
                 "role": result.role,
                 "agent": result.agent,
                 "route_method": result.method,
@@ -442,6 +451,8 @@ class ServerState:
                 "pipeline": session.pipeline,
                 "steps": steps,
             }
+            if session.options.get("github_repo"):
+                session.result["github_task"] = self.workbench.repositories.github.tasks.get(session.task_id)
             if session.pipeline:
                 session.result.update(
                     turns=sum(r.turns for r in results), tool_calls=sum(r.tool_calls for r in results),
@@ -459,7 +470,9 @@ class ServerState:
             try:
                 self.workbench.studio.finished(session)
             except Exception as exc:
-                session.push({"type": "status", "message": "Studio evidence/history update failed: " + type(exc).__name__})
+                session.result = {**(session.result or {}), "evidence_error": type(exc).__name__}
+                session.push({"type": "status", "message": "Studio evidence/history update failed: " +
+                              self.workbench.studio.redact_text(str(exc))[:300]})
             try:
                 self.workbench.save_run(session)
             except Exception as exc:

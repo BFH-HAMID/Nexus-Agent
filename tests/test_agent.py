@@ -161,7 +161,10 @@ def test_fallback_provider_completes_the_run(repo):
     cfg = load_config(repo)
     cfg.agents["gemini"].fallback = "deepseek"
     claude = FakeProvider("gemini", [ProviderError("claude is down", retryable=True)], fallback="deepseek")
-    hermes = FakeProvider("deepseek", [finish_completion("hermes finished it")])
+    hermes = FakeProvider("deepseek", [
+        tool_completion([("write_file", {"path": "README.md", "content": "# Updated README\n"})]),
+        finish_completion("hermes finished it"),
+    ])
     agent = NexusAgent(cfg, workspace=repo, providers=fake_registry(claude, hermes, config=cfg),
                        auto_yes=True, emit=lambda e: None)
     result = agent.run("write a README section")
@@ -256,7 +259,7 @@ def test_ask_agent_consults_another_specialist(repo):
         tool_completion([("ask_agent", {"role": "qa", "question": "what should I test for /users?"})]),
         finish_completion("tests planned"),
     ], extra_providers=[qa], config=cfg)
-    result = agent.run("write the /users endpoint", role="backend")
+    result = agent.run("plan the /users endpoint", role="backend")
     assert result.ok
     assert qa.calls, "the consulted agent was never called"
     assert "no tools" in qa.calls[0]["system"].lower()
@@ -390,10 +393,14 @@ def test_ship_feature_pipeline_hands_off_between_roles(repo):
         # step 1: backend (gemini) writes the code, then finishes
         tool_completion([("write_file", {"path": "app/api.py", "content": "# new api\n"})]),
         finish_completion("implemented /users rate limiting"),
-        # step 3: security-audit (also gemini) reviews and finishes
+        # step 3: security-audit reads the actual handoff file before review.
+        tool_completion([("read_file", {"path": "app/api.py"})]),
         finish_completion("security review clean"),
     ])
-    hermes = FakeProvider("deepseek", [finish_completion("tests written: 12 passed")])
+    hermes = FakeProvider("deepseek", [
+        tool_completion([("read_file", {"path": "app/api.py"})]),
+        finish_completion("reviewed test targets; tests not executed"),
+    ])
     cfg.roles.get("qa").agent = "deepseek"
     agent = NexusAgent(cfg, workspace=repo, providers=fake_registry(backend, hermes, config=cfg),
                        auto_yes=True, emit=lambda e: None)
@@ -405,8 +412,8 @@ def test_ship_feature_pipeline_hands_off_between_roles(repo):
     assert "implemented /users rate limiting" in qa_prompt
     assert "step 2/3" in qa_prompt
     # and the security step received the QA note
-    sec_prompt = backend.calls[-1]["messages"][-1].content
-    assert "tests written: 12 passed" in sec_prompt
+    sec_prompt = backend.calls[-2]["messages"][-1].content
+    assert "reviewed test targets; tests not executed" in sec_prompt
 
 
 def test_pipeline_stops_when_a_step_fails(repo):
@@ -449,3 +456,107 @@ def test_read_only_pipeline_step_cannot_write(repo):
     results = agent.run_pipeline("audit", "review auth")
     assert results[0].ok
     assert not (repo / "evil.py").exists()
+
+
+@pytest.mark.parametrize('reply', [
+    'Here are the files created or changed: ```java\n// Implement later\n```',
+    'All done, tests pass and pushed to GitHub.',
+])
+def test_coding_prose_without_execution_retries_then_blocks(repo, reply):
+    agent = make_agent(repo, [text_completion(reply)] * 5)
+    result = agent.run('Implement vector search and push to GitHub', role='general')
+    assert not result.ok and result.execution['state'] == 'blocked'
+    assert result.turns == 3 and result.tool_calls == 0
+    assert result.changed_files == []
+    assert 'no successful workspace tool' in result.stopped_reason
+    assert not (repo / 'src').exists()
+    assert '```tool' in agent.fake.calls[1]['messages'][-1].content
+    assert 'wrong workspace' in agent.fake.calls[1]['messages'][-1].content
+
+
+def test_coding_agent_recovers_from_prose_using_real_tools(repo):
+    agent = make_agent(repo, [
+        text_completion('I will change app/main.py.'),
+        tool_completion([('read_file', {'path': 'app/main.py'})]),
+        tool_completion([('write_file', {'path': 'app/main.py', 'content': '# actual edit\n'})]),
+        finish_completion('Updated the file; tests not run'),
+    ])
+    result = agent.run('Fix app/main.py', role='general')
+    assert result.ok and result.execution['state'] == 'unverified'
+    assert result.execution['successful_workspace_tools'] == 2
+    assert result.changed_files == ['app/main.py']
+    assert (repo / 'app/main.py').read_text() == '# actual edit\n'
+
+
+def test_finish_only_cannot_certify_implementation(repo):
+    agent = make_agent(repo, [finish_completion('done')] * 5)
+    result = agent.run('Implement vector search', role='general')
+    assert not result.ok and result.turns == 3
+    assert result.execution['state'] == 'blocked'
+    assert any(e['type'] == 'tool_result' and e.get('is_error') for e in agent.events)
+
+
+def test_failed_and_denied_tools_do_not_count_as_execution(repo):
+    agent = make_agent(repo, [
+        tool_completion([('read_file', {'path': 'missing.java'})]),
+        finish_completion('done'), finish_completion('done'), finish_completion('done'),
+    ])
+    result = agent.run('Implement missing.java', role='general')
+    assert not result.ok and result.execution['successful_workspace_tools'] == 0
+    assert result.execution['state'] == 'blocked'
+
+
+def test_plan_and_advice_still_allow_plain_text(repo):
+    for task, readonly in [('Explain how to implement vector search', False),
+                           ('Implement vector search', True), ('Write a short example', False)]:
+        agent = make_agent(repo, [text_completion('Here is the plan, no files changed.')])
+        result = agent.run(task, role='general', read_only=readonly)
+        assert result.ok and result.turns == 1
+
+
+def test_failed_command_is_not_success_even_after_finish(repo):
+    import shlex
+    import sys
+    command = shlex.join([sys.executable, '-c', 'raise SystemExit(3)'])
+    agent = make_agent(repo, [tool_completion([('run_command', {'command': command})]), finish_completion('all passed')])
+    result = agent.run('Run the tests', role='general')
+    assert not result.ok and result.execution['state'] == 'blocked'
+    assert any(e['type'] == 'tool_result' and e.get('is_error') for e in agent.events)
+
+
+def test_failed_command_followed_by_success_can_recover(repo):
+    import shlex
+    import sys
+    fail = shlex.join([sys.executable, '-c', 'raise SystemExit(3)'])
+    success = shlex.join([sys.executable, '-c', 'print("real recovery")'])
+    agent = make_agent(repo, [tool_completion([('run_command', {'command': fail})]),
+        tool_completion([('run_command', {'command': success})]), finish_completion('recovered')])
+    result = agent.run('Run the checks', role='general')
+    assert result.ok and result.execution['successful_workspace_tools'] == 1
+
+
+def test_max_turn_limit_cannot_report_success(repo):
+    agent = make_agent(repo, [tool_completion([('read_file', {'path': 'README.md'})])] * 3)
+    result = agent.run('Fix the bug', role='general', max_turns=2)
+    assert not result.ok and 'max_turns' in result.stopped_reason
+
+
+def test_short_limit_never_adds_extra_calls(repo):
+    agent = make_agent(repo, [text_completion('Done')])
+    result = agent.run('Implement vector search', role='general', max_turns=1)
+    assert not result.ok and result.turns == 1 and len(agent.fake.calls) == 1
+
+
+@pytest.mark.parametrize('task', ['egula fixed koro', 'code likhe push koro', 'বাগ ঠিক কর'])
+def test_local_language_imperatives_do_not_accept_prose_as_execution(repo, task):
+    agent = make_agent(repo, [text_completion('Done')] * 3)
+    result = agent.run(task, role='general')
+    assert not result.ok and result.execution['state'] == 'blocked'
+
+
+def test_real_remote_tool_success_is_execution_activity(repo, monkeypatch):
+    from nexus import tools
+    monkeypatch.setattr(tools, 'tool_gh', lambda *a, **k: 'scripted successful GitHub transport, not a live mutation')
+    agent = make_agent(repo, [tool_completion([('gh', {'args': ['pr', 'list']})]), finish_completion('listed actual PRs')])
+    result = agent.run('Run gh pr list', role='general')
+    assert result.ok and result.execution['successful_workspace_tools'] == 1

@@ -98,3 +98,36 @@ tool duration uses the latest three completed-tool duration measurements, and
 shows **No results yet** until a timed result arrives. Values update immediately
 on events as well as on the normal display timer. Geolocation is not collected;
 the old permanently unavailable geolocation placeholder is replaced by tool calls.
+
+## Coding execution versus a text answer
+
+For recognized imperative implementation/edit/command tasks, a prose-only reply
+or `finish` alone is not execution evidence. Nexus asks for real workspace tools
+at most twice (also bounded by the turn budget), then marks the run **blocked** if
+none succeeded. Failed or denied tools do not count. Informational questions and
+read-only/plan runs can still finish with text. Intent recognition is a conservative
+heuristic, not a semantic guarantee for every language or prompt.
+
+Successful workspace tool activity is displayed as **acceptance unverified**, not
+proof that every requirement, test, commit or push succeeded. Inspect the changed
+files and actual command/test output. Nonzero command/Git/PR outcomes are tool
+errors. The Git preparation helper stops at failed checkout/staging/commit/push;
+it never pushes after a failed commit. Partial branch/index changes are not rolled
+back automatically. An approval denial stops the run without retrying that denial.
+Turn exhaustion and repeated tool errors do not report success.
+
+The composer identifies the actual target: the local server workspace when no
+GitHub repository is selected, or the selected GitHub repository in direct API
+mode. Direct GitHub tasks create an approved isolated remote branch and expose
+only remote file tools; no clone or local checkout/shell is used. Local builds
+and tests are unavailable in that mode. Run Nexus with
+`serve --workspace <existing-project-directory>` and choose the local-workspace
+option if you need local execution instead. The model is instructed to inspect
+the target files/manifests before editing, not invent their contents.
+These guards improve execution honesty; they cannot make an incapable model
+implement a feature or grant credentials/permissions.
+
+Context and completion evidence now use separate record identifiers, preventing
+a completed run's evidence from colliding with its stored outbound context.
+Evidence storage errors remain visible and do not fabricate success or evidence.
+Streaming assistant text is finalized in its existing log entry, not duplicated.

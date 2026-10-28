@@ -342,6 +342,7 @@ class ToolRegistry:
             message = f"DENIED: {decision.reason or 'user rejected this call'}."
             if self.ctx.gate.mode == "plan":
                 message += " You are in plan mode - describe the change instead of applying it."
+            self._emit_failure(name, message)
             return message, True
 
         call_id = uuid.uuid4().hex
@@ -1032,9 +1033,11 @@ def tool_delete_file(ctx: ToolContext, args: dict[str, Any]) -> str:
 def run_live_command(ctx: ToolContext, command: str, cwd: Path, timeout: float) -> tuple[str, int]:
     from .live_process import stream_shell
 
-    return stream_shell(command, cwd, timeout=min(timeout, ctx.command_timeout), emit=ctx.emit,
+    output, code = stream_shell(command, cwd, timeout=min(timeout, ctx.command_timeout), emit=ctx.emit,
         cancel=ctx.cancel_event, call_id=ctx.state.get("active_call_id", ""), max_chars=ctx.max_output_chars,
         tool=ctx.state.get("active_tool", "run_command"))
+    ctx.state["last_exit_code"] = code
+    return output, code
 
 
 def tool_run_command(ctx: ToolContext, args: dict[str, Any]) -> str:
@@ -1049,7 +1052,10 @@ def tool_run_command(ctx: ToolContext, args: dict[str, Any]) -> str:
     output, code = run_live_command(ctx, command, cwd, timeout)
     ctx.state["last_exit_code"] = code
     prefix = f"$ {command}\n"
-    return prefix + (output or "(no output)")
+    result = prefix + (output or "(no output)")
+    if code != 0:
+        raise ToolFailure(f"Command exited with code {code}\n{result}")
+    return result
 
 
 GIT_READ_ONLY = {"status", "diff", "log", "show", "branch", "remote", "tag", "rev-parse",
@@ -1071,6 +1077,8 @@ def tool_git(ctx: ToolContext, args: dict[str, Any]) -> str:
     sub = parts[0]
     output, code = run_live_command(ctx, "git " + shlex.join(parts), ctx.workspace, 60)
     ctx.state["last_exit_code"] = code
+    if code != 0:
+        raise ToolFailure(f"git {sub} exited with code {code}\n{output or '(no output)'}")
     note = "" if sub in GIT_READ_ONLY else f" (git {sub})"
     return f"$ git {' '.join(shlex.quote(p) for p in parts)}{note}\n{output or '(no output)'}"
 
@@ -1127,6 +1135,14 @@ def tool_git_prepare(ctx: ToolContext, args: dict[str, Any], *, role: str) -> st
     paths = [str(p) for p in (args.get("paths") or [])]
 
     log: list[str] = []
+    def checked(parts):
+        output, code = run_git(parts, ctx.workspace)
+        ctx.state["last_exit_code"] = code
+        if code:
+            raise ToolFailure(f"git {parts[0]} failed (exit {code}): {output.strip()}\n"
+                              "Stopped without automatic retry. Earlier steps may have changed branch/index; inspect status.")
+        return output
+
     # 1. branch
     branch = args.get("branch") or make_branch_name(role, task, prefix)
     current, _ = run_git(["rev-parse", "--abbrev-ref", "HEAD"], ctx.workspace)
@@ -1135,16 +1151,16 @@ def tool_git_prepare(ctx: ToolContext, args: dict[str, Any], *, role: str) -> st
         branch = unique_branch(branch, ctx.workspace)
         _, code = run_git(["rev-parse", "--verify", "--quiet", f"refs/heads/{branch}"], ctx.workspace)
         if code == 0:
-            out, _ = run_git(["checkout", branch], ctx.workspace)
+            out = checked(["checkout", branch])
         else:
-            out, _ = run_git(["checkout", "-b", branch], ctx.workspace)
+            out = checked(["checkout", "-b", branch])
         log.append(f"branch: {branch} (was {current or 'detached'})\n{out.strip()}")
     else:
         log.append(f"branch: already on {branch}")
 
     # 2. stage
     stage_args = ["add"] + (paths if paths else ["-A"])
-    out, _ = run_git(stage_args, ctx.workspace)
+    out = checked(stage_args)
     log.append(f"staged: {' '.join(stage_args[1:])}{(' - ' + out.strip()) if out.strip() else ''}")
 
     staged, _ = run_git(["diff", "--cached", "--name-status"], ctx.workspace)
@@ -1154,13 +1170,13 @@ def tool_git_prepare(ctx: ToolContext, args: dict[str, Any], *, role: str) -> st
 
     # 3. commit
     message = args.get("message") or conventional_message(task, role, ctype, staged.strip())
-    out, code = run_git(["commit", "-m", message], ctx.workspace)
+    out = checked(["commit", "-m", message])
     log.append(f"commit: {out.strip()}")
     sha, _ = run_git(["rev-parse", "--short", "HEAD"], ctx.workspace)
 
     # 4. optional push
     if args.get("push"):
-        out, code = run_git(["push", "-u", "origin", branch], ctx.workspace)
+        out = checked(["push", "-u", "origin", branch])
         log.append(f"push: {out.strip()}")
 
     ctx.state["branch"] = branch
@@ -1269,9 +1285,10 @@ def tool_gh_create_pr(ctx: ToolContext, args: dict[str, Any], *, role: str) -> s
             cmd += ["--reviewer", str(reviewer)]
         output, code = run_live_command(ctx, shlex.join(cmd), ctx.workspace, 120)
         if code == 0:
+            ctx.state.pop("last_remote_error", None)
             ctx.state["last_pr"] = output.strip().splitlines()[-1] if output.strip() else ""
             return f"pull request created:\n{output.strip()}"
-        return f"gh pr create failed (exit {code}):\n{output.strip()}"
+        raise ToolFailure(f"gh pr create failed (exit {code}):\n{output.strip()}")
 
     token = github_token(ctx)
     slug = repo_slug(ctx)
@@ -1288,7 +1305,9 @@ def tool_gh_create_pr(ctx: ToolContext, args: dict[str, Any], *, role: str) -> s
         timeout=60,
     )
     if resp.status_code >= 400:
-        return f"GitHub API {resp.status_code}: {resp.text[:800]}"
+        ctx.state["last_remote_error"] = f"GitHub PR request failed with HTTP {resp.status_code}"
+        raise ToolFailure(f"GitHub API {resp.status_code}: {resp.text[:800]}")
+    ctx.state.pop("last_remote_error", None)
     data = resp.json()
     ctx.state["last_pr"] = data.get("html_url", "")
     for label in args.get("labels") or []:
@@ -1308,6 +1327,8 @@ def tool_gh(ctx: ToolContext, args: dict[str, Any]) -> str:
     if not parts:
         raise ToolFailure("no gh arguments given")
     output, code = run_live_command(ctx, shlex.join(["gh", *parts]), ctx.workspace, 120)
+    if code:
+        raise ToolFailure(f"gh exited with code {code}: {output.strip()}")
     return f"$ gh {' '.join(shlex.quote(p) for p in parts)}\n{output.strip() or '(no output)'}"
 
 
@@ -1327,6 +1348,8 @@ def tool_gh_merge_pr(ctx: ToolContext, args: dict[str, Any]) -> str:
         if args.get("delete_branch"):
             cmd.append("--delete-branch")
     output, code = run_live_command(ctx, shlex.join(cmd), ctx.workspace, 180)
+    if code:
+        raise ToolFailure(f"gh pr operation exited with code {code}: {output.strip()}")
     return f"$ {' '.join(shlex.quote(c) for c in cmd)}\n{output.strip() or '(no output)'}"
 
 

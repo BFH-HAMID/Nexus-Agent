@@ -497,6 +497,12 @@ class Workbench:
         policy = self.settings()
         options = {"policy": policy, "manual_local": bool(payload.get("local_model")), "enqueue": bool(payload.get("enqueue")),
                    "mode": str(payload.get("mode") or "execute")}
+        repository = payload.get("github_repo")
+        if repository is not None:
+            from .github_repositories import SLUG
+            if not isinstance(repository, str) or not SLUG.fullmatch(repository) or '..' in repository.split('/'):
+                raise ValueError("Choose a valid GitHub repository")
+            options["github_repo"] = repository
         if options["mode"] not in {"plan", "execute"}:
             raise ValueError("Unknown run mode")
         return options

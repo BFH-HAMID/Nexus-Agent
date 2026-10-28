@@ -180,3 +180,15 @@ def test_provider_guard_blocks_real_registry_call_and_circuit_cooldown(studio):
         agent.providers.request_guard(name, '', [], [])
     agent.providers.error_observer(name, ProviderError('Circuit open'))
     assert studio.items('circuit')[0]['updated_at'] == circuit['updated_at']
+
+
+def test_outbound_context_and_finished_evidence_do_not_collide(studio):
+    s = session(studio)
+    studio.put('context', {'task_id': s.task_id, 'payload': {'messages': []}}, s.task_id)
+    s.result = {'ok': False, 'text': 'No files changed', 'execution': {'state': 'blocked'}}
+    studio.finished(s)
+    assert studio.find('context', s.task_id)['payload'] == {'messages': []}
+    record = studio.find('evidence', 'evidence-' + s.task_id)
+    assert record['task_id'] == s.task_id and record['result']['ok'] is False
+    studio.finished(s)  # Re-saving a run updates its evidence, not the context.
+    assert len(studio.items('evidence')) == 1
