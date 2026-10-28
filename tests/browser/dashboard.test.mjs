@@ -610,7 +610,7 @@ test('GitHub search retains selection; remote private repo PR uses its default b
     assert.equal(await page.locator('#repoSelect option[value="team/public"]').count(),0);
     assert.ok((await page.locator('#repoSelect option[value="team/secret"]').textContent()).includes('private'));
     await page.selectOption('#repoSelect','team/secret');
-    await page.waitForFunction(()=>document.querySelector('#repoScope').textContent.includes('task workspace unchanged')&&!document.querySelector('#repoScope').hidden);
+    await page.waitForFunction(()=>document.querySelector('#repoScope').textContent.includes('new GitHub branch after permission')&&!document.querySelector('#repoScope').hidden);
     assert.equal(await page.locator('#repoCounts').isEnabled(),false);
     assert.ok((await page.locator('#repoAdded').textContent()).includes('unavailable'));
     assert.equal(await page.locator('#repoActions [data-repo-action="commit"]').isEnabled(),false);
@@ -661,3 +661,101 @@ for(const viewport of [{width:1568,height:770},{width:430,height:780}]){
     }finally{await context.close();}
   });
 }
+
+test('Task workspace is explicit; prose-only coding completion is shown as blocked',async()=>{
+  const {page,context,errors}=await setup();
+  try{
+    assert.ok((await page.locator('#taskWorkspace').textContent()).includes('Task target: GitHub'));
+    assert.ok((await page.locator('#taskWorkspace').textContent()).includes('no clone/local tests'));
+    assert.ok((await page.locator('#taskWorkspace').getAttribute('title')).includes('GitHub'));
+    await start(page);
+    await page.evaluate(()=>window.sendEvent({type:'done',event_id:1,status:'error',result:{
+      ok:false,tool_calls:0,changed_files:[],text:'I created the files and pushed',
+      stopped_reason:'blocked: no successful workspace tool execution; task not completed',
+      execution:{required:true,state:'blocked',successful_workspace_tools:0}
+    }}));
+    const completion=await page.locator('#stream .done').textContent();
+    assert.ok(completion.includes('run blocked'));
+    assert.ok(completion.includes('no successful workspace tool execution'));
+    assert.ok(!completion.includes('run complete'));
+    assert.ok(!completion.includes('I created the files and pushed'));
+    assert.deepEqual(errors,[]);
+  }finally{await context.close();}
+});
+
+test('Observed tool activity does not label task acceptance verified',async()=>{
+  const {page,context,errors}=await setup();
+  try{
+    await start(page);
+    await page.evaluate(()=>window.sendEvent({type:'done',event_id:1,status:'done',result:{
+      ok:true,tool_calls:2,changed_files:['hello.txt'],summary:'Edited hello.txt; tests not run',
+      execution:{required:true,state:'unverified',successful_workspace_tools:1}
+    }}));
+    const completion=await page.locator('#stream .done').textContent();
+    assert.ok(completion.includes('acceptance unverified'));
+    assert.ok(!completion.includes('run complete'));
+    assert.deepEqual(errors,[]);
+  }finally{await context.close();}
+});
+
+test('Streaming assistant output is finalized once instead of duplicated',async()=>{
+  const {page,context,errors}=await setup();
+  try{
+    await start(page);
+    await page.evaluate(()=>{
+      window.sendEvent({type:'text_delta',event_id:1,text:'Inspecting the workspace',role:'general'});
+      window.sendEvent({type:'text',event_id:2,text:'Inspecting the workspace safely',role:'general',streamed:true});
+    });
+    assert.equal(await page.locator('#stream .step.text').count(),1);
+    assert.ok((await page.locator('#stream .step.text').textContent()).includes('Inspecting the workspace safely'));
+    assert.deepEqual(errors,[]);
+  }finally{await context.close();}
+});
+
+test('Selected repo prompt, task branch, PR and merge need only approval, including after reload',async()=>{
+  const {page,context,errors}=await setup();const calls=[];
+  const task={task_id:'abcdef123456',repository:'example/project',branch:'nexus/task-abcdef123456',base:'main',head:'reviewed-sha',created:true,files:['README.md']};
+  await page.route('**/api/workbench/repository/list*',route=>route.fulfill({json:{data:[{id:'example/project',name:'example/project',agent_workspace:false}]}}));
+  await page.route('**/api/workbench/repository/status?*',route=>route.fulfill({json:{data:{id:'example/project',name:'example/project',local_available:false,can_push:true,branch:'main',default_branch:'main',files:[],additions:null,deletions:null}}}));
+  await page.route('**/api/task',route=>{
+    calls.push({path:'task',body:route.request().postDataJSON()});return route.fulfill({status:202,json:{task_id:task.task_id}});
+  });
+  await page.route('**/api/workbench/repository/auto-preview',route=>{
+    const body=route.request().postDataJSON();calls.push({path:'preview',body});
+    return route.fulfill({json:{data:{id:'task-preview-'+body.action,action:body.action,github_task_id:task.task_id,diff:'+ reviewed remote change',confirmation:'server-owned task binding'}}});
+  });
+  await page.route('**/api/workbench/repository/auto-execute',route=>{
+    calls.push({path:'execute',body:route.request().postDataJSON()});
+    return route.fulfill({json:{data:{output:'approved task action completed (scripted)',github_task:{...task,pr:42}}}});
+  });
+  try{
+    await page.reload();await page.selectOption('#repoSelect','example/project');await start(page);
+    assert.equal(calls[0].body.github_repo,'example/project');
+    await page.evaluate(task=>{
+      window.sendEvent({type:'github_task',event_id:1,task});
+      window.sendEvent({type:'done',event_id:2,status:'done',result:{ok:true,github_task:task,execution:{required:true,state:'unverified'}}});
+    },task);
+    await page.locator('#repoBar [data-repo-action="create-pr"]').click();
+    await page.waitForFunction(()=>!document.querySelector('#repoExecute').disabled);
+    assert.equal(await page.locator('#repoBase').count(),0);
+    assert.equal(await page.locator('#repoTitle').count(),0);
+    assert.equal(await page.locator('#repoConfirmation').isVisible(),false);
+    assert.equal(calls.filter(c=>c.path==='execute').length,0);
+    await page.getByRole('button',{name:'Approve Create PR',exact:true}).click();
+    await page.waitForFunction(()=>document.querySelector('#repoOutput').textContent.includes('approved task action completed'));
+    await page.click('#repoClose');
+    await page.reload();await page.selectOption('#repoSelect','example/project');
+    await page.click('#repoMore');await page.locator('#repoActions [data-repo-action="merge"]').click();
+    await page.waitForFunction(()=>!document.querySelector('#repoExecute').disabled);
+    assert.equal(await page.locator('#repoNumber').count(),0);
+    assert.equal(await page.locator('#repoConfirmation').isVisible(),false);
+    await page.getByRole('button',{name:'Approve Merge',exact:true}).click();
+    await page.waitForFunction(()=>document.querySelector('#repoOutput').textContent.includes('approved task action completed'));
+    assert.deepEqual(calls.filter(c=>c.path==='preview').map(c=>c.body),[
+      {task_id:task.task_id,repo:'example/project',action:'create-pr'},
+      {task_id:task.task_id,repo:'example/project',action:'merge'}
+    ]);
+    assert.ok(calls.filter(c=>c.path==='execute').every(c=>c.body.approved===true&&!('confirm' in c.body)));
+    assert.deepEqual(errors,[]);
+  }finally{await context.close();}
+});

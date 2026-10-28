@@ -230,6 +230,10 @@ class Router:
         clean = sanitize_role_name(answer)
         role = self.registry._resolve(clean)
         if role is None:
+            if prefer:
+                self.emit(Event(EventType.STATUS, {"message":
+                    f"router: '{answer or 'empty'}' is not a known role - retaining the best keyword match"}))
+                return None
             self.emit(
                 Event(
                     EventType.STATUS,

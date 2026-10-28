@@ -217,6 +217,9 @@ class Studio:
             role = agent.active_role.name
             permissions = settings["role_permissions"].get(role, {})
             readonly = spec.is_readonly_call(args)
+            if session.options.get("github_repo") and spec.name in {"list_files", "read_file", "write_file", "edit_file", "delete_file"}:
+                if settings["isolation"]["enabled"] or not permissions.get("network", True):
+                    return "Direct GitHub tools refused by isolation/role network policy"
             if session.read_only and not readonly:
                 return "Plan mode forbids mutations, draft staging and escalations"
             if not permissions.get("read" if readonly else "write", True):
@@ -258,6 +261,8 @@ class Studio:
         return check
 
     def checkpoint(self, session, event: dict) -> None:
+        if session.options.get("github_repo"):
+            return  # Remote edits have Git commits/diffs; never checkpoint unrelated local paths.
         if not self.settings()["checkpoint"] or event.get("tool") not in {"write_file", "edit_file", "delete_file"}:
             return
         if event["type"] == "tool_call":
@@ -400,7 +405,7 @@ class Studio:
             self.put("conversation", item, item["id"])
         self.put("evidence", {"task_id": session.task_id, "criteria": session.options.get("criteria", []),
                  "criteria_state": "unverified until human review", "tools": redact([e for e in session.log if e["type"] in {"tool_call", "tool_result"}]),
-                 "result": redact(session.result), "note": "Model success text is not test evidence"}, session.task_id)
+                 "result": redact(session.result), "note": "Model success text is not test evidence"}, "evidence-" + session.task_id)
 
     def verification(self, payload: dict) -> dict:
         kind = payload.get("kind")

@@ -24,10 +24,46 @@ as an error, never replaced by a list of local projects.
 Loading the dashboard requests GitHub inventory and selected-repository metadata.
 Inventory is cached for 60 seconds, tied to the authenticated account; **Refresh
 GitHub repositories** forces a reload. PR lists and branches follow all pages.
-Select a repository to target its PR actions even when it has no local checkout.
-The selector never clones, fetches Git refs, checks out/creates branches, changes
-the agent task workspace, or pushes automatically. The branch label is read-only:
-for a remote-only repository it shows the GitHub default branch, not a local HEAD.
+Select a repository and submit a prompt to run a **direct GitHub task**.
+The server uses GitHub CLI authentication (`gh auth login`, or a server-side
+`GH_TOKEN`/`GITHUB_TOKEN` with appropriate repository permissions). Never send a
+token in a task prompt or chat; the dashboard does not store GitHub tokens.
+
+## Repo → task branch → approved commits → PR → merge
+
+1. Choose an accessible repo, enter the task and click **Run**.
+2. Approve creation of `nexus/task-<task-id>` from its default branch. The backend
+   binds the task to that repository/account/base/branch; no manual branch naming.
+3. The model sees remote list/read/write/edit/delete tools, not local shell/Git or
+   unrelated local files. Approve each exact file diff, or explicitly allow that
+   tool for this session. Each successful mutation creates a commit directly on
+   the task branch using Git Data APIs. No local commit or push step is needed.
+4. Click **Create PR**. Nexus derives the head/base/title/body from the persisted
+   task, previews the GitHub diff, and asks only **Approve Create PR**. No typed
+   confirmation, branch entry or manual PR number is needed in task mode.
+5. Click **Merge PR**, inspect the task's actual PR/checks/diff, then **Approve
+   Merge**. Existing head matching, GitHub checks/protection and one-use review
+   safeguards still apply; no admin bypass or auto-merge is enabled.
+
+A remote task cannot execute local builds/tests. The PR body and dashboard say
+that local tests were not run; review GitHub CI before merging. GitHub workflows
+may run on task branch pushes, subject to the repository's own workflow settings.
+The task tools do not change GitHub rules, permissions or workflow settings to
+bypass checks. Read-only tasks do not create branches or expose write tools.
+
+Account changes, permission revocation, repository renames, unsafe/private paths,
+symlink/submodule/binary edits, oversized text/tree/diffs and concurrent branch
+advances fail closed. Remote edits are reviewed against an exact observed head;
+ref updates never force-push. Failed/cancelled requests can leave an approved
+branch, already-completed commits, or unreferenced Git objects; review the remote
+state before retrying. There is no automatic rollback or blind replay.
+
+Task metadata is persisted in the server database and the current browser session
+remembers task IDs for PR actions after a refresh. API actions revalidate all
+metadata; browser state is never an authority for repository/branch/PR identity.
+The existing manual PR form remains available when no matching remote task is
+selected. Selecting the **Local workspace** option keeps the original local task
+behavior. Selecting a GitHub repo never switches the server's local checkout.
 
 ## Local commit and push
 

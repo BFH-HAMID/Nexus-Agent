@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from .config import NexusConfig, Pipeline, load_config
+from .execution import WORKSPACE_TOOLS, claims_execution, needs_execution
 from .learning import LearningLoop, nudge_interval, skills_index_for
 from .memory import MemoryStore, env_flag
 from .providers import ProviderRegistry, build_providers
@@ -47,7 +48,14 @@ You act as the role you are given below and you get things DONE with the provide
 Ground rules
 - Work inside the workspace directory given below. Read before you write.
 - Prefer small, surgical `edit_file` changes over rewriting whole files.
+- Before modifying anything, inspect the workspace and its manifests to confirm it is the
+  requested project. A GitHub repository dropdown does NOT change this workspace. If this is
+  the wrong project, stop and explain the mismatch; never invent its directory structure.
 - Verify your work: run the tests, the linter or the build when they exist.
+- Code fences, plans and placeholder methods do not create files. Use real tools for edits.
+- Claim a test, commit or push only if that operation actually succeeded in this run.
+  If approval, credentials, missing tools or workspace mismatch blocks you, report it honestly.
+  Never bypass approval, change credentials, force-push or switch repositories automatically.
 - Never invent file contents, command output or API responses.
 - Never print API keys or secrets from the environment.
 - If the task is ambiguous in a way that changes the outcome, ask ONE focused question
@@ -111,6 +119,7 @@ class RunResult:
     ok: bool = True
     learned: dict[str, Any] = field(default_factory=dict)
     session_id: str = ""
+    execution: dict[str, Any] = field(default_factory=dict)
 
 
 class NexusAgent:
@@ -303,7 +312,7 @@ class NexusAgent:
         )
 
         ctx, registry, specs = self.tools_for(active_role, read_only=read_only)
-        memory_text = self.memory.read(active_role.name)
+        memory_text = "" if getattr(self, "remote_workspace", None) else self.memory.read(active_role.name)
         tools_hint = "\n".join(f"- {s.name}: {s.description.splitlines()[0]}" for s in specs) or "(none)"
 
         extras: list[str] = []
@@ -324,7 +333,7 @@ class NexusAgent:
                 self.pending_skill = None
             if skills_section:
                 extras.append(skills_section)
-        global_memory = self.memory_store.prompt_sections()
+        global_memory = "" if getattr(self, "remote_workspace", None) else self.memory_store.prompt_sections()
         if global_memory:
             extras.append(global_memory)
         interval = nudge_interval(self.config.settings)
@@ -333,10 +342,15 @@ class NexusAgent:
             self._turns_since_nudge = 0
         if extra_system:
             extras.append(extra_system)
+        if getattr(self, "remote_workspace", None):
+            extras.append("DIRECT GITHUB MODE: all file tools operate on the selected remote task branch, not the server filesystem. "
+                          "Inspect the remote project, then use write_file/edit_file/delete_file for real approved commits. "
+                          "No shell, local Git, build or test runner is available. Never claim tests were run. "
+                          "Create PR/Merge are dashboard permission actions; do not invent their results.")
         system = render_system_prompt(
             role=active_role,
             agent_label=f"{agent_cfg.name} / {agent_cfg.model}",
-            workspace=self.ws,
+            workspace=getattr(self, "remote_workspace", self.ws),
             memory_text=memory_text,
             tools_hint=tools_hint,
             plan_mode=read_only or self.plan_mode,
@@ -353,8 +367,26 @@ class NexusAgent:
         stop_reason = ""
         consecutive_errors = 0
         turn = 0
+        execution_required = not (read_only or self.plan_mode) and needs_execution(task)
+        successful_workspace_tools = 0
+        terminal_retries = 0
+        blocked = False
+        approval_denied = False
+        execution_nudge = (
+            "Execution required: no successful workspace tool has run. Prose/code fences and "
+            "finish alone do not implement a task. Inspect the actual workspace with list_files "
+            "or read_file first; confirm this is the requested project before editing. Use the "
+            "provided tools and verify results. For text-mode tools, reply with exactly one "
+            '```tool\n{"name":"list_files","arguments":{"path":"."}}\n``` block, '
+            "then wait for its result. Do not claim files/tests/commit/push without actual evidence. "
+            "If blocked or in the wrong workspace, explain the blocker; do not invent files, "
+            "bypass approval, clone or switch workspaces automatically."
+        )
 
         while turn < limit:
+            if getattr(self, "cancel_event", None) is not None and self.cancel_event.is_set():
+                stop_reason = "cancelled"
+                break
             turn += 1
             self._maybe_compact(messages)
             # let the GUI/CLI show "who is thinking right now"
@@ -407,6 +439,8 @@ class NexusAgent:
                     duration_s=time.time() - started,
                     messages=messages,
                     ok=False,
+                    execution={"required": execution_required, "workspace": str(getattr(self, "remote_workspace", self.ws)),
+                               "successful_workspace_tools": successful_workspace_tools, "state": "blocked"},
                 )
                 return self._after_run(failed, task, learn=False)
 
@@ -439,8 +473,20 @@ class NexusAgent:
             messages.append(Message(role="assistant", content=assistant_blocks))
 
             calls = completion.tool_calls
+            if not (read_only or self.plan_mode) and claims_execution(completion.text or ""):
+                execution_required = True
             if not calls:
-                stop_reason = completion.stop_reason or "end_turn"
+                if execution_required and not successful_workspace_tools:
+                    if terminal_retries < 2 and turn < limit:
+                        terminal_retries += 1
+                        self.status("No execution evidence; asking the model to use workspace tools "
+                                    f"(retry {terminal_retries}/2)")
+                        messages.append(Message(role="user", content=execution_nudge))
+                        continue
+                    blocked = True
+                    stop_reason = "blocked: no successful workspace tool execution; task not completed"
+                else:
+                    stop_reason = completion.stop_reason or "end_turn"
                 break
 
             results: list[Any] = []
@@ -451,7 +497,21 @@ class NexusAgent:
                 if ctx.state.get("finished"):
                     results.append(ToolResultBlock(call.id, "skipped: the run already finished", False))
                     continue
-                text, is_error = registry.call(call.name, call.input)
+                if approval_denied:
+                    results.append(ToolResultBlock(call.id, "skipped: approval denied; run stopped", True))
+                    continue
+                if call.name == "finish" and not (read_only or self.plan_mode) and isinstance(call.input, dict):
+                    execution_required |= claims_execution(str(call.input.get("summary", "")))
+                if call.name == "finish" and execution_required and not successful_workspace_tools:
+                    text, is_error = execution_nudge, True
+                    terminal_retries += 1
+                    registry._emit_failure(call.name, "Completion refused: no workspace execution evidence")
+                else:
+                    text, is_error = registry.call(call.name, call.input)
+                if is_error and text.startswith("DENIED:") and not (read_only or self.plan_mode):
+                    approval_denied = True
+                if call.name in WORKSPACE_TOOLS and not is_error:
+                    successful_workspace_tools += 1
                 results.append(ToolResultBlock(call.id, text, is_error))
                 tool_calls += 1
                 consecutive_errors = consecutive_errors + 1 if is_error else 0
@@ -465,6 +525,14 @@ class NexusAgent:
                 )
             messages.append(Message(role="user", content=results))
 
+            if approval_denied:
+                blocked = True
+                stop_reason = "blocked: tool approval denied; no automatic retry or permission bypass"
+                break
+            if terminal_retries > 2 and not successful_workspace_tools:
+                blocked = True
+                stop_reason = "blocked: no successful workspace tool execution; task not completed"
+                break
             if ctx.state.get("finished"):
                 stop_reason = "finish"
                 final_text = ctx.state.get("summary") or final_text
@@ -476,7 +544,26 @@ class NexusAgent:
             stop_reason = f"max_turns ({limit}) reached"
             self.status(f"stopping: {stop_reason}")
 
+        if execution_required and not successful_workspace_tools and not approval_denied:
+            blocked = True
+            stop_reason = "blocked: no successful workspace tool execution; task not completed"
+        command_failed = ctx.state.get("last_exit_code", 0) != 0
+        if command_failed and not blocked:
+            stop_reason = f"blocked: last command exited with code {ctx.state['last_exit_code']}; verify before claiming completion"
+            blocked = True
+        if ctx.state.get("last_remote_error"):
+            stop_reason = "blocked: " + ctx.state["last_remote_error"]
+            blocked = True
+        blocked |= stop_reason in {"too many tool errors", "cancelled"} or stop_reason.startswith("max_turns")
+        if blocked:
+            self.status(stop_reason)
         result = RunResult(
+            ok=not blocked and stop_reason not in {"too many tool errors", "cancelled"}
+                and not stop_reason.startswith("max_turns"),
+            execution={"required": execution_required, "workspace": str(getattr(self, "remote_workspace", self.ws)),
+                       "successful_workspace_tools": successful_workspace_tools,
+                       "state": "blocked" if blocked else ("unverified" if execution_required else "answered"),
+                       "note": "Tool activity is observed; full task acceptance and tests are not inferred from model prose."},
             text=final_text,
             role=active_role.name,
             agent=agent_cfg.name,

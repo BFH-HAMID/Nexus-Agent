@@ -25,3 +25,5 @@ body{grid-template-columns:minmax(0,1fr)}
 .repo-branch-wrap{display:flex;align-items:center;gap:5px;flex:1;min-width:0}.repo-identity svg,.repo-branch-wrap svg{flex-shrink:0}#repoBar [data-repo-action="create-pr"]{display:inline-flex;align-items:center;gap:5px}
 
 .repo-picker{display:flex;flex-direction:column;gap:3px;min-width:100px;max-width:48%;flex:1}.repo-picker #repoSearch{min-width:0;width:100%;font:11px ui-sans-serif,system-ui;background:#201f1d;color:#eee9df;border:1px solid #514d45;border-radius:4px;padding:4px 6px}#repoBar .repo-picker #repoSelect{max-width:100%;width:100%;min-width:0}#repoDialog label>select{display:block;width:100%;margin-top:5px}#repoAdded{white-space:normal}#repoCounts:disabled{font-size:10px}
+
+#repoDialog [hidden]{display:none!important}

@@ -812,3 +812,25 @@ def test_real_command_stdout_sse_then_cancel_reports_process_termination(server,
         session = server.state.get(ident)
         session.cancel.set()
         reader.join(5)
+
+
+def test_real_loop_prose_only_task_is_blocked_with_saved_context_and_evidence(server, monkeypatch):
+    from nexus.agent import NexusAgent
+    from tests.conftest import FakeProvider, fake_registry, text_completion
+    def factory(config, **kwargs):
+        name = config.agent_for_role(config.role('general')).name
+        provider = FakeProvider(name, [text_completion('Here are the files created or changed: placeholder code')] * 3)
+        return NexusAgent(config, providers=fake_registry(provider, config=config), **kwargs)
+    monkeypatch.setattr(server_module, 'NexusAgent', factory)
+    status, body = server.post('/api/task', {'task': 'Implement vector search', 'role': 'general'})
+    assert status == 202
+    ident = body['task_id']
+    events = server.sse(ident)
+    done = next(e for e in events if e['type'] == 'done')
+    assert done['status'] == 'error' and done['result']['ok'] is False
+    assert done['result']['execution']['state'] == 'blocked'
+    assert done['result']['tool_calls'] == 0 and done['result']['changed_files'] == []
+    assert not any('evidence/history update failed' in e.get('message', '') for e in events)
+    studio = server.state.workbench.studio
+    assert studio.find('context', ident)['task_id'] == ident
+    assert studio.find('evidence', 'evidence-' + ident)['result']['execution']['state'] == 'blocked'

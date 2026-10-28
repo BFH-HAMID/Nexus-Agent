@@ -11,10 +11,17 @@
   menu.innerHTML=`<button id="repoRefresh" type="button">↻ Refresh GitHub repositories</button><button data-repo-action="commit" type="button">Commit selected files…</button><button data-repo-action="push" type="button">↑ Push branch…</button><button id="repoPRs" type="button">View pull requests…</button><button data-repo-action="merge" type="button">Merge PR…</button>`;
   document.body.append(menu);
   const dialog = document.createElement('dialog'); dialog.id = 'repoDialog';
-  dialog.innerHTML = `<header><h2>Repository review</h2><button id="repoClose" type="button">Close</button></header><p id="repoContext"></p><p class="repo-warning">Git controls only: selecting a repository never switches the agent workspace or checks out a branch. Review secrets and hook behavior before confirming. Stop active tasks/workflows/dev apps before mutations.</p><div id="repoForm"></div><div class="repo-actions"><button id="repoPreview" type="button">Preview action</button></div><pre id="repoOutput">No action previewed. Nothing executed.</pre><label>Type the exact confirmation displayed in the preview<input id="repoConfirmation" autocomplete="off"></label><button id="repoExecute" type="button" disabled>Execute reviewed action</button><p id="repoError" role="alert"></p>`;
+  dialog.innerHTML = `<header><h2>Repository review</h2><button id="repoClose" type="button">Close</button></header><p id="repoContext"></p><p class="repo-warning">Selected GitHub repositories use direct task branches; the local checkout never changes. Review secrets and hook behavior before confirming. Stop active tasks/workflows/dev apps before mutations.</p><div id="repoForm"></div><div class="repo-actions"><button id="repoPreview" type="button">Preview action</button></div><pre id="repoOutput">No action previewed. Nothing executed.</pre><label>Type the exact confirmation displayed in the preview<input id="repoConfirmation" autocomplete="off"></label><button id="repoExecute" type="button" disabled>Execute reviewed action</button><p id="repoError" role="alert"></p>`;
   document.body.append(dialog);
   const $ = id => document.getElementById(id);
-  let status = null, preview = null, action = null, pending = false, generation = 0;
+  let status = null, preview = null, action = null, pending = false, generation = 0, automatic = false;
+  const tasks = new Map();
+  try{for(const task of JSON.parse(sessionStorage.getItem('nexus.githubTaskBranches')||'[]'))if(task?.repository&&/^[a-f0-9]{12}$/.test(task.task_id))tasks.set(task.repository,task);}catch(_){}
+  function rememberTask(task){
+    tasks.set(task.repository,task);
+    try{sessionStorage.setItem('nexus.githubTaskBranches',JSON.stringify([...tasks.values()].slice(-20).map(({task_id,repository,branch,files})=>({task_id,repository,branch,files}))));}catch(_){}
+  }
+  window.nexusGitHubRepository = () => $('repoSelect').value || null;
   let repositories = [], loadGeneration = 0, statusGeneration = 0;
   async function api(path, body) {
     const response = await fetch('/api/workbench/repository/' + path, {method:body===undefined?'GET':'POST',headers:{'Content-Type':'application/json',...(token?{'X-Nexus-Token':token}:{})},...(body===undefined?{}:{body:JSON.stringify(body)})});
@@ -22,10 +29,10 @@
   }
   function error(id, e) { $(id).textContent = e.message || String(e); }
   function output(value) { $('repoOutput').textContent = typeof value === 'string' ? value : JSON.stringify(value,null,2); }
-  function invalidate() { generation++; preview=null; $('repoExecute').disabled=true; $('repoConfirmation').value=''; }
+  function invalidate() { generation++; automatic=false; preview=null; $('repoExecute').disabled=true; $('repoConfirmation').value=''; }
   function input(label,id,multiline=false,value='') { const wrap=document.createElement('label');wrap.textContent=label; const node=document.createElement(multiline?'textarea':'input');node.id=id;node.value=value;wrap.append(node);$('repoForm').append(wrap);node.addEventListener('input',invalidate);return node; }
   function controls() {
-    const local = status?.local_available === true;
+    const local = status?.local_available === true && !tasks.has($('repoSelect').value);
     const writable = status?.can_push === true && !status?.archived;
     $('repoCounts').disabled = pending || !local;
     for (const button of document.querySelectorAll('#repoBar [data-repo-action], #repoActions [data-repo-action]')) {
@@ -43,22 +50,26 @@
     const current = repositories.find(repo => repo.id === selected);
     if(current && !matches.includes(current)) matches.unshift(current);
     $('repoSelect').replaceChildren();
-    const placeholder = document.createElement('option');placeholder.value='';placeholder.textContent=repositories.length?'Choose a GitHub repository':'No accessible GitHub repositories';$('repoSelect').append(placeholder);
+    const placeholder = document.createElement('option');placeholder.value='';placeholder.textContent=repositories.length?'Local workspace (no remote task branch)':'No accessible GitHub repositories';$('repoSelect').append(placeholder);
     for(const repo of matches){const option=document.createElement('option');option.value=repo.id;option.textContent=repo.name+(repo.private?' · private':'')+(repo.archived?' · archived':'');option.dataset.agentWorkspace=String(Boolean(repo.agent_workspace));option.title='GitHub: '+repo.name;$('repoSelect').append(option);}
     if(!matches.length && repositories.length){const option=document.createElement('option');option.disabled=true;option.textContent='No matching repositories';$('repoSelect').append(option);}
     $('repoSelect').value=current?current.id:'';
   }
   async function refresh() {
-    const id=$('repoSelect').value; if(!id){status=null;$('repoBranch').textContent='Select a GitHub repository';$('repoAdded').textContent='Local diff unavailable';$('repoDeleted').textContent='';$('repoBinary').textContent='';$('repoScope').hidden=true;controls();return;}
+    const id=$('repoSelect').value; if(!id){const workspace=document.getElementById('taskWorkspace');if(workspace){workspace.textContent='Task workspace: '+document.getElementById('metaWs').title+' · select a GitHub repo for direct remote tasks.';workspace.title=workspace.textContent;}status=null;$('repoBranch').textContent='Select a GitHub repository';$('repoAdded').textContent='Local diff unavailable';$('repoDeleted').textContent='';$('repoBinary').textContent='';$('repoScope').hidden=true;controls();return;}
     const epoch=++statusGeneration;
     const measured=await api('status?repo='+encodeURIComponent(id));
     if(id!==$('repoSelect').value||epoch!==statusGeneration)return;status=measured;
-    const local=status.local_available===true;
+    const local=status.local_available===true && !tasks.has(id);
     $('repoBranch').textContent=(status.branch||'empty repository')+(local?'':' · remote');
     $('repoBranch').title=(status.branch||'No default branch')+' · read-only; no checkout';
-    $('repoScope').hidden=local;
-    $('repoScope').textContent='GitHub PR target · task workspace unchanged; no local checkout';
-    $('repoAdded').textContent=local?'+'+status.additions:'Local diff unavailable';$('repoDeleted').textContent=local?'−'+status.deletions:'';$('repoBinary').textContent=status.binary_changes?' · binary changes':'';
+    const task = tasks.get(id);
+    $('repoScope').hidden=local&&!task;
+    $('repoScope').textContent=task?'Direct GitHub task · '+task.branch+' · commits on GitHub; no local tests':'Selected repo is the next task target · new GitHub branch after permission · no clone/local tests';
+    if(task)$('repoBranch').textContent=task.branch+' · GitHub task';
+    const workspace = document.getElementById('taskWorkspace');
+    if(workspace){workspace.textContent='Task target: GitHub '+id+' · new task branch after permission · no clone/local tests';workspace.title=workspace.textContent;}
+    $('repoAdded').textContent=task?((task.files||[]).length+' remote files'):(local?'+'+status.additions:'Local diff unavailable');$('repoDeleted').textContent=local?'−'+status.deletions:'';$('repoBinary').textContent=status.binary_changes?' · binary changes':'';
     $('repoCounts').title=local?'Actual changes in the matching server workspace':'No matching server workspace. Remote PRs are available; local commit/push are disabled.';
     $('repoBarError').textContent='';controls();
   }
@@ -82,7 +93,17 @@
     if(!dialog.open)dialog.showModal();
     await refresh(); if(revision!==generation||action!==kind)return; if(!status)throw new Error('Choose a repository first');
     $('repoContext').textContent=status.name+' · '+(status.branch||'empty repository')+(status.local_available?' · matching workspace '+status.path:' · GitHub remote; agent workspace unchanged');
-    $('repoPreview').hidden=false;$('repoExecute').hidden=false;$('repoConfirmation').parentElement.hidden=false;
+    $('repoPreview').hidden=false;$('repoExecute').hidden=false;$('repoExecute').textContent='Execute reviewed action';$('repoConfirmation').parentElement.hidden=false;
+    const currentTask=window.nexusSelectedTask?.(),saved=tasks.get($('repoSelect').value);
+    const selectedTask=currentTask?.id?currentTask:(saved?{id:saved.task_id,github_repo:saved.repository}:null);
+    if(['create-pr','merge'].includes(kind)&&selectedTask?.id&&selectedTask.github_repo===$('repoSelect').value){
+      $('repoPreview').hidden=true;$('repoConfirmation').parentElement.hidden=true;
+      output('Loading task-bound GitHub diff/checks. Nothing executes until you approve.');
+      const reviewed=await api('auto-preview',{task_id:selectedTask.id,repo:$('repoSelect').value,action:kind});
+      if(revision!==generation||action!==kind)return;
+      automatic=true;preview=reviewed;output(preview);$('repoExecute').textContent=kind==='merge'?'Approve Merge':'Approve Create PR';$('repoExecute').disabled=false;
+      return;
+    }
     if(['commit','push'].includes(kind)&&status.local_available!==true)throw new Error('No matching server workspace; remote selection cannot commit or push another project.');
     if(kind==='commit') {
       const note=document.createElement('p');note.textContent='Select exact files. Unrelated staged files are not committed. Signing/hooks may run; failures may leave selected files staged.';$('repoForm').append(note);
@@ -115,10 +136,10 @@
   $('repoPRs').onclick=()=>show('prs').catch(e=>error('repoError',e));$('repoClose').onclick=()=>{if(!pending)dialog.close();};
   $('repoPreview').onclick=async()=>{if(pending)return;invalidate();$('repoError').textContent='';$('repoPreview').disabled=true;try{const revision=generation;const payload={repo:$('repoSelect').value,action};if(action==='commit'){payload.paths=[...dialog.querySelectorAll('input[name=repoPath]:checked')].map(n=>n.value);payload.message=$('repoMessage').value;}if(action==='create-pr'){payload.base=$('repoBase').value;payload.head=$('repoHead').value;payload.title=$('repoTitle').value;payload.body=$('repoBody').value;}if(action==='merge'){payload.number=Number($('repoNumber').value);payload.method=$('repoMethod').value;}const reviewed=await api('preview',payload);if(revision!==generation||payload.repo!==$('repoSelect').value||payload.action!==action)return;preview=reviewed;output(preview);}catch(e){error('repoError',e);}finally{$('repoPreview').disabled=false;}};
   $('repoConfirmation').oninput=()=>{$('repoExecute').disabled=pending||!preview||$('repoConfirmation').value!==preview.confirmation;};
-  $('repoExecute').onclick=async()=>{if(pending||!preview)return;pending=true;controls();$('repoExecute').disabled=true;$('repoClose').disabled=true;$('repoPreview').disabled=true;try{const result=await api('execute',{preview_id:preview.id,confirm:$('repoConfirmation').value});output(result);invalidate();await refresh();}catch(e){invalidate();error('repoError',e);}finally{pending=false;controls();$('repoClose').disabled=false;$('repoPreview').disabled=false;}};
+  $('repoExecute').onclick=async()=>{if(pending||!preview)return;pending=true;controls();$('repoExecute').disabled=true;$('repoClose').disabled=true;$('repoPreview').disabled=true;try{const result=await api(automatic?'auto-execute':'execute',automatic?{preview_id:preview.id,approved:true}:{preview_id:preview.id,confirm:$('repoConfirmation').value});if(result.github_task)rememberTask(result.github_task);output(result);invalidate();await refresh();}catch(e){invalidate();error('repoError',e);}finally{pending=false;controls();$('repoClose').disabled=false;$('repoPreview').disabled=false;}};
   dialog.addEventListener('cancel',event=>{if(pending)event.preventDefault();});
   window.addEventListener('resize',()=>menu.hidePopover());
-  window.addEventListener('nexus:event',({detail:e})=>{if(e.type==='approval_request'&&dialog.open&&!pending)dialog.close();if(e.type==='done'){invalidate();refresh().catch(err=>error('repoBarError',err));}});
+  window.addEventListener('nexus:event',({detail:e})=>{const task=e.type==='github_task'?e.task:e.result?.github_task;if(task){rememberTask(task);if(task.repository===$('repoSelect').value){$('repoBranch').textContent=task.branch+' · GitHub task';$('repoScope').textContent='Direct GitHub task · '+task.branch+' · commits on GitHub; no local tests';}}if(e.type==='approval_request'&&dialog.open&&!pending)dialog.close();if(e.type==='done'){invalidate();refresh().catch(err=>error('repoBarError',err));}});
   controls();
   load().catch(e=>{status=null;controls();$('repoSelect').replaceChildren(new Option('GitHub repositories unavailable',''));error('repoBarError',e);});
 })();

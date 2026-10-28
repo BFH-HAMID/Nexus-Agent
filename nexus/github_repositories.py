@@ -27,6 +27,14 @@ class GitHubRepositories:
         self.catalog_viewer = None
         self.previews = {}
 
+    @property
+    def tasks(self):
+        with self.local.state.lock:
+            if not hasattr(self, '_tasks'):
+                from .github_tasks import GitHubTasks
+                self._tasks = GitHubTasks(self)
+            return self._tasks
+
     def command(self, args, timeout=30):
         return self.local.command(self.local.root, args, timeout=timeout)
 
@@ -109,6 +117,10 @@ class GitHubRepositories:
         return result
 
     def get(self, path, query):
+        if path == 'task':
+            record = self.tasks.get((query.get('task_id') or [''])[0])
+            self.tasks.authorize(record)
+            return observation(record, 'persisted GitHub task branch; no local checkout')
         if path == 'list':
             return observation(self.catalog(refresh=(query.get('refresh') or [''])[0] == '1'),
                                'GitHub CLI authenticated account repositories, all accessible pages')
@@ -225,6 +237,10 @@ class GitHubRepositories:
 
     def post(self, path, payload):
         self.network()
+        if path == 'auto-preview':
+            return self.tasks.preview_action(payload)
+        if path == 'auto-execute':
+            return self.tasks.execute_action(payload)
         if path == 'preview':
             return self.preview(payload)
         if path == 'execute':

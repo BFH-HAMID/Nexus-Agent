@@ -235,3 +235,14 @@ def test_classic_roadmap_example_switches_to_uncensored(config):
     decision = Router(config).route("scan my lab network with nmap and try a privilege escalation exploit")
     assert decision.role.name == "pentesting"
     assert config.agent_for_role(decision.role).name == "openrouter-uncensored"
+
+
+def test_invalid_classifier_in_keyword_tie_retains_a_real_matching_role(config):
+    from nexus.types import Keyword, Role
+    config.roles.add(Role(name='twin-a', persona='a', keywords=[Keyword.parse('zzzunique')]))
+    config.roles.add(Role(name='twin-b', persona='b', keywords=[Keyword.parse('zzzunique')]))
+    provider = FakeProvider('gemini-flash', [text_completion('redisj')])
+    router = Router(config, providers=fake_registry(provider))
+    decision = router.route('zzzunique please')
+    assert decision.role.name in {'twin-a', 'twin-b'}
+    assert decision.method == 'keyword'

@@ -113,7 +113,7 @@ body {
 }
 .col { display: flex; flex-direction: column; gap: 12px; min-height: 0; }
 .col-left, .col-right { overflow-y: auto; overflow-x: hidden; padding-right: 2px; }
-.col-center { display: grid; grid-template-rows: minmax(200px, 32%) minmax(0, 1fr); gap: 12px; min-height: 0; }
+.col-center { display: grid; grid-template-rows: minmax(200px, 30%) minmax(0, 1fr); gap: 12px; min-height: 0; }
 
 .col-left::-webkit-scrollbar, .col-right::-webkit-scrollbar,
 .stream::-webkit-scrollbar, .orch-list::-webkit-scrollbar, .pipes::-webkit-scrollbar { width: 6px; height: 6px; }
@@ -588,3 +588,5 @@ body { border: 1px solid rgba(34,227,255,.32); border-radius: 14px;
 
 /* Observable activity, not simulated reasoning or terminal output. */
 .live-output{display:block;margin-top:7px;min-width:0}.live-output summary{cursor:pointer;color:var(--cyan);font-size:11px}.live-output pre,.live-command,.live-process-notice{white-space:pre-wrap;overflow-wrap:anywhere;max-height:360px;overflow:auto;background:#061411;border:1px solid var(--edge);border-radius:5px;padding:8px;margin:5px 0;font:11px/1.6 var(--mono);user-select:text}.live-process-head{display:flex;flex-wrap:wrap;align-items:center;gap:8px;justify-content:space-between}.live-process-meta{font-size:10px;overflow-wrap:anywhere;color:var(--dim)}.live-process-notice:empty{display:none}.live-output [data-stream="stderr"]{color:#ffb8a6}.live-diff .diff-add{color:#74e8ad}.live-diff .diff-remove{color:#ffa2a2}.step.process .body,.step.file_change .body{min-width:0;flex:1}.live-process-stop{font-size:10px;padding:4px 7px}.step.process{border-left:2px solid var(--cyan)}.step.file_change{border-left:2px solid var(--neon)}
+
+.task-workspace{margin:0 0 5px;font:10px/1.4 var(--mono);color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}

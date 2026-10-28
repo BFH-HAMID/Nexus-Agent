@@ -162,7 +162,7 @@ def test_run_command_captures_output_and_exit_code(repo):
     registry = build_tools(make_ctx(repo))
     out, err = registry.call("run_command", {"command": "echo hello && exit 3"})
     assert "hello" in out and "[exit 3]" in out
-    assert not err  # a non-zero exit code is data, not a tool failure
+    assert err  # Failed checks/pushes must be surfaced to the agent as tool failures.
 
 
 def test_run_command_timeout(repo):
@@ -404,3 +404,48 @@ def test_read_only_subset(repo):
     assert set(allowed) <= READ_ONLY_TOOLS
     assert "write_file" not in allowed and "run_command" not in allowed
     assert "read_file" in allowed
+
+
+@pytest.mark.parametrize('failed_step', ['checkout', 'add', 'commit', 'push'])
+def test_git_prepare_stops_at_failed_step_and_never_pushes_failed_commit(repo, monkeypatch, failed_step):
+    from nexus import tools
+    ctx = make_ctx(repo)
+    calls = []
+    def scripted(args, cwd):
+        calls.append(args)
+        if args[0] == failed_step:
+            return 'scripted failure; no real remote', 1
+        if args[:2] == ['rev-parse', '--abbrev-ref']:
+            return 'main', 0
+        if args[:2] == ['rev-parse', '--verify']:
+            return '', 1  # New branch.
+        if args[:2] == ['diff', '--cached']:
+            return 'M app/main.py', 0
+        return 'scripted result', 0
+    monkeypatch.setattr(tools, 'run_git', scripted)
+    registry = build_tools(ctx)
+    output, error = registry.call('git_prepare', {'task': 'Fix fixture', 'push': True})
+    assert error and f'git {failed_step} failed' in output
+    assert ctx.state['last_exit_code'] == 1
+    assert calls[-1][0] == failed_step
+    if failed_step != 'push':
+        assert not any(c[0] == 'push' for c in calls)
+
+
+def test_failed_git_push_is_a_tool_error(repo, monkeypatch):
+    from nexus import tools
+    ctx = make_ctx(repo)
+    monkeypatch.setattr(tools, 'run_live_command', lambda *a, **k: ('permission denied (test only)', 128))
+    output, error = build_tools(ctx).call('git', {'args': ['push', 'origin', 'test-branch']})
+    assert error and 'exited with code 128' in output
+    assert ctx.state['last_exit_code'] == 128
+
+
+@pytest.mark.parametrize('name,args', [('gh', {'args': ['pr', 'list']}), ('gh_merge_pr', {'number': 42})])
+def test_failed_github_cli_operations_are_not_success(repo, monkeypatch, name, args):
+    from nexus import tools
+    monkeypatch.setattr(tools, 'gh_available', lambda: True)
+    monkeypatch.setattr(tools, 'run_live_command', lambda *a, **k: ('scripted permission failure', 1))
+    handler = tools.tool_gh if name == 'gh' else tools.tool_gh_merge_pr
+    with pytest.raises(tools.ToolFailure, match='exited with code 1'):
+        handler(make_ctx(repo), args)

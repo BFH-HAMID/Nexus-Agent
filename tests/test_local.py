@@ -164,7 +164,7 @@ def test_local_agents_are_never_reported_as_missing_keys(repo):
 def test_a_dead_local_server_falls_back_to_the_hosted_agent(repo, events, monkeypatch):
     """hermes down -> deepseek answers, and the user sees why."""
     from nexus.agent import NexusAgent
-    from tests.conftest import FakeProvider, fake_registry, finish_completion
+    from tests.conftest import FakeProvider, fake_registry, finish_completion, tool_completion
 
     cfg = load_config(repo)
     cfg.roles.get("backend").agent = "hermes"
@@ -176,7 +176,10 @@ def test_a_dead_local_server_falls_back_to_the_hosted_agent(repo, events, monkey
         healthy=False,
         health_detail="no local server at http://localhost:11434/v1",
     )
-    hosted = FakeProvider("deepseek", [finish_completion("finished on deepseek")])
+    hosted = FakeProvider("deepseek", [
+        tool_completion([("write_file", {"path": "app/endpoint.py", "content": "# fixture endpoint\n"})]),
+        finish_completion("finished on deepseek"),
+    ])
     agent = NexusAgent(cfg, workspace=repo, providers=fake_registry(dead_local, hosted, config=cfg),
                        emit=lambda e: events.append(e.to_json()), auto_yes=True,
                        approval_callback=lambda *a, **k: None)
