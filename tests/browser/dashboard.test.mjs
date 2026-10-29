@@ -72,7 +72,7 @@ async function setup({demo = false, restore = false, width = 1568, height = 770}
     else if (path === '/api/brain') body = {skills: {}, sessions: {}, memory: {}, learning: {enabled: false}};
     await route.fulfill({status, json: body});
   });
-  await page.goto(base + '/dashboard');
+  await page.goto(base + '/dashboard#run');
   await page.waitForFunction(() => document.querySelector('#liveNotice').textContent !== 'Connecting to live server…');
   return {page, context, errors, requests, setFailure: (which, value) => {if (which === 'approval') failApproval = value; if (which === 'cancel') failCancel = value; if (which === 'recall') failRecall = value;}};
 }

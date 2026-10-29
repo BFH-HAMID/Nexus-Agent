@@ -15,6 +15,9 @@ workspace; no clone, execution-policy change or reset is needed. Stop an already
 running old server before updating/restarting. Do not run a second dashboard.
 For an initial virtual environment, use `python -m venv .venv` first.
 
+- **Control center:** desktop-first default landing, searchable capability cards,
+  local setup-readiness facts and native Context/MCP/Telegram/service policy controls.
+  **Ctrl+Shift+P** focuses command search. See [desktop guide](desktop-control-center.md).
 - **Run & chat:** original composer, agent roles/model routing, GitHub repository
   selection and task workflow, activity and tool approvals. Workbench/Studio
   remain dialogs in this GUI; **Settings** opens the original Workbench settings.
@@ -52,8 +55,9 @@ There is no automatic Open-Meteo fallback. See [privacy/setup](world-widget.md).
 
 **Settings → Overview** has shortcuts into the existing native controls. The
 [control-coverage audit](gui-control-coverage.md) distinguishes available controls
-from CLI-only setup. OS service installation, context activation, MCP/plugin
-endpoints and Telegram enrollment are **not yet GUI-managed**. Context remains
+from CLI-only setup. Context/MCP/Telegram policy and reviewed OS service registration now have native
+controls. Foreground Telegram transport, screen/cloud vision, OS recovery and
+credential revocation retain their existing separately managed workflows. Context remains
 OFF by default; privacy and destructive/external approvals remain unchanged.
 
 ## Dashboard control: roles, agents/models, Red/Blue teams and GitHub
@@ -178,17 +182,18 @@ Existing GUI/VS Code consumers retain their API compatibility.
 starve private controls. `/api/operations/*`, public-information `/api/*`, and
 `/api/session` share the original authentication and Host/Origin checks.
 
-![Original Run and chat](images/gui-main.png)
+![Desktop Control Center](images/gui-control-center.png)
+![Original Run and chat, desktop professional finish](images/gui-main.png)
 ![Native operations](images/gui-operations.png)
 ![Original World SVG fallback, genuine missing-key state](images/gui-world.png)
 ![Native Bangladesh RSS and WeatherAPI settings](images/gui-world-settings.png)
-[Mobile view](images/gui-mobile.png)
+Desktop-only focus: no separate mobile work is required.
 
 ## Verification
 
 Python: `python -m pytest -q`; lint: `ruff check nexus tests`.
 Browser fixtures: `cd tests/browser; npm ci; npm test`.
-Actual-server integration: run `node --test --test-concurrency=1 tests/browser/unified.test.mjs tests/browser/management.test.mjs tests/browser/world-settings.test.mjs` from
+Actual-server integration: run `node --test --test-concurrency=1 tests/browser/unified.test.mjs tests/browser/management.test.mjs tests/browser/world-settings.test.mjs tests/browser/desktop.test.mjs` from
 repository root with `NEXUS_TEST_URL` and a disposable `NEXUS_GUI_TEST_TOKEN` set.
 This suite exercises actual queue mutations, worker lifecycle and configuration
 saves (no model inference): **use a disposable workspace, never your production queue**. Browser
@@ -197,10 +202,10 @@ support libraries/Chromium may need installation on minimal Linux hosts.
 
 ### Verified integration snapshot
 
-- Full Python suite: **1,314 passed**, no skips; one upstream FastAPI/HTTPX
+- Full Python suite: **1,325 passed**, no skips; one upstream FastAPI/HTTPX
   deprecation warning.
-- Original GUI browser regression + actual-server unified tests: **40 passed**
-  (31 original/dashboard, including GitHub detach/reconnect + 7 unified + 1 actual-server configuration-management flow + 1 RSS/WeatherAPI/settings and shortcut-navigation flow), including real queue/lifecycle, mobile/desktop scroll,
+- Original GUI browser regression + actual-server unified tests: **41 passed**
+  (31 original/dashboard, including GitHub detach/reconnect + 7 unified + 1 actual-server configuration-management flow + 1 RSS/WeatherAPI/settings and shortcut-navigation flow + 1 desktop control/setup flow), including real queue/lifecycle, mobile/desktop scroll,
   native WebGL, hidden-view polling, remembered/session-only login/logout,
   mobile settings, key nonexposure and password clearing. Public display fixtures
   are explicitly labelled; no external-provider live validation is implied.

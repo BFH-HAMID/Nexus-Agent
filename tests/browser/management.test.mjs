@@ -14,7 +14,7 @@ test('dashboard edits AI agent, role and ordered Red/Blue team in existing YAML 
  async function api(path,body){return page.evaluate(async({path,body})=>window.nexusGui.api(path,body),{path,body});}
  async function save(kind,name){page.once('dialog',d=>d.accept('SAVE '+kind.toUpperCase()+' '+name));await page.locator('#mcSave').click();await page.waitForFunction(({kind,name})=>document.getElementById('mcStatus').textContent.includes('Saved '+kind+' '+name),{kind,name});}
  try{
-  await page.goto(base+'/dashboard');await page.locator('#guiToken').fill(token);await page.locator('#guiLogin button').click();await page.waitForFunction(()=>document.getElementById('metaUplink').textContent==='online');
+  await page.goto(base+'/dashboard#run');await page.locator('#guiToken').fill(token);await page.locator('#guiLogin button').click();await page.waitForFunction(()=>document.getElementById('metaUplink').textContent==='online');
   await page.locator('#taskInput').fill('Keep this draft; do not run');await page.locator('#guiManagement').click();await page.waitForFunction(()=>document.getElementById('mcStatus').textContent.includes('AI agents'));
   await page.locator('#mcKind').selectOption('agent');await page.locator('#mcNew').click();await page.locator('#mcName').fill(agent);await page.locator('#mc-model').fill('explicit-browser-fixture-model');await page.locator('#mc-base_url').fill('http://127.0.0.1:11434/v1');
   page.once('dialog',d=>d.accept('wrong'));await page.locator('#mcSave').click();assert.match(await page.locator('#mcStatus').innerText(),/Cancelled/);

@@ -45,7 +45,7 @@
   };
   let worldLoaded = false;
   async function show(view) {
-    if (!['run','operations','world'].includes(view)) return;
+    if (!['run','operations','world','control'].includes(view)) return;
     gui.view = view;
     document.body.classList.toggle('gui-module-view',view!=='run');
     document.querySelectorAll('[data-gui-view]').forEach(n => n.hidden = n.dataset.guiView !== view);
@@ -84,5 +84,5 @@
   setInterval(async()=>{if(document.hidden||login.open||gui.view==='operations')return;try{const state=await gui.api('/api/operations/state');const count=state.pending_actions_total||0;text.textContent=count+' background action(s) await your approval.';attention.hidden=count===0;}catch{/* No invented alert when status is unavailable. */}},10000);
   window.addEventListener('nexus:view',e=>{if(e.detail==='operations')attention.hidden=true;});
   const hash=location.hash.slice(1);const bookmarked=document.getElementById(hash)?.closest('[data-gui-view]')?.dataset.guiView;
-  show(bookmarked||(['operations','world'].includes(hash)?hash:'run'));
+  show(bookmarked||(['run','operations','world','control'].includes(hash)?hash:'control'));
 })();

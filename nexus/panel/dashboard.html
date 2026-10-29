@@ -11,6 +11,7 @@
 <link rel="stylesheet" href="/dashboard/workbench.css" />
 <link rel="stylesheet" href="/dashboard/repository.css" />
 <link rel="stylesheet" href="/world/world.vendor.css"><link rel="stylesheet" href="/world/world.css"><link rel="stylesheet" href="/dashboard/modules.css">
+<link rel="stylesheet" href="/dashboard/desktop.css" />
 </head>
 <body>
 
@@ -50,6 +51,7 @@
 </header>
 
 <nav class="gui-navigation" aria-label="Nexus dashboard sections" role="tablist">
+<button class="btn" data-gui-tab="control" role="tab" aria-selected="false">Control center</button>
 <button class="btn" data-gui-tab="run" role="tab" aria-selected="true">Run &amp; chat</button>
 <button class="btn" data-gui-tab="operations" role="tab" aria-selected="false">Operations &amp; approvals</button>
 <button class="btn" data-gui-tab="world" role="tab" aria-selected="false">World, news &amp; weather</button>
@@ -268,7 +270,7 @@
 <section id="task-list"><div class="section-title"><h2>Tasks & delegations</h2><span id="job-count" class="muted"></span></div><div id="jobs" class="list"><p class="muted">No authenticated state yet.</p></div></section>
 <section><details><summary>Workflow runs</summary><div id="workflows" class="list"></div></details></section></div>
 <aside><section id="reviews"><h2>Pending action reviews</h2><div id="approvals" class="list"></div></section><section id="evidence"><h2>Selected task / action</h2><p id="action-status" role="status">No action selected yet.</p><details><summary>Exact evidence / technical receipt</summary><p class="muted">Tool outcomes and agent reports are not independent acceptance proof. Uncertain calls are never replay commands.</p><pre id="detail">Select a task or action to inspect its actual stored record.</pre></details><div id="action-review" class="inline" hidden><button id="allow">Allow exact action</button><button id="deny" class="danger">Deny</button></div></section></aside></div><section id="diagnostics"><details><summary>Diagnostics &amp; usage reports <span class="muted">— optional technical details</span></summary><section><h2>Trace · why · no-effects step inspection</h2><div id="traces" class="list"></div></section><section><h2>Weekly evaluation · observed, not verified</h2><pre id="evaluation">Waiting for authenticated session observations.</pre></section><section><h2>Permission audit</h2><pre id="audit">Waiting for authenticated state.</pre></section><section><h2>Inbox & budget reservations</h2><pre id="budget">—</pre></section></details></section></section><section class="gui-modules" id="view-world" data-gui-view="world" hidden><section id="world-widget" aria-label="World intelligence widget">
-<div class="section-title"><div><span class="eyebrow">PLANETARY SIGNAL / PUBLIC SOURCES</span><h2>World, news &amp; weather <span class="world-live">●</span></h2></div><span id="world-status" class="muted" role="status">Connect to load public information · no API keys</span></div>
+<div class="section-title"><div><span class="eyebrow">PLANETARY SIGNAL / PUBLIC SOURCES</span><h2>World, news &amp; weather <span class="world-live">●</span></h2></div><span id="world-status" class="muted" role="status">Open World to load public sources · weather requires a WeatherAPI key</span></div>
 <p class="muted">Public information inside your operations dashboard. Scroll normally; use + / − to zoom, or enable map interaction to drag.</p><div class="world-toolbar inline"><button id="world-interact" class="secondary" aria-pressed="false">Enable map interaction</button><label class="world-search">Country <input id="world-search" list="world-countries" placeholder="Search country / দেশ" autocomplete="off"><datalist id="world-countries"></datalist></label><button id="world-jump" class="secondary">Fly to</button><button id="world-home">Home · Dinajpur</button><button id="world-zoom-in" class="secondary" aria-label="Zoom in">+</button><button id="world-zoom-out" class="secondary" aria-label="Zoom out">−</button><button id="world-reset" class="secondary">Reset</button><button id="world-language" class="secondary">বাংলা / EN</button><button id="world-fullscreen" class="secondary">Full screen</button><button id="world-flat" class="secondary">2D / 3D</button></div>
 <div class="world-layers inline" aria-label="Map layers"><label><input type="checkbox" data-layer="news" checked> News</label><label><input type="checkbox" data-layer="quakes" checked> Quakes · 24h</label><label><input type="checkbox" data-layer="home" checked> My location</label><label><input type="checkbox" data-layer="terminator" checked> Day / night</label><label><input type="checkbox" data-layer="arcs" checked> Links to Home</label><span id="world-mode" class="muted">Bundled Natural Earth · labels adapt to zoom</span></div>
 <div class="world-top"><div class="world-stage"><div id="world-canvas" aria-label="Interactive world globe"></div><svg id="world-map" viewBox="0 0 1000 500" role="img" aria-label="Interactive flat world map" hidden></svg><div id="world-tooltip" role="tooltip" hidden></div><div class="world-coordinate">25.63° N / 88.64° E <span>DINAJPUR · HOME</span></div><div class="world-orbit">LOCAL TIME / <time id="world-clock">—</time></div></div><aside class="world-country"><span class="eyebrow">COUNTRY FOCUS</span><h3 id="world-country-name">Dinajpur, Bangladesh</h3><p id="world-country-info" class="muted">Home marker is a fixed configured location—not live device tracking.</p><button id="world-clear-country" class="secondary">All countries</button><h4>Headlines in focus</h4><div id="world-focus-news" class="world-focus-list"><p class="muted">Waiting for public feeds.</p></div><p class="muted">Country matches are text heuristics. Arcs link hotspots to Home; they do not represent event movement.</p></aside></div>
@@ -300,5 +302,6 @@
 <script src="/dashboard/management.js"></script>
 <script src="/dashboard/world-settings.js"></script>
 <script src="/dashboard/control-shortcuts.js"></script>
+<script src="/dashboard/desktop.js"></script>
 </body>
 </html>

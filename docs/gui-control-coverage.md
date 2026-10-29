@@ -1,9 +1,9 @@
 # Original dashboard — control coverage audit
 
-Updated 2026-10-30. **The goal of every agent control being GUI-managed is not yet
+Updated 2026-10-30, desktop-first follow-up. **The goal of every agent control being GUI-managed is not yet
 fully met.** This table distinguishes working native controls from remaining
 terminal-only setup. There is no replacement dashboard, iframe panel or extra
-server. Open **Settings → Overview → Dashboard control shortcuts** to discover
+server. Open **Control center** (default desktop landing) or **Settings → Overview → Dashboard control shortcuts** to discover
 existing controls. These shortcuts navigate; they do not start tasks/services.
 
 | Capability | Native original-dashboard surface | Status / safety boundary |
@@ -20,11 +20,13 @@ existing controls. These shortcuts navigate; they do not start tasks/services.
 | Studio workflow configuration | Original Studio dialog | Available; original workflow store retained |
 | Bangladesh news via RSS | World default Bangladesh tab; News & weather settings | Eight Bangladesh publisher choices, original URLs/times when supplied; source failures visible |
 | WeatherAPI forecast, city lookup and key setup | World; News & weather settings | Available; server-side key, explicit confirmation; missing key/plan limits visible |
-| OS user-service install/uninstall | CLI | **Not yet GUI-managed**; operating-system installation is not worker start/stop |
-| Context collector activation/privacy setup | CLI approval workflow | **Not yet GUI-managed**; stays OFF by default; no screenshot/privacy approval bypass |
-| MCP/plugin endpoint enrollment | CLI/configuration | **Not yet GUI-managed**; not an invitation to enter arbitrary fetch URLs in World |
-| Telegram enrollment | CLI | **Not yet GUI-managed**; no credential enrollment UI claimed |
+| OS user-service registration | Desktop setup → OS service | Native preview/download and exact manifest-confirmed install via existing installer; uninstall/recovery remains OS-managed; registration is not proof of running |
+| Context activation/privacy policy | Desktop setup → Context & privacy | Native policy/signal/TTL/blocklist editing; stays OFF by default, no automatic collection; screen/cloud vision still separately reviewed |
+| MCP/plugin endpoint enrollment | Desktop setup → MCP & plugins | Native reviewed declarations, schemas, budgets and secret references; save/discovery executes nothing; plugin source editing remains file-based |
+| Telegram enrollment/policy | Desktop setup → Telegram policy | Native whitelist/limits/export policy; credentials remain environment-only; foreground transport lifecycle remains CLI-managed |
 | Environment/native-vault credential revocation | Environment/OS/provider tools | Clearing a session key is not global credential deletion/revocation |
+
+See [desktop setup, safety and remaining limits](desktop-control-center.md). No mobile-specific work is included in this desktop update.
 
 ## Validation boundary
 

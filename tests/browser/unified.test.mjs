@@ -11,7 +11,7 @@ afterEach(async()=>{for(const c of browser.contexts())await c.close();});
 after(async()=>browser?.close());
 async function open(width=1440,storageState,flat=true){
  const context=await browser.newContext({viewport:{width,height:1000},storageState,reducedMotion:flat?"no-preference":"reduce"});const page=await context.newPage();const errors=[];page.on('pageerror',e=>errors.push(e.message));
- await page.goto(base+'/dashboard'+(flat?'?map=2d':''));
+ await page.goto(base+'/dashboard'+(flat?'?map=2d':'')+'#run');
  if(!storageState){await page.locator('#guiToken').fill(token);await page.locator('#guiLogin button').click();}
  await page.waitForFunction(()=>document.getElementById('metaUplink').textContent==='online');
  return {page,context,errors};

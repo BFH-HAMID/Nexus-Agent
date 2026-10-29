@@ -910,3 +910,11 @@ scraped. External text never becomes agent instructions.
 
 See [setup, source terms, privacy, demo steps and actual offline screenshots](docs/world-widget.md)
 and the [honest dashboard control-coverage audit](docs/gui-control-coverage.md).
+
+### Desktop Control Center follow-up
+
+`nexus gui` opens a searchable desktop Control center; Run/chat and all existing
+views remain one click away. Native desktop setup now edits Context/privacy,
+MCP declarations and Telegram policy, and previews/downloads/explicitly installs
+reviewed OS user-service manifests. No save starts a collector, bot or plugin.
+See the [desktop guide and explicit remaining limits](docs/desktop-control-center.md).

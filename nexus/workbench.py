@@ -526,6 +526,9 @@ class Workbench:
             raise ValueError("Configuration YAML is invalid; inspect it locally. File contents and keys are not exposed.") from None
 
     def get(self, path: str, query: dict) -> Any:
+        if path == "desktop":
+            from .gui_desktop import dispatch
+            return observation(dispatch(self.state), "reviewed desktop setup; no collection or external activation")
         if path == "world-settings":
             from .gui_world_settings import view
             return observation(view(self.state), "workspace World settings; no secret values")
@@ -583,6 +586,9 @@ class Workbench:
         raise ValueError("Unknown workbench endpoint")
 
     def post(self, path: str, payload: dict) -> Any:
+        if path == "desktop":
+            from .gui_desktop import dispatch
+            return observation(dispatch(self.state, payload), "explicit desktop setup action")
         if path == "world-settings":
             from .gui_world_settings import save
             return observation(save(self.state, payload), "reviewed World settings")
