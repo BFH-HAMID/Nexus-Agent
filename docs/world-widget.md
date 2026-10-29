@@ -3,7 +3,7 @@
 A native **World, news & weather** tab inside the original `nexus gui` dashboard,
 not a separate HUD, console, iframe or application. It shares the original server,
 workspace and GUI session. Original chat, models, repository controls and settings
-remain in the same interface. No public-provider account/API key, paid SDK, CDN,
+remain in the same interface. WeatherAPI.com requires an account/API key; no paid SDK, CDN,
 location permission, model inference, trading or extra daemon is required.
 
 **Internet is necessary for the first public-feed fetch.** Offline operation means
@@ -62,18 +62,50 @@ map zoom/rotation. The SVG fallback works without WebGL.
 - CoinGecko public BTC/ETH/SOL/BNB/XRP/DOGE quotes with change/sparkline; Binance
   public fallback explicitly labels **USDT**, not USD. Fallback sparklines contain
   only locally observed samples (one sample is not a fabricated history).
-- Open-Meteo current/feels-like temperature, humidity, wind, rain/chance, daily-max
-  UV, sunrise/sunset, 24 future hourly temperatures and seven forecast days.
+- **WeatherAPI.com** current/feels-like temperature, humidity, wind, rain/chance,
+  daily-max UV, sunrise/sunset and up to 24 available future hourly temperatures.
+  Requests **three forecast days**, displays the actual number returned by your
+  plan, and never invents a seven-day forecast.
   Country focus requests its bundled capital; city search requests geocoding.
   Favorites are explicit opt-in browser-local storage, maximum eight, removable;
   tokens and headlines are never stored there. Locations/queries are sent to
-  Open-Meteo; nothing silently reads the user's physical location.
+  the selected provider; nothing silently reads the user's physical location.
 - Threshold banners: >=50 mm/day rain, >=40 C daily maximum, WMO 95/96/99 storms
   in the forecast. **Advisory thresholds, not official severe-weather warnings.**
 
+## Native RSS and WeatherAPI setup
+
+Open **World, news & weather → News & weather settings**, or **Settings → News &
+weather**. Select the Bangladesh publishers, language and **WeatherAPI.com**.
+Paste your key into the password field **in this GUI, never chat**, review and
+confirm `SAVE NEWS AND WEATHER`. A key remains in server-session memory unless
+you explicitly select native OS-vault persistence. Install the optional keyring
+support for that option; an unavailable/locked vault fails closed, with **no
+plaintext fallback**. Environment configuration (`WEATHERAPI_KEY`) is also supported.
+Resolution is **GUI session → environment → native vault**. The settings response
+contains only key presence/source, never its value. Password inputs clear on save,
+cancel/close or reload; no key goes into YAML, browser storage, weather responses
+or cache files. Query keys are redacted from HTTP client logging.
+
+Without a key, weather/city lookup reports `configuration-required` **before any
+provider request**. Forecast/auth/quota/network failures remain unavailable or
+explicitly stale. There is **no silent Open-Meteo fallback**. To use that legacy
+provider, select it explicitly and review its terms. Clearing the GUI session key
+does not erase an environment/vault key or revoke a provider credential; remove
+those through their respective environment/OS/provider controls. Session keys are
+lost on server restart. Keys are workspace-scoped in the native vault.
+
+Nonsecret settings use revision checks, existing schema validation and atomic YAML
+replacement. These saves cannot enable context collection or approve agent work.
+The same authenticated GUI/session protects the settings API; API routes remain
+`/api/workbench/world-settings` (GET/POST). Public weather endpoints do not accept
+keys or arbitrary upstream URLs. Credentials travel only backend-to-WeatherAPI
+using HTTPS; browsers use same-origin Nexus endpoints.
+
 ## Backend and configuration
 
-`widget.yaml` is read when the GUI World module initializes; restart/reload after edits. It enables known
+`widget.yaml` is read when the GUI World module initializes; native settings saves
+invalidate that module automatically. Restart after manual file edits. It enables known
 source IDs, language, default coordinates, layer defaults, hex theme colors and
 TTL values. Unknown URLs/IDs, invalid coordinates and aggressive refresh values
 are refused. `authorized_sources` is operator attestation of permission, **not** a
@@ -84,9 +116,9 @@ license issued by this application.
 | `/api/countries` | Bundled metadata and validated config, no network |
 | `/api/news` | Curated RSS/Atom via feedparser; each source 600s minimum |
 | `/api/crypto` | CoinGecko, Binance fallback; 120s minimum |
-| `/api/weather?latitude=25.63&longitude=88.64` | Open-Meteo; 900s minimum, coordinates rounded to .01 degree |
+| `/api/weather?latitude=25.63&longitude=88.64` | Selected provider (default WeatherAPI); 900s minimum, provider-separated cache, coordinates rounded to .01 degree |
 | `/api/quakes` | USGS all-day GeoJSON; 300s minimum |
-| `/api/cities?q=Dhaka` | Fixed Open-Meteo geocoding endpoint; 24h cache |
+| `/api/cities?q=Dhaka` | Selected provider city search; 24h cache |
 
 HTTP fetches run off the ASGI loop with **separate public-data slots**, so a slow
 feed cannot consume the operation/snapshot slots. Five news workers isolate failed
@@ -121,7 +153,7 @@ credentials or shell commands. Ambient proxy/authorization/cookies are not forwa
 Feed text is never passed into agent prompts, delegation, tools, approvals or learning.
 No assertion that sanitization makes external reporting true or makes it an instruction.
 
-## Publisher terms / attribution — reviewed 2026-10-29
+## Publisher terms / attribution — review notes updated 2026-10-30
 
 **A publicly reachable RSS URL is not a blanket redistribution license.** This is a
 private personal reader; excerpts/links retain attribution. No full-article scraper,
@@ -144,13 +176,28 @@ Source availability/terms can change; blocked feeds remain isolated/offline.
 | BleepingComputer | [Terms](https://www.bleepingcomputer.com/terms-of-use/); copyrighted reporting, no commercial grant assumed. |
 | Krebs on Security | [About/rights contact](https://krebsonsecurity.com/about/); RSS is not permission to reproduce full articles. |
 
+The Bangladesh catalog also includes Daily Star, bdnews24, Banglanews24, Dhaka
+Tribune, Jugantor and JagoNews24; native settings and per-source status expose
+publisher/rights links. Some point to the publisher homepage rather than verified
+terms; operators must find and review their current permissions. Fixed URLs were
+sourced from the [awesome-rss-feeds catalog](https://github.com/plenaryapp/awesome-rss-feeds)
+and secondary feed-discovery listings, **not live-validated here or certified for redistribution**. Prothom
+Alo and BBC Bangla complete the eight Bangladesh sources selected in the shipped
+`widget.yaml`. An existing workspace without that file retains the general catalog
+until you select publishers in settings. Bangladesh is the default news tab.
+
 Review limitation: current BBC/Guardian/Cointelegraph wording and Open-Meteo free-use
 restriction were confirmed from indexed public material. Not every other publisher's
 current full terms could be independently retrieved in this network-restricted
 sandbox. Their links are recorded for operator review, **not falsely certified as
 approved**. Remove any source from `sources` if its terms do not cover your use.
 
-**Open-Meteo free API access is for non-commercial use.** Data attribution is required;
+WeatherAPI.com requires your own account/key and appropriate plan; check its
+[terms](https://www.weatherapi.com/terms.aspx). Attribution follows the selected
+provider and stale/error states remain visible. No real WeatherAPI credential or
+live RSS response was available for this sandbox validation.
+
+**Legacy Open-Meteo free API access is for non-commercial use.** Data attribution is required;
 see official project/access terms [1](https://github.com/open-meteo/open-meteo) and
 [API terms](https://open-meteo.com/en/terms). Free API access and the CC BY 4.0 data
 license are different things; a commercial deployment requires an appropriate plan.

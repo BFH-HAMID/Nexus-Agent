@@ -25,8 +25,8 @@ For an initial virtual environment, use `python -m venv .venv` first.
   execution must be explicitly enabled with an installed Ollama model. Starting
   a worker alone does not approve tasks or enable execution. Lifecycle commands
   display actual acknowledgements; main Run/chat remains its original workflow.
-- **World, news & weather:** native lazy-loaded globe/SVG map, public news,
-  crypto quotes, weather and city search. Normal scrolling works on desktop and
+- **World, news & weather:** native lazy-loaded globe/SVG map, Bangladesh-first
+  RSS news, crypto quotes, WeatherAPI.com weather and city search. Normal scrolling works on desktop and
   mobile; enable map interaction deliberately to rotate/zoom without trapping
   page scrolling. Data failures are labelled, not replaced by sample values.
 
@@ -35,6 +35,26 @@ fresh approval at every autonomy level. Opening the GUI does not start model
 inference, collect screenshots or activate a worker. Main-run approvals bring the
 Run view back into view; background approvals have an attention banner when you
 are on another tab. Review actions before approving them.
+
+## Bangladesh RSS, WeatherAPI key and discoverable controls
+
+Open **World → News & weather settings** (also under **Settings → News & weather**).
+Choose **Bangladesh only** for the eight Bangladesh publishers, or select feeds
+individually. Headlines retain publisher attribution, original links and supplied
+timestamps; failures remain visible rather than fabricated articles.
+
+Select **WeatherAPI.com**, enter your key into the password field **here, never
+chat**, and review/confirm the save. Default storage is server-session memory;
+optional native-vault persistence requires working OS keyring support and has no
+plaintext fallback. `WEATHERAPI_KEY` is supported too. Missing keys cause no
+provider request; requests ask for three days and show actual plan-limited data.
+There is no automatic Open-Meteo fallback. See [privacy/setup](world-widget.md).
+
+**Settings → Overview** has shortcuts into the existing native controls. The
+[control-coverage audit](gui-control-coverage.md) distinguishes available controls
+from CLI-only setup. OS service installation, context activation, MCP/plugin
+endpoints and Telegram enrollment are **not yet GUI-managed**. Context remains
+OFF by default; privacy and destructive/external approvals remain unchanged.
 
 ## Dashboard control: roles, agents/models, Red/Blue teams and GitHub
 
@@ -160,27 +180,30 @@ starve private controls. `/api/operations/*`, public-information `/api/*`, and
 
 ![Original Run and chat](images/gui-main.png)
 ![Native operations](images/gui-operations.png)
-![World inside the same GUI](images/gui-world.png)
+![Original World SVG fallback, genuine missing-key state](images/gui-world.png)
+![Native Bangladesh RSS and WeatherAPI settings](images/gui-world-settings.png)
 [Mobile view](images/gui-mobile.png)
 
 ## Verification
 
 Python: `python -m pytest -q`; lint: `ruff check nexus tests`.
 Browser fixtures: `cd tests/browser; npm ci; npm test`.
-Actual-server integration: run `node --test tests/browser/unified.test.mjs tests/browser/management.test.mjs` from
+Actual-server integration: run `node --test --test-concurrency=1 tests/browser/unified.test.mjs tests/browser/management.test.mjs tests/browser/world-settings.test.mjs` from
 repository root with `NEXUS_TEST_URL` and a disposable `NEXUS_GUI_TEST_TOKEN` set.
-This suite exercises actual queue mutations and worker lifecycle (no model
-inference): **use a disposable workspace, never your production queue**. Browser
+This suite exercises actual queue mutations, worker lifecycle and configuration
+saves (no model inference): **use a disposable workspace, never your production queue**. Browser
 support libraries/Chromium may need installation on minimal Linux hosts.
 
 
 ### Verified integration snapshot
 
-- Full Python suite: **1,306 passed**, no skips; one upstream FastAPI/HTTPX
+- Full Python suite: **1,314 passed**, no skips; one upstream FastAPI/HTTPX
   deprecation warning.
-- Original GUI browser regression + actual-server unified tests: **39 passed**
-  (31 original/dashboard, including GitHub detach/reconnect + 7 unified + 1 actual-server configuration-management flow), including real queue/lifecycle, mobile/desktop scroll,
-  native WebGL, hidden-view polling, remembered/session-only login and logout.
+- Original GUI browser regression + actual-server unified tests: **40 passed**
+  (31 original/dashboard, including GitHub detach/reconnect + 7 unified + 1 actual-server configuration-management flow + 1 RSS/WeatherAPI/settings and shortcut-navigation flow), including real queue/lifecycle, mobile/desktop scroll,
+  native WebGL, hidden-view polling, remembered/session-only login/logout,
+  mobile settings, key nonexposure and password clearing. Public display fixtures
+  are explicitly labelled; no external-provider live validation is implied.
 - Ruff, World asset build and VS Code TypeScript compilation passed. A clean
   **base-only wheel install** served original GUI/static assets and authenticated
   original/operations/World APIs using the same Studio store.

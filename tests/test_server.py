@@ -855,7 +855,7 @@ def test_one_gui_cookie_covers_original_and_new_apis(server):
         cookie = response.headers['Set-Cookie']
         assert 'HttpOnly' in cookie and 'SameSite=Strict' in cookie
         assert server.state.token not in cookie
-    for route in ('/api/stats', '/api/operations/state', '/api/countries', '/api/workbench/settings', '/api/workbench/configuration'):
+    for route in ('/api/stats', '/api/operations/state', '/api/countries', '/api/workbench/settings', '/api/workbench/configuration', '/api/workbench/world-settings'):
         with opener.open(server.base + route) as response:
             assert response.status == 200
             # In-flight polling must not re-create a cookie after Forget login.

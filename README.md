@@ -886,8 +886,9 @@ See [operation, privacy, costs and limits](docs/evaluation.md) and the
 The **original Nexus GUI World tab** includes a locally bundled interactive
 3D world globe (Natural Earth borders, adaptive English/Bangla labels, hover/fly-to,
 Dinajpur Home, quakes/news/terminator layers, night texture, SVG fallback), news tabs,
-public crypto quotes and Open-Meteo forecast/favorites. It reuses the current theme,
-authentication and controls—no separate app, API accounts, CDN or model calls.
+Bangladesh-first RSS news, public crypto quotes and WeatherAPI.com forecast/favorites.
+It reuses the current theme, authentication and controls—no separate app, CDN or
+model calls. Weather requires your own WeatherAPI.com account/key.
 
 ```powershell
 python -m pip install -e .
@@ -896,10 +897,16 @@ nexus gui -C .
 
 Uses the same optional `NEXUS_SERVE_TOKEN`/GUI session, not a separate World or HUD credential.
 Defaults remain loopback-only; public requests start when the World tab opens. Configure
-`widget.yaml`. Internet is needed for the initial public fetch; stale cached data
+**News & weather settings** inside the original GUI (or `widget.yaml` for nonsecret
+settings). Enter the WeatherAPI key there, not in chat; it stays server-side in
+session memory, optionally the native OS vault. `WEATHERAPI_KEY` is also supported.
+Internet is needed for the initial public fetch; stale cached data
 is labelled offline, and an empty cache does not create sample news/weather/prices.
-**Open-Meteo free API access is non-commercial and requires attribution.** Publisher
+WeatherAPI requests three forecast days and displays only what your plan returns;
+missing keys/failed requests are labelled, never silently switched to another provider.
+Keyless Open-Meteo remains an explicit legacy option (free access is non-commercial). Publisher
 RSS permissions also apply; Cointelegraph is permission-gated by default, not silently
 scraped. External text never becomes agent instructions.
 
-See [setup, source terms, privacy, demo steps and actual offline screenshots](docs/world-widget.md).
+See [setup, source terms, privacy, demo steps and actual offline screenshots](docs/world-widget.md)
+and the [honest dashboard control-coverage audit](docs/gui-control-coverage.md).

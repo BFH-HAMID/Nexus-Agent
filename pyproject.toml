@@ -25,6 +25,7 @@ classifiers = [
   "Topic :: Utilities",
 ]
 dependencies = [
+  "tzdata>=2024.1",
   "feedparser>=6.0,<7",
   "httpx>=0.27",
   "psutil>=5.9",
@@ -77,9 +78,11 @@ packages = ["nexus"]
 "context.yaml" = "nexus/_config/context.yaml"
 "docs/hud.md" = "nexus/_config/docs/hud.md"
 "docs/gui.md" = "nexus/_config/docs/gui.md"
+"docs/gui-control-coverage.md" = "nexus/_config/docs/gui-control-coverage.md"
 "docs/images/gui-main.png" = "nexus/_config/docs/images/gui-main.png"
 "docs/images/gui-operations.png" = "nexus/_config/docs/images/gui-operations.png"
 "docs/images/gui-world.png" = "nexus/_config/docs/images/gui-world.png"
+"docs/images/gui-world-settings.png" = "nexus/_config/docs/images/gui-world-settings.png"
 "docs/images/gui-mobile.png" = "nexus/_config/docs/images/gui-mobile.png"
 "docs/images/gui-management.png" = "nexus/_config/docs/images/gui-management.png"
 

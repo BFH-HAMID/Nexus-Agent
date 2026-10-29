@@ -1,0 +1,9 @@
+/* Discoverable shortcuts into existing native controls; no background actions. */
+(()=>{'use strict';const pane=document.getElementById('wbPane-overview');if(!pane)return;
+ const section=document.createElement('section');section.id='guiControlShortcuts';const title=document.createElement('h3');title.textContent='Dashboard control shortcuts';section.append(title);const row=document.createElement('div');row.className='wb-row';section.append(row);
+ const dialog=document.getElementById('workbench');
+ const paneButton=name=>()=>dialog.querySelector('[data-pane="'+name+'"]').click();
+ const main=view=>()=>{dialog.close();window.nexusGui.show(view);};
+ for(const [label,fn] of [['Roles, models & teams',()=>document.getElementById('guiManagement').click()],['AI downloads & capabilities',paneButton('models')],['Model routing & safety',paneButton('policy')],['History & planning',paneButton('runs')],['Waiting task queue',paneButton('queue')],['File diffs',paneButton('files')],['Worker & approvals',main('operations')],['Globe, news & forecast',main('world')],['RSS & WeatherAPI settings',paneButton('worldSettings')],['GitHub attachment',()=>{dialog.close();window.nexusGui.show('run');document.getElementById('repoBar').scrollIntoView({block:'center'});}],['Studio workflows',()=>{dialog.close();document.getElementById('studioOpen').click();}],['Saved error history',paneButton('errors')]]){const b=document.createElement('button');b.textContent=label;b.onclick=fn;row.append(b);}
+ const note=document.createElement('p');note.textContent='Advanced setup not yet editable here: OS user-service installation, context collection activation, MCP/plugin endpoints and Telegram enrollment remain CLI-managed. Context stays OFF unless explicitly enabled through its existing approval workflow.';section.append(note);pane.prepend(section);
+})();

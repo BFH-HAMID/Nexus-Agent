@@ -30,7 +30,8 @@ class GuiModules:
         with self.lock:
             if self._world is None:
                 from .hud.world.core import World
-                self._world = World(self.state.workspace)
+                from .hud.world.weatherapi import credential
+                self._world = World(self.state.workspace, weather_key=lambda: getattr(self.state, 'weatherapi_key', '') or credential(self.state.workspace))
             return self._world
 
     def call(self, method, path, query, payload=None):

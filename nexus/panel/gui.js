@@ -61,6 +61,7 @@
       } catch {worldLoaded=false;document.getElementById('world-status').textContent='World assets unavailable; check local installation.';}
     }
   }
+  window.addEventListener('nexus:world-settings',()=>{if(worldLoaded)window.dispatchEvent(new CustomEvent('hud:connected',{detail:{api:(path,body)=>gui.api('/api/'+path,body)}}));});
   const tabs=[...document.querySelectorAll('[data-gui-tab]')];
   tabs.forEach((n,index)=>{n.onclick=()=>show(n.dataset.guiTab);n.onkeydown=e=>{if(!['ArrowLeft','ArrowRight','Home','End'].includes(e.key))return;e.preventDefault();const next=e.key==='Home'?0:e.key==='End'?tabs.length-1:(index+(e.key==='ArrowRight'?1:-1)+tabs.length)%tabs.length;tabs[next].focus();show(tabs[next].dataset.guiTab);};});
   document.addEventListener('click', e => {
