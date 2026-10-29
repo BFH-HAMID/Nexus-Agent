@@ -341,3 +341,15 @@ Existing roles, adapters, Studio/Jarvis, permissions and sessions.db are reused.
 Actual local effects and scripted model/remote transports remain explicitly
 distinguished. No native/live acceptance is inferred; no live push, service
 installation, payment, cloud screenshot or deployed-store claim is made.
+
+## Module 7 — World observatory (2026-10-29)
+
+Adds public information to the existing HUD/app factory/WebSocket/theme, not another
+app or learning KB. Bundled globe.gl/Three/Natural Earth/texture/Bengali font,
+interactive SVG fallback, RSS country matching, Open-Meteo/USGS/public crypto,
+TTL/disk/offline handling and strict existing auth are implemented. Operator-owned
+`widget.yaml` controls bounded sources/TTLs/layers/language/theme. Feed text never
+enters agents. Cointelegraph is gated on appropriate permission. See
+[implementation, source review limits and acceptance evidence](world-widget.md).
+Live public endpoint availability, complete publisher legal clearance and 60 FPS on
+the target laptop are not inferred from mocked feeds or software-rendered tests.

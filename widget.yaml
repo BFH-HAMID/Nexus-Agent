@@ -1,0 +1,12 @@
+schema: 1
+enabled: true
+language: en
+default_location: {name: 'Dinajpur, Bangladesh', latitude: 25.63, longitude: 88.64}
+refresh: {news: 600, crypto: 120, weather: 900, quakes: 300}
+sources: [bbc, aljazeera, dw, guardian, npr, bbc-bangla, prothom-alo, coindesk, cointelegraph, decrypt, hacker-news, bleeping, krebs]
+# Cointelegraph terms restrict automated pipelines; enable only with appropriate permission.
+authorized_sources: []
+layers: {news: true, quakes: true, home: true, terminator: true, arcs: true}
+theme: {accent: '#69d6ba', border: '#47bedd', atmosphere: '#278bdb'}
+# Public free feeds are for personal/non-commercial use subject to source terms.
+# No credentials. Open-Meteo free API access is non-commercial; attribution required.

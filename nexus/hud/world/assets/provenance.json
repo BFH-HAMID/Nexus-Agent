@@ -1,0 +1,26 @@
+{
+  "NotoSansBengali-Regular.ttf": [
+    "notofonts/noto-fonts",
+    "3e66c1a9ea885b999ce9736aa3b509cc51935fff"
+  ],
+  "OFL-Bengali.txt": [
+    "notofonts/noto-fonts",
+    "c82d72e422e2d08c5ab439b6bac7c2177ea0c565"
+  ],
+  "countries-50m.json": [
+    "nvkelso/natural-earth-vector",
+    "9d99f26dc470fcdbd08b062c813005acbdf73ccb"
+  ],
+  "countries-110m.json": [
+    "nvkelso/natural-earth-vector",
+    "1e6ab74c7042f97013be69ceec798be8e1aff27d"
+  ],
+  "capitals.json": [
+    "nvkelso/natural-earth-vector",
+    "4da9c6b27b5cd41d7c930ea9cd0c1f84548b65fb"
+  ],
+  "earth-night.jpg": [
+    "vasturiano/three-globe",
+    "6889180889423b6bcd2c9dfed5e138bcdb5e5e8b"
+  ]
+}

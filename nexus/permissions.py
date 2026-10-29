@@ -76,7 +76,7 @@ class Permissions:
         return path
 
     def operator_control(self, path):
-        controls = [self.root / name for name in ('permissions.yaml', 'autonomy.yaml', 'context.yaml', 'mcp.yaml', 'telegram.yaml', 'hud.yaml')]
+        controls = [self.root / name for name in ('permissions.yaml', 'autonomy.yaml', 'context.yaml', 'mcp.yaml', 'telegram.yaml', 'hud.yaml', 'widget.yaml')]
         if any(path == p or (path.exists() and p.exists() and os.path.samefile(path, p)) for p in controls):
             return True
         # Plugin code/manifests are operator-owned, even before enable. File tools

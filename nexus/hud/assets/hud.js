@@ -33,6 +33,7 @@ async function inspect(kind, id) {
   return value;
 }
 function paint(state) {
+  window.dispatchEvent(new CustomEvent('hud:world-update', {detail: state.world}));
   latest = state;
   $('context-state').textContent = state.context.enabled === true ? 'CONTEXT OPT-IN / ON DEMAND' : state.context.enabled === false ? 'CONTEXT OFF' : 'CONTEXT UNKNOWN / REFUSED';
   $('privacy-state').textContent = (state.context.error || (state.context.enabled ? 'Context explicitly opted in; collection on demand' : 'Context collection OFF')) + ' · local state · no implicit model execution';
@@ -93,19 +94,21 @@ function paint(state) {
   }
 }
 bind($('connect'), async () => {
+  window.dispatchEvent(new Event('hud:disconnected'));
   generation++; const version = generation;
   $('connection').textContent = 'Connecting…';
   if (socket) socket.close();
   token = $('token').value; $('token').value = '';
   try { paint(await api('state')); }
   catch (error) { token = ''; $('connection').textContent = 'Disconnected · authentication failed'; throw error; }
+  window.dispatchEvent(new CustomEvent('hud:connected', {detail: {api}}));
   socket = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws');
   socket.onopen = () => { if (version === generation) socket.send(JSON.stringify({token})); };
   socket.onmessage = event => { if (version === generation) { paint(JSON.parse(event.data)); $('connection').textContent = 'LIVE · authenticated'; } };
   socket.onclose = () => { if (version === generation) $('connection').textContent = 'Disconnected · reconnect to refresh'; };
   socket.onerror = () => { if (version === generation) message('Live connection failed. Reconnect; no fabricated updates.'); };
 });
-bind($('disconnect'), async () => { generation++; if (socket) socket.close(); token = ''; selectedAction = null; $('action-review').hidden = true; $('connection').textContent = 'Disconnected'; });
+bind($('disconnect'), async () => { window.dispatchEvent(new Event('hud:disconnected')); generation++; if (socket) socket.close(); token = ''; selectedAction = null; $('action-review').hidden = true; $('connection').textContent = 'Disconnected'; });
 for (const control of document.querySelectorAll('[data-control]')) bind(control, async () => {
   const action = control.dataset.control;
   const confirmation = ['start', 'resume'].includes(action) ? prompt('This can dispatch previously approved work. Type: ' + action.toUpperCase() + ' JARVIS') : '';
@@ -132,3 +135,4 @@ $('delegate').addEventListener('submit', async event => {
   try { await perform('create', {task: $('task').value, max_seconds: Number($('seconds').value)}); $('task').value = ''; }
   catch (error) { message(error.message); } finally { submit.disabled = false; }
 });
+window.addEventListener('hud:world-ready', () => { if (token) window.dispatchEvent(new CustomEvent('hud:connected', {detail: {api}})); });

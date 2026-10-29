@@ -10,7 +10,7 @@ from collections import deque
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, JSONResponse
 from starlette.concurrency import run_in_threadpool
 
@@ -26,7 +26,12 @@ def create_app(studio, token, *, allowed_hosts=None):
         raise ValueError('Explicit hostnames required; no wildcards')
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
     service = HUD(studio, secret_values=[token])
+    from .world.core import ASSETS as world_assets
+    from .world.core import World
+    world = World(studio.root)
+    app.state.world = world
     slots = asyncio.Semaphore(2)
+    public_slots = asyncio.Semaphore(3)
     connections = set()
     requests = deque(maxlen=120)
     assets = Path(__file__).parent / 'assets'
@@ -47,7 +52,9 @@ def create_app(studio, token, *, allowed_hosts=None):
 
     async def snapshot():
         async with slots:
-            return await run_in_threadpool(service.snapshot)
+            value = await run_in_threadpool(service.snapshot)
+            value['world'] = world.revisions()
+            return value
 
     @app.middleware('http')
     async def boundary(request: Request, call_next):
@@ -67,7 +74,7 @@ def create_app(studio, token, *, allowed_hosts=None):
         response.headers['Cache-Control'] = 'no-store'
         response.headers['Referrer-Policy'] = 'no-referrer'
         response.headers['X-Content-Type-Options'] = 'nosniff'
-        response.headers['Content-Security-Policy'] = "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'"
+        response.headers['Content-Security-Policy'] = "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'none'"
         return response
 
     @app.get('/')
@@ -81,6 +88,48 @@ def create_app(studio, token, *, allowed_hosts=None):
     @app.get('/hud.css')
     async def styles():
         return FileResponse(assets / 'hud.css', media_type='text/css')
+
+    @app.get('/world/{name}')
+    async def world_asset(name: str):
+        # Flat, explicit shipped files; never expose an arbitrary path.
+        permitted = {'world.js', 'world.js.LEGAL.txt', 'world.css', 'world.vendor.css', 'THIRD-PARTY.txt', 'NotoSansBengali-Regular.ttf', 'OFL-Bengali.txt', 'countries-detail.geojson',
+                     'countries-low.geojson', 'earth-night.jpg', 'provenance.json'}
+        if name not in permitted or not (world_assets / name).is_file():
+            raise HTTPException(404, 'Unknown bundled asset')
+        return FileResponse(world_assets / name)
+
+    @app.get('/api/countries')
+    async def countries():
+        return {'items': world.countries, 'config': world.config, 'source': 'Bundled Natural Earth admin-0; borders are not political endorsement'}
+
+    async def public_data(method, *args):
+        if not world.config['enabled']:
+            raise HTTPException(503, 'World widget disabled')
+        async with public_slots:
+            return await run_in_threadpool(method, *args)
+
+    @app.get('/api/news')
+    async def world_news():
+        return await public_data(world.news)
+
+    @app.get('/api/crypto')
+    async def world_crypto():
+        return await public_data(world.crypto)
+
+    @app.get('/api/quakes')
+    async def world_quakes():
+        return await public_data(world.quakes)
+
+    @app.get('/api/weather')
+    async def world_weather(latitude: float | None = Query(None, ge=-90, le=90),
+                            longitude: float | None = Query(None, ge=-180, le=180)):
+        if (latitude is None) != (longitude is None):
+            raise HTTPException(422, 'Both coordinates required')
+        return await public_data(world.weather, latitude, longitude)
+
+    @app.get('/api/cities')
+    async def world_cities(q: str = Query(..., min_length=2, max_length=80)):
+        return await public_data(world.cities, q)
 
     @app.get('/api/state')
     async def state():
