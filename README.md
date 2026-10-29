@@ -105,7 +105,9 @@ public news, crypto and forecasts). No iframe, extra server or second login.
 this same GUI; do not start them as additional dashboards. **Roles, agents & teams**
 adds reviewed role instructions/model/tool editing, agent/provider configuration,
 and ordered Red/Blue teams using the existing pipelines. Context stays OFF;
-external/destructive actions still need approval. See [GUI setup and security](docs/gui.md).
+external/destructive actions still need approval. **GitHub off / No repository**
+lets you work without a remote repo attachment; that choice survives reload.
+See [GUI setup and security](docs/gui.md).
 
 ## Opt-in multi-role project planning (Module 1 preview)
 

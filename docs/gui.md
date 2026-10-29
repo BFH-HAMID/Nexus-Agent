@@ -83,6 +83,24 @@ in the existing Ollama and Model & safety policy sections.
 
 ![Native role, agent and team management](images/gui-management.png)
 
+## Optional GitHub attachment — no repository required
+
+Use **GitHub off** in the composer repository strip, or choose **No repository**
+in its dropdown. You can then use ordinary chat and the local workspace without
+attaching a GitHub repository. New Run requests omit `github_repo`; remote
+Create PR/Merge controls are disabled. Explicit off survives reload on this
+browser/origin, and the repo list is not fetched automatically while off. Late
+inventory/status responses cannot reattach a repository.
+
+**Connect GitHub** explicitly reloads the available repositories but leaves the
+selection empty until you choose one. No key is deleted: this is a dashboard
+attachment choice, not GitHub credential revocation, a global GitHub-tool/network
+firewall, or cancellation of already-running tasks. Existing runs keep their
+original target and approvals; stop those separately if required. Your local
+workspace is still available (and can itself be a Git checkout). If browser
+storage is unavailable the dashboard defaults to detached; clearing browser data
+removes saved preferences.
+
 ## Optional one-time trusted-device login
 
 Existing trusted **loopback-only** use without an access token remains supported.
@@ -160,8 +178,8 @@ support libraries/Chromium may need installation on minimal Linux hosts.
 
 - Full Python suite: **1,306 passed**, no skips; one upstream FastAPI/HTTPX
   deprecation warning.
-- Original GUI browser regression + actual-server unified tests: **37 passed**
-  (29 original + 7 unified + 1 actual-server configuration-management flow), including real queue/lifecycle, mobile/desktop scroll,
+- Original GUI browser regression + actual-server unified tests: **39 passed**
+  (31 original/dashboard, including GitHub detach/reconnect + 7 unified + 1 actual-server configuration-management flow), including real queue/lifecycle, mobile/desktop scroll,
   native WebGL, hidden-view polling, remembered/session-only login and logout.
 - Ruff, World asset build and VS Code TypeScript compilation passed. A clean
   **base-only wheel install** served original GUI/static assets and authenticated
