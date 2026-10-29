@@ -180,7 +180,16 @@ def test_private_state_is_masked_using_known_secrets(studio, client, monkeypatch
 def test_static_assets_have_no_inline_code_or_remote_assets(client):
     html = client.get('/').text
     assert 'NEXUS_CORE@SYSTEM:~' in html and 'No sample data' in html
-    assert 'onclick=' not in html and 'https://' not in html
+    assert 'onclick=' not in html
+    from html.parser import HTMLParser
+    class LocalAssets(HTMLParser):
+        def handle_starttag(self, tag, attrs):
+            data = dict(attrs)
+            if tag == 'script' and data.get('src'):
+                assert data['src'].startswith('/')
+            if tag == 'link' and data.get('rel') == 'stylesheet':
+                assert data['href'].startswith('/')
+    LocalAssets().feed(html)  # External attribution links are not fetched assets.
     assert client.get('/hud.js').status_code == 200 and client.get('/hud.css').status_code == 200
 
 

@@ -1,0 +1,17 @@
+{
+  "name": "nexus-hud-world",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs"
+  },
+  "dependencies": {
+    "globe.gl": "2.45.0",
+    "three": "0.183.2",
+    "tz-lookup": "6.1.25"
+  },
+  "devDependencies": {
+    "esbuild": "0.25.12"
+  }
+}

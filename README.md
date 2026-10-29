@@ -869,3 +869,26 @@ plugin, payment or external replay; no HUD execution endpoint. Context stays OFF
 
 See [operation, privacy, costs and limits](docs/evaluation.md) and the
 [six-module audit / six scripted integration demos](docs/six-module-audit.md).
+
+### Module 7: World observatory · globe / public news / weather
+
+The **existing FastAPI/WebSocket HUD** now includes a locally bundled interactive
+3D world globe (Natural Earth borders, adaptive English/Bangla labels, hover/fly-to,
+Dinajpur Home, quakes/news/terminator layers, night texture, SVG fallback), news tabs,
+public crypto quotes and Open-Meteo forecast/favorites. It reuses the current theme,
+authentication and controls—no separate app, API accounts, CDN or model calls.
+
+```powershell
+python -m pip install -e ".[hud]"
+nexus hud -C .
+```
+
+Use the existing private local `NEXUS_HUD_TOKEN` (not an API key). Defaults remain
+loopback-only; collection starts only in a connected visible HUD. Configure
+`widget.yaml`. Internet is needed for the initial public fetch; stale cached data
+is labelled offline, and an empty cache does not create sample news/weather/prices.
+**Open-Meteo free API access is non-commercial and requires attribution.** Publisher
+RSS permissions also apply; Cointelegraph is permission-gated by default, not silently
+scraped. External text never becomes agent instructions.
+
+See [setup, source terms, privacy, demo steps and actual offline screenshots](docs/world-widget.md).
