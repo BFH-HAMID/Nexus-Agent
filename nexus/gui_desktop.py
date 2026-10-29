@@ -9,6 +9,8 @@ import json
 import os
 import sys
 import tempfile
+import threading
+from contextlib import contextmanager
 from pathlib import Path
 
 import yaml
@@ -84,6 +86,21 @@ def snapshot(state):
     return result
 
 
+@contextmanager
+def service_change(state):
+    # OS calls may take time; don't hold the global state/approval lock.
+    with state.lock:
+        if not hasattr(state, 'desktop_service_lock'):
+            state.desktop_service_lock = threading.Lock()
+        lock = state.desktop_service_lock
+    if not lock.acquire(blocking=False):
+        raise ValueError('Another service change is pending; inspect before retry')
+    try:
+        yield
+    finally:
+        lock.release()
+
+
 def action(state, payload):
     if state.demo:
         raise ValueError('Desktop setup requires live mode')
@@ -112,6 +129,15 @@ def action(state, payload):
                     raise ValueError('Review current enabled context policy before collecting')
             context = Context(state.workspace, state.workbench.studio)
             return context.collect() if operation == 'context-collect' else context.clear()
+    if operation in {'service-inspect', 'service-remove-preview', 'service-remove'}:
+        from .jarvis.service_control import inspect, remove
+        platform, user = payload.get('platform', ''), payload.get('user', '')
+        if platform not in {'windows', 'systemd'} or not isinstance(user, str) or len(user) > 200:
+            raise ValueError('Choose supported platform and bounded OS user')
+        if operation == 'service-remove':
+            with service_change(state):
+                return remove(state.workspace, platform, user, confirmation=payload.get('confirmation', ''))
+        return inspect(state.workspace, platform, user)
     if operation in {'service-preview', 'service-install'}:
         from .jarvis.services import install, manifest
         platform = payload.get('platform', '')
@@ -125,7 +151,7 @@ def action(state, payload):
                     'note': 'Preview only. Installation is a separate explicit OS change; no elevation or password handling.'}
         if payload.get('confirmation') != confirmation:
             raise ValueError('Review current manifest and exact installation confirmation')
-        with state.lock:
+        with service_change(state):
             return install(state.workspace, platform, user, confirmation=confirmation)
     if operation != 'save' or set(payload) - {'operation', 'kind', 'revision', 'settings', 'confirmation'}:
         raise ValueError('Unknown desktop setup action')

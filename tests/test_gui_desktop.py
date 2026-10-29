@@ -1,5 +1,6 @@
 """Desktop policy setup reuses validators; no ambient network/collection/install."""
 import json
+import threading
 
 import pytest
 import yaml
@@ -90,3 +91,36 @@ def test_existing_confined_absolute_plugin_path_remains_readable(repo):
                                                 'plugin_directory': str(repo / 'plugins'), 'servers': {}}))
     row = dispatch(ServerState(repo, quiet=True))['policies']['mcp']
     assert row['settings']['plugin_directory'] == str(repo / 'plugins')
+
+
+def test_service_removal_route_reuses_controller_with_fixed_workspace(repo, monkeypatch):
+    from nexus.jarvis import service_control
+    state = ServerState(repo, quiet=True)
+    calls = []
+    monkeypatch.setattr(service_control, 'inspect', lambda *args: {'removable': False, 'reason': 'test manager unavailable'})
+    assert not dispatch(state, {'operation': 'service-inspect', 'platform': 'systemd'})['removable']
+    monkeypatch.setattr(service_control, 'remove', lambda *args, **kw: calls.append((args, kw)) or {'removal_commands_accepted': True})
+    result = dispatch(state, {'operation': 'service-remove', 'platform': 'systemd', 'confirmation': 'explicit test consent', 'workspace': '/not-the-target'})
+    assert result['removal_commands_accepted']
+    assert calls[0][0] == (repo, 'systemd', '')
+    assert calls[0][1]['confirmation'] == 'explicit test consent'
+    with pytest.raises(ValueError):
+        dispatch(state, {'operation': 'service-remove', 'platform': 'arbitrary-command'})
+
+
+def test_parallel_service_changes_are_refused_without_global_state_lock_held(repo):
+    from nexus.gui_desktop import service_change
+    state = ServerState(repo, quiet=True)
+    with service_change(state):
+        acquired = threading.Event()
+        def check():
+            if state.lock.acquire(blocking=False):
+                acquired.set()
+                state.lock.release()
+        thread = threading.Thread(target=check)
+        thread.start()
+        thread.join(2)
+        assert acquired.is_set()
+        with pytest.raises(ValueError):
+            with service_change(state):
+                pytest.fail('No parallel service mutation')

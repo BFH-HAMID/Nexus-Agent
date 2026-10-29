@@ -20,7 +20,7 @@ existing controls. These shortcuts navigate; they do not start tasks/services.
 | Studio workflow configuration | Original Studio dialog | Available; original workflow store retained |
 | Bangladesh news via RSS | World default Bangladesh tab; News & weather settings | Eight Bangladesh publisher choices, original URLs/times when supplied; source failures visible |
 | WeatherAPI forecast, city lookup and key setup | World; News & weather settings | Available; server-side key, explicit confirmation; missing key/plan limits visible |
-| OS user-service registration | Desktop setup → OS service | Native preview/download and exact manifest-confirmed install via existing installer; uninstall/recovery remains OS-managed; registration is not proof of running |
+| OS user-service registration | Desktop setup → OS service | Native preview/download/install plus read-only inspection and exact observed-registration-confirmed removal; unsafe/modified services need manual OS recovery; registration is not daemon readiness |
 | Context activation/privacy policy | Desktop setup → Context & privacy | Native policy/signal/TTL/blocklist editing; stays OFF by default, no automatic collection; confirmed one-time collect/clear added; screen/cloud vision still separately reviewed |
 | MCP/plugin endpoint enrollment | Desktop setup → MCP & plugins | Native reviewed declarations, schemas, budgets and secret references; save/discovery executes nothing; plugin source editing remains file-based |
 | Telegram enrollment/policy | Desktop setup → Telegram policy | Native whitelist/limits/export policy; credentials remain environment-only; confirmed supervised GUI Start/Stop/status added; same CLI lock, no independent-process kill claim |

@@ -923,3 +923,8 @@ Desktop setup also supports separately confirmed Telegram polling Start/Stop/sta
 and one-time local context collect/clear. It reuses the original Bot/Context and
 shared Studio, with duplicate-poller locking and cancellation checks. No policy
 save starts these actions; screen/cloud vision still needs separate approval.
+
+OS service setup now adds read-only registration inspection, fresh observed-state
+removal preview/confirmation, and non-executing recovery instructions. It refuses
+foreign/modified/overridden registrations and reports partial outcomes; it does
+not elevate, overwrite, force-repair or claim all independent workers are stopped.

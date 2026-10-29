@@ -57,7 +57,8 @@ There is no automatic Open-Meteo fallback. See [privacy/setup](world-widget.md).
 [control-coverage audit](gui-control-coverage.md) distinguishes available controls
 from CLI-only setup. Context/MCP/Telegram policy and reviewed OS service registration now have native
 controls. Supervised Telegram Start/Stop/status and confirmed local context collect/clear
-are also available. Independent CLI pollers, screen/cloud vision, OS recovery and
+are also available. Reviewed OS service inspection/removal is also available. Independent CLI pollers,
+screen/cloud vision, modified-service recovery and
 credential revocation retain their existing separately managed workflows. Context remains
 OFF by default; privacy and destructive/external approvals remain unchanged.
 
@@ -203,7 +204,7 @@ support libraries/Chromium may need installation on minimal Linux hosts.
 
 ### Verified integration snapshot
 
-- Full Python suite: **1,333 passed**, no skips; one upstream FastAPI/HTTPX
+- Full Python suite: **1,350 passed**, no skips; one upstream FastAPI/HTTPX
   deprecation warning.
 - Original GUI browser regression + actual-server unified tests: **42 passed**
   (31 original/dashboard, including GitHub detach/reconnect + 7 unified + 1 actual-server configuration-management flow + 1 RSS/WeatherAPI/settings and shortcut-navigation flow + 1 desktop control/setup flow + 1 consent-guarded local context/Telegram runtime flow), including real queue/lifecycle, mobile/desktop scroll,

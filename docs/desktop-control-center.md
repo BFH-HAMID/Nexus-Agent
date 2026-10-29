@@ -94,8 +94,33 @@ There is no administrator elevation, password collection, shell command input,
 execution-policy change, overwrite or automatic rollback.
 
 An accepted registration is **not** a running-daemon confirmation. Partial manager
-outcomes are displayed for manual review; do not retry blindly. Uninstall and OS
-manager recovery remain OS-managed using the returned instructions. No OS service
+outcomes are displayed for manual review; do not retry blindly. Native **Inspect service registration** is read-only and uses the actual target
+OS. **Preview service removal** binds the observed registration revision;
+**Remove reviewed user service** regenerates that observation and requires exact
+`REMOVE SERVICE <filename> <digest>` consent. Modified/unloaded/foreign fragments,
+systemd drop-ins, pending daemon reloads, symlinks, unsafe files, changed task
+identity/actions or unavailable manager state refuse removal rather than guessing.
+
+Linux removal stops/disables only the current user's exact generated unit,
+rechecks ownership and removes that unit file, then requests daemon reload.
+Windows queries the exact hash-named task XML and structured Task Scheduler COM
+state through a fixed no-profile PowerShell query (no execution-policy changes).
+It validates the expected workspace command, arguments, user, interactive
+least-privilege principal and trigger. Exported user IDs may be SIDs; enter the
+exact exported identity if a friendly account name does not match. Removal first
+disables, ends only if queued/running, confirms its disabled/not-running state,
+rechecks ownership and deletes that registration. The local exported XML remains
+for review. It does not kill arbitrary processes or claim all Nexus workers are
+stopped. OS activity/state can change between requests; stale previews are refused.
+
+**Show recovery instructions** displays the original platform-specific commands
+without running them. Manager refusal/timeouts or mid-operation changes produce
+an explicit **partial outcome** with accepted-step receipts. No automatic
+rollback/repair, overwrite, privilege elevation or forced foreign-service cleanup.
+If the manifest was generated with an older Python/path/user or subsequently
+customized, use the actual OS manager for manual recovery. Within this GUI process, service mutation requests
+serialize separately from ordinary task/approval state; OS calls do not hold the
+global dashboard lock. No OS service
 was actually installed during automated validation.
 
 ## Persistence, privacy and current limits
@@ -108,7 +133,7 @@ executes no plugin and reads no ambient context. There is no new learning store.
 
 **Not every conceivable operation is now a GUI button.** Control of independently
 launched CLI pollers, separately reviewed screen/cloud vision, plugin source-file
-authoring, OS uninstall/recovery and environment/OS-vault credential revocation
+authoring, foreign/modified-service recovery and environment/OS-vault credential revocation
 still use their existing tools/workflows. These are explicit limits, not hidden
 behind decorative controls. See [control coverage](gui-control-coverage.md).
 
@@ -124,3 +149,5 @@ tested with an explicitly scripted read-only snapshot; its Stop/Clear posts stil
 reach the actual server.
 
 ![Telegram controls, stopped with missing prerequisites; no live account](images/gui-telegram-runtime.png)
+
+![Actual read-only service inspection; no removal performed](images/gui-service-control.png)
