@@ -50,14 +50,20 @@ def terminate_group(process: subprocess.Popen) -> None:
     process.wait(timeout=5)
 
 
-def stream_shell(command: str, cwd: Path, *, timeout: float, emit: EventHandler,
+def stream_shell(command: str | list[str], cwd: Path, *, timeout: float, emit: EventHandler,
                  cancel: threading.Event | None = None, call_id: str = "",
-                 max_chars: int = 24_000, tool: str = "run_command") -> tuple[str, int]:
-    env = dict(os.environ)
+                 max_chars: int = 24_000, tool: str = "run_command", env: dict[str, str] | None = None, redact_workspace: Path | None = None) -> tuple[str, int]:
+    from .computer_control import EmergencyStop
+    emergency = EmergencyStop()
+    if emergency.stopped() or cancel is not None and cancel.is_set():
+        raise RuntimeError("command cancelled before launch")
+    from .redaction import StreamMask, mask, secrets
+    sensitive = secrets(redact_workspace or cwd, env)
+    env = dict(os.environ if env is None else env)
     env.setdefault("GIT_TERMINAL_PROMPT", "0")
     env.setdefault("PAGER", "cat")
     env.setdefault("PYTHONUNBUFFERED", "1")
-    process = subprocess.Popen(command, shell=True, cwd=str(cwd), env=env,
+    process = subprocess.Popen(command, shell=isinstance(command, str), cwd=str(cwd), env=env,
                                stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                                stderr=subprocess.PIPE, start_new_session=os.name == "posix")
     ident = uuid.uuid4().hex
@@ -90,6 +96,8 @@ def stream_shell(command: str, cwd: Path, *, timeout: float, emit: EventHandler,
     limit = max(1024, min(max_chars or 24_000, 64_000))
     captured = {"stdout": "", "stderr": ""}
     decoders = {name: codecs.getincrementaldecoder("utf-8")("replace") for name in captured}
+    masks = {name: StreamMask(sensitive) for name in captured}
+    raw_seen = 0
     streamed = 0
     truncated = False
     reason = "exited"
@@ -97,13 +105,13 @@ def stream_shell(command: str, cwd: Path, *, timeout: float, emit: EventHandler,
     ended = 0
     exit_seen = None
     try:
-        emit(Event(EventType.PROCESS, {**common, "status": "running", "command": command, "cwd": str(cwd)}))
+        emit(Event(EventType.PROCESS, {**common, "status": "running", "command": mask(command, sensitive) if isinstance(command, str) else [mask(a, sensitive) for a in command], "cwd": str(cwd)}))
         for name, pipe in (("stdout", process.stdout), ("stderr", process.stderr)):
             thread = threading.Thread(target=read_pipe, args=(pipe, name), daemon=True)
             thread.start()
             readers.append(thread)
         while ended < 2:
-            if cancel is not None and cancel.is_set():
+            if emergency.stopped() or cancel is not None and cancel.is_set():
                 reason = "cancelled"
                 break
             if time.monotonic() - started >= timeout:
@@ -121,18 +129,20 @@ def stream_shell(command: str, cwd: Path, *, timeout: float, emit: EventHandler,
             text = decoders[stream].decode(raw or b"", final=raw is None)
             if raw is None:
                 ended += 1
-            available = max(0, limit - streamed)
-            piece = text[:available]
+            available = max(0, limit - raw_seen)
+            raw_piece = text[:available]
+            raw_seen += len(raw_piece)
+            piece = masks[stream].feed(raw_piece, final=raw is None or raw_seen >= limit)
             if piece:
                 captured[stream] += piece
                 streamed += len(piece)
                 emit(Event(EventType.TOOL_OUTPUT, {**common, "stream": stream, "text": piece}))
-            if len(text) > len(piece) and not truncated:
+            if len(text) > len(raw_piece) and not truncated:
                 truncated = True
                 emit(Event(EventType.TOOL_OUTPUT, {**common, "stream": "notice", "text": f"\n[Live output capped at {limit} characters; remaining output drained, not retained.]\n"}))
         # Pipes can close before the process exits; remain cancellable while waiting.
         while process.poll() is None and reason == "exited":
-            if cancel is not None and cancel.is_set():
+            if emergency.stopped() or cancel is not None and cancel.is_set():
                 reason = "cancelled"
             elif time.monotonic() - started >= timeout:
                 reason = "timed_out"

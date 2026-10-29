@@ -11,7 +11,7 @@ import pytest
 
 from nexus.live_process import stream_shell
 from nexus.server import ServerState, Session
-from nexus.tools import ApprovalGate, PathGuard, ToolContext, build_tools
+from nexus.tools import ApprovalDecision, ApprovalGate, PathGuard, ToolContext, build_tools
 from nexus.types import Event, EventType
 
 
@@ -122,7 +122,7 @@ def test_cancel_kills_descendants_even_if_shell_exits(repo):
 
 def test_new_and_appended_file_diff_and_full_tool_result_are_observable(repo):
     events = []
-    ctx = ToolContext(repo, PathGuard(repo), ApprovalGate(mode="auto"), emit=events.append)
+    ctx = ToolContext(repo, PathGuard(repo), ApprovalGate(mode="auto", callback=lambda *a: ApprovalDecision(True)), emit=events.append)
     registry = build_tools(ctx)
     assert registry.call("write_file", {"path": "live.txt", "content": "first\n"})[1] is False
     assert registry.call("write_file", {"path": "live.txt", "content": "second\n", "append": True})[1] is False
@@ -179,7 +179,7 @@ def test_real_agent_context_receives_task_cancellation(repo, config):
 
 def test_deleted_large_or_binary_file_has_metadata_not_unbounded_diff(repo):
     events = []
-    ctx = ToolContext(repo, PathGuard(repo), ApprovalGate(mode="auto"), emit=events.append)
+    ctx = ToolContext(repo, PathGuard(repo), ApprovalGate(mode="auto", callback=lambda *a: ApprovalDecision(True)), emit=events.append)
     registry = build_tools(ctx)
     for name, content in [("binary.dat", b"\x00\xff"), ("large.txt", b"A" * 500001)]:
         (repo / name).write_bytes(content)

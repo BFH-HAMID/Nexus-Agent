@@ -53,7 +53,7 @@ def test_commit_selected_paths_preserves_unrelated_staged_changes(repos):
 def test_commit_stale_preview_does_nothing(repos):
     service, root, ident = repos
     (root / 'chosen.txt').write_text('first\n')
-    preview = service.preview({'repo':ident, 'action':'commit', 'paths':['chosen.txt'], 'message':'review'})['data']
+    preview = service.preview({'repo':ident, 'action':'commit', 'paths':['chosen.txt'], 'message':'chore: review'})['data']
     before = git(root, 'rev-parse', 'HEAD')
     (root / 'chosen.txt').write_text('manual update\n')
     with pytest.raises(ValueError, match='changed'):
@@ -66,7 +66,7 @@ def test_commit_stale_preview_does_nothing(repos):
 def test_commit_path_validation(repos, paths):
     service, _, ident = repos
     with pytest.raises(ValueError):
-        service.preview({'repo':ident, 'action':'commit', 'paths':paths, 'message':'review'})
+        service.preview({'repo':ident, 'action':'commit', 'paths':paths, 'message':'chore: review'})
 
 
 def test_active_runs_protected_branches_and_isolation_block_mutations(repos):
@@ -91,6 +91,12 @@ def remote_script(repos, monkeypatch):
     calls = []
     actual = service.command
     def command(directory, argv, timeout=25):
+        if argv[:2] == ['gh', 'api'] and '/commits/' in argv[2]:
+            import datetime as dt
+            sha = argv[2].split('/commits/')[1].split('/')[0]
+            if '/check-runs?' in argv[2]:
+                return json.dumps({'total_count': 1, 'check_runs': [{'id': 1, 'name': 'tests', 'head_sha': sha, 'status': 'completed', 'conclusion': 'success', 'completed_at': dt.datetime.now(dt.timezone.utc).isoformat()}]})
+            return json.dumps({'sha': sha, 'total_count': 0, 'statuses': []})
         if argv[:2] == ['git','ls-remote']:
             calls.append(argv)
             return head+'\trefs/heads/feature\n'
@@ -165,3 +171,24 @@ def test_concurrent_push_cannot_reuse_one_preview(repos, monkeypatch):
         results = list(pool.map(lambda n: execute(), range(2)))
     assert results.count(True) == 1
     assert sum(c[:2] == ['git','push'] for c in calls) == 1
+
+
+def test_mandatory_secret_scan_rejects_cleanly_before_preview_and_staging(repos):
+    service, root, ident = repos
+    service.wb.studio.save_settings({'secret_scan': False})
+    (root / 'credentials.txt').write_text('ghp_' + 'x' * 36)
+    before = git(root, 'rev-parse', 'HEAD')
+    with pytest.raises(ValueError, match='Potential secret'):
+        service.preview({'repo': ident, 'action': 'commit', 'paths': ['credentials.txt'], 'message': 'chore: update configuration'})
+    assert git(root, 'rev-parse', 'HEAD') == before and git(root, 'diff', '--cached', '--name-only') == ''
+
+
+def test_execution_rechecks_current_token_before_staging(repos, monkeypatch):
+    service, root, ident = repos
+    (root / 'chosen.txt').write_text('opaque-future-token-value')
+    monkeypatch.setenv('GITHUB_TOKEN', 'different-opaque-credential')
+    preview = service.preview({'repo': ident, 'action': 'commit', 'paths': ['chosen.txt'], 'message': 'chore: update configuration'})['data']
+    monkeypatch.setenv('GITHUB_TOKEN', 'opaque-future-token-value')
+    with pytest.raises(ValueError, match='Potential secret'):
+        service.execute({'preview_id': preview['id'], 'confirm': preview['confirmation']})
+    assert git(root, 'diff', '--cached', '--name-only') == ''

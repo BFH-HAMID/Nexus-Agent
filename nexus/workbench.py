@@ -56,9 +56,9 @@ def safe_path(workspace: Path, name: str, *, secret_check: bool = True) -> Path:
     path = (root / name).resolve()
     if not path.is_relative_to(root):
         raise ValueError("Path escapes the workspace")
-    parts = path.relative_to(root).parts
+    parts = tuple(part.lower() for part in path.relative_to(root).parts)
     if secret_check and any(p in {".git", ".nexus", ".env", "keys.json", ".venv", "node_modules", ".ssh", ".aws", ".npmrc", ".netrc", "credentials"}
-                            or p.startswith(".env.") or p.endswith((".pem", ".key")) for p in parts):
+                            or (p.startswith(".env.") and p != ".env.example") or p.endswith((".pem", ".key")) for p in parts):
         raise ValueError("Private/runtime paths are not exposed in the workbench")
     return path
 
@@ -289,6 +289,12 @@ class Workbench:
             if name not in config.agents:
                 raise ValueError(f"Role {role} conflicts with local-only policy")
             config.roles.roles[role].agent = name
+        override = options.get('role_agent_override')
+        if override:
+            name, role = override['agent'], override['role']
+            if name not in config.agents or role not in config.roles or options.get('manual_local'):
+                raise ValueError('Workflow model override conflicts with available agents/manual local selection')
+            config.roles.get(role).agent = name
         if settings["local_only"]:
             for agent in config.agents.values():
                 agent.fallback = None

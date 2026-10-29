@@ -1,0 +1,16 @@
+# Operator-owned. No ambient signal is collected unless explicitly enabled.
+schema: 1
+enabled: false
+ttl_seconds: 60
+signals:
+  window: false
+  app: false
+  project: false
+  vscode: false
+  file: false
+  terminal: false
+  git: false
+  clipboard: false
+screenshots: false
+local_vision_agent: ''
+blocklist: []

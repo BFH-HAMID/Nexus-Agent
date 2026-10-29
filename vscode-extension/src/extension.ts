@@ -390,6 +390,29 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(vscode.window.registerWebviewViewProvider(VIEW_ID, provider));
 
   context.subscriptions.push(
+    vscode.commands.registerCommand("nexus.shareContextReference", async () => {
+      const editor = vscode.window.activeTextEditor;
+      if (!editor || editor.document.uri.scheme !== "file") {
+        vscode.window.showWarningMessage("Nexus: open a local workspace file first.");
+        return;
+      }
+      const root = workspaceRoot();
+      const relative = path.relative(root, editor.document.uri.fsPath);
+      if (relative.startsWith("..") || path.isAbsolute(relative)) {
+        vscode.window.showWarningMessage("Nexus: context must stay inside the selected workspace.");
+        return;
+      }
+      // Explicit command, metadata only. Python rechecks opt-in, path/privacy,
+      // TTL and policy; no document text/selection/clipboard is read here.
+      const bin = pythonPath();
+      const args = (bin.endsWith("nexus") || bin.endsWith("nexus.exe")) ? [] : ["-m", "nexus"];
+      args.push("context", "-C", root, "signal", "vscode", JSON.stringify({path: relative, line: editor.selection.active.line + 1}));
+      const child = spawn(bin, args, {cwd: root, env: process.env, stdio: "ignore"});
+      child.on("error", () => vscode.window.showErrorMessage("Nexus: context bridge could not start."));
+      child.on("exit", code => code === 0
+        ? vscode.window.showInformationMessage("Nexus: short-lived editor reference shared locally.")
+        : vscode.window.showWarningMessage("Nexus: context refused. Enable context/vscode explicitly; inspect privacy policy."));
+    }),
     vscode.commands.registerCommand("nexus.startServer", async () => {
       output.show(true);
       const ok = await startServer();

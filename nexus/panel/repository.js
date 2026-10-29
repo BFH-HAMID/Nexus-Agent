@@ -109,7 +109,7 @@
       const note=document.createElement('p');note.textContent='Select exact files. Unrelated staged files are not committed. Signing/hooks may run; failures may leave selected files staged.';$('repoForm').append(note);
       for(const path of status.files){const label=document.createElement('label');label.className='repo-file';const check=document.createElement('input');check.type='checkbox';check.value=path;check.name='repoPath';check.onchange=invalidate;label.append(check,document.createTextNode(path));$('repoForm').append(label);}
       if(!status.files.length) output('No selectable changes. Private/runtime paths are excluded.');
-      input('Commit message','repoMessage',true);
+      input('Conventional commit (e.g. feat: add login)','repoMessage',true);
     } else if(kind==='create-pr') {
       const branches=await api('branches?repo='+encodeURIComponent($('repoSelect').value));if(revision!==generation||action!==kind)return;
       const base=status.default_branch||'main';

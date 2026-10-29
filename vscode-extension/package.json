@@ -80,8 +80,12 @@
       },
       {
         "command": "nexus.selectRole",
-        "title": "Nexus: Pin a role…",
+        "title": "Nexus: Pin a role\u2026",
         "category": "Nexus"
+      },
+      {
+        "command": "nexus.shareContextReference",
+        "title": "Nexus: Share Active Editor Context Reference (Opt-in)"
       }
     ],
     "menus": {

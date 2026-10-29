@@ -186,6 +186,8 @@ def repo(tmp_path: Path) -> Path:
         encoding="utf-8",
     )
     (ws / "README.md").write_text("# demo project\n", encoding="utf-8")
+    # Explicit test-only local write consent; production default remains ASK_EVERY_TIME.
+    (ws / "permissions.yaml").write_text("schema: 1\ndefault: AUTO_ALLOW\n")
     if GIT:
         env = {"GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t", "GIT_COMMITTER_NAME": "t",
                "GIT_COMMITTER_EMAIL": "t@t", "PATH": "/usr/bin:/bin"}

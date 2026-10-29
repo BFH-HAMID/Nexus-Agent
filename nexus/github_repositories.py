@@ -8,8 +8,10 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import tempfile
 import time
 import uuid
+from pathlib import Path
 from urllib.parse import quote
 
 from filelock import FileLock
@@ -35,8 +37,101 @@ class GitHubRepositories:
                 self._tasks = GitHubTasks(self)
             return self._tasks
 
+    @property
+    def projects(self):
+        with self.local.state.lock:
+            if not hasattr(self, '_projects'):
+                from .github_projects import Projects
+                self._projects = Projects(self)
+            return self._projects
+
     def command(self, args, timeout=30):
         return self.local.command(self.local.root, args, timeout=timeout)
+
+    def api(self, endpoint, body=None, method=None):
+        args = ['gh', 'api', endpoint]
+        if body is None:
+            return json.loads(self.command(args))
+        # Private temporary request files keep bodies off process argv.
+        with tempfile.TemporaryDirectory(prefix='nexus-github-') as directory:
+            path = Path(directory) / 'request.json'
+            path.write_text(json.dumps(body), encoding='utf-8')
+            return json.loads(self.command([*args, '--method', method or 'POST', '--input', str(path)], timeout=90))
+
+    def preview_resource(self, payload):
+        from .github_safety import scan_text
+        self.network()
+        self.local.idle()
+        action = payload.get('action')
+        viewer = self.viewer()
+        if action == 'create-repository':
+            name, organization = payload.get('name'), payload.get('organization', '')
+            if not isinstance(name, str) or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]{0,99}', name) or name in {'.', '..'}:
+                raise ValueError('Choose a simple repository name (1–100 characters)')
+            if not isinstance(organization, str) or (organization and not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9-]{0,38}', organization)):
+                raise ValueError('Invalid organization login')
+            if type(payload.get('private')) is not bool:
+                raise ValueError('Explicit public/private visibility is required')
+            description = payload.get('description', '')
+            if not isinstance(description, str) or len(description) > 350:
+                raise ValueError('Repository description is limited to 350 characters')
+            body = {'name': name, 'private': payload['private'], 'description': description, 'auto_init': True}
+            repository = (organization or viewer) + '/' + name
+            endpoint = 'orgs/' + organization + '/repos' if organization else 'user/repos'
+            confirmation = f"CREATE {'PRIVATE' if body['private'] else 'PUBLIC'} REPOSITORY {repository}"
+        elif action == 'create-issue':
+            repository = self.record(payload.get('repo'))['repository']
+            self.check_writes(repository)
+            title, text = payload.get('title'), payload.get('body')
+            if not isinstance(title, str) or not title.strip() or len(title) > 250 or not isinstance(text, str) or not text.strip() or len(text) > 30000:
+                raise ValueError('Bounded issue title/body required')
+            body = {'title': title, 'body': text}
+            endpoint = 'repos/' + repository + '/issues'
+            confirmation = 'CREATE ISSUE ' + repository
+        else:
+            raise ValueError('Unknown GitHub resource action')
+        scan_text(json.dumps(body), workspace=self.local.root)
+        data = {'id': uuid.uuid4().hex, 'action': action, 'repository': repository, 'viewer': viewer,
+                'endpoint': endpoint, 'body': body, 'confirmation': confirmation, 'expires': time.time() + 300}
+        with self.local.state.lock:
+            self.previews = {k: v for k, v in self.previews.items() if v['expires'] > time.time()}
+            if len(self.previews) >= 8:
+                raise ValueError('Too many outstanding GitHub previews; wait for expiry')
+            self.previews[data['id']] = data
+        return observation(data, 'review only; creates no repository, issue, local checkout or branch')
+
+    def execute_resource(self, payload):
+        from .github_safety import scan_text
+        ident = payload.get('preview_id')
+        with self.local.state.lock:
+            data = self.previews.get(ident)
+            if not data or data['expires'] < time.time() or data['action'] not in {'create-repository', 'create-issue'}:
+                raise ValueError('Resource preview missing/expired; review again')
+            if payload.get('confirm') != data['confirmation']:
+                raise ValueError('Typed confirmation must exactly match the reviewed action')
+            self.network()
+            self.local.idle()
+            if self.viewer() != data['viewer']:
+                raise ValueError('GitHub account changed; review again')
+            if data['action'] == 'create-issue':
+                self.check_writes(data['repository'])
+            scan_text(json.dumps(data['body']), workspace=self.local.root)
+            self.previews.pop(ident)  # Consume before POST; never blindly retry uncertain external mutations.
+            result = self.api(data['endpoint'], data['body'])
+            if data['action'] == 'create-repository':
+                if (result.get('full_name', '').lower() != data['repository'].lower()
+                        or result.get('private') is not data['body']['private']
+                        or not isinstance(result.get('default_branch'), str) or not result['default_branch']):
+                    raise ValueError('Repository creation outcome uncertain; inspect GitHub before retrying')
+                self.loaded_at = 0
+            record = {'action': data['action'], 'repository': data['repository'],
+                      'url': result.get('html_url'), 'number': result.get('number'), 'private': result.get('private'), 'executed': True}
+            self.local.wb.studio.put('github-resource', record)
+            return observation(record, 'approved GitHub resource creation; no local checkout or main-branch merge')
+
+    def require_tests(self, repository, head):
+        from .github_checks import require_tests
+        return require_tests(self.api, repository, head)
 
     def network(self):
         if self.local.wb.studio.settings()['isolation']['enabled']:
@@ -47,7 +142,7 @@ class GitHubRepositories:
         try:
             return self.command(['gh', 'api', 'user', '--jq', '.login']).strip()
         except (ValueError, OSError) as exc:
-            raise ValueError('GitHub connection needs attention on the Nexus server. Reconnect GitHub CLI there; no token belongs in this dashboard.') from exc
+            raise ValueError('GitHub connection needs attention on the Nexus server. Set GITHUB_TOKEN in the server environment/.env; no token belongs in this dashboard.') from exc
 
     def workspace_slug(self):
         try:
@@ -117,13 +212,15 @@ class GitHubRepositories:
         return result
 
     def get(self, path, query):
+        if path == 'projects':
+            return observation(self.projects.listing(), 'persisted project-folder/GitHub mappings')
         if path == 'task':
             record = self.tasks.get((query.get('task_id') or [''])[0])
             self.tasks.authorize(record)
             return observation(record, 'persisted GitHub task branch; no local checkout')
         if path == 'list':
             return observation(self.catalog(refresh=(query.get('refresh') or [''])[0] == '1'),
-                               'GitHub CLI authenticated account repositories, all accessible pages')
+                               'GITHUB_TOKEN-authenticated account repositories, all accessible pages')
         if path == 'status':
             return observation(self.status((query.get('repo') or [''])[0]), 'GitHub repository; local diff only for matching workspace origin')
         record = self.record((query.get('repo') or [''])[0])
@@ -176,6 +273,7 @@ class GitHubRepositories:
             base_sha, head_sha = self.branch_head(repository, base), self.branch_head(repository, head)
             if base_sha == head_sha:
                 raise ValueError('Head and base contain the same commit; no PR changes to review')
+            data['test_evidence'] = self.require_tests(repository, head_sha)
             diff = self.command(['gh', 'api', 'repos/' + repository + '/compare/' + base_sha + '...' + head_sha,
                                  '-H', 'Accept: application/vnd.github.diff'])
             data.update(base=base, head=head, base_sha=base_sha, head_sha=head_sha, title=title, body=body, diff=diff,
@@ -183,6 +281,7 @@ class GitHubRepositories:
         else:
             pr = self.local.pr(self.local.root, repository, payload.get('number'))
             self.local.merge_ready(pr, pr['headRefName'], pr['headRefOid'])
+            data['test_evidence'] = self.require_tests(repository, pr['headRefOid'])
             method = payload.get('method', 'merge')
             if method not in {'merge', 'squash', 'rebase'}:
                 raise ValueError('Choose merge, squash or rebase')
@@ -220,12 +319,14 @@ class GitHubRepositories:
             if data['action'] == 'create-pr':
                 if self.branch_head(repository, data['base']) != data['base_sha'] or self.branch_head(repository, data['head']) != data['head_sha']:
                     raise ValueError('Remote branches advanced since review; review again')
+                self.require_tests(repository, data['head_sha'])
                 command = ['gh', 'pr', 'create', '--repo', repository, '--base', data['base'], '--head', data['head'],
                            '--title', data['title'], '--body', data['body']]
             else:
                 pr = data['pr']
                 current = self.local.pr(self.local.root, repository, pr['number'])
                 self.local.merge_ready(current, pr['headRefName'], pr['headRefOid'])
+                self.require_tests(repository, pr['headRefOid'])
                 if current['baseRefOid'] != pr['baseRefOid'] or current['baseRefName'] != pr['baseRefName']:
                     raise ValueError('PR base changed; review again')
                 command = ['gh', 'pr', 'merge', str(pr['number']), '--repo', repository, '--' + data['method'],
@@ -237,6 +338,14 @@ class GitHubRepositories:
 
     def post(self, path, payload):
         self.network()
+        if path == 'project-preview':
+            return self.projects.preview(payload)
+        if path == 'project-execute':
+            return self.projects.execute(payload)
+        if path == 'resource-preview':
+            return self.preview_resource(payload)
+        if path == 'resource-execute':
+            return self.execute_resource(payload)
         if path == 'auto-preview':
             return self.tasks.preview_action(payload)
         if path == 'auto-execute':

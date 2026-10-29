@@ -46,6 +46,11 @@ def remote(repo, monkeypatch):
                 return json.dumps(state['pr'])
         if argv[:2] == ['gh', 'api']:
             endpoint = argv[2]
+            if '/check-runs?' in endpoint:
+                import datetime as dt
+                return json.dumps({'total_count': 1, 'check_runs': [{'id': 1, 'name': 'tests', 'head_sha': endpoint.split('/commits/')[1].split('/')[0], 'status': 'completed', 'conclusion': 'success', 'completed_at': dt.datetime.now(dt.timezone.utc).isoformat()}]})
+            if endpoint.endswith('/status'):
+                return json.dumps({'sha': endpoint.split('/commits/')[1].split('/')[0], 'total_count': 0, 'statuses': []})
             if '/branches/' in endpoint:
                 return json.dumps({'commit': {'sha': state['heads'][unquote(endpoint.split('/branches/')[1])]}})
             if '/compare/' in endpoint:
@@ -221,7 +226,7 @@ def test_inventory_cache_invalidates_on_account_change_and_explicit_refresh(remo
 def local_commit(service, root):
     (root / 'fresh.txt').write_text('reviewed local content\n')
     return service.post('preview', {'repo': 'example/local', 'action': 'commit',
-                                  'paths': ['fresh.txt'], 'message': 'Reviewed fixture commit'})['data']
+                                  'paths': ['fresh.txt'], 'message': 'chore: reviewed fixture commit'})['data']
 
 
 def test_matching_workspace_commit_delegates_review_and_commits_only_fixture(remote):
@@ -230,7 +235,7 @@ def test_matching_workspace_commit_delegates_review_and_commits_only_fixture(rem
     assert review['github_repository'] == 'example/local'
     assert review['github_viewer'] == 'test-user'
     service.post('execute', {'preview_id': review['id'], 'confirm': review['confirmation']})
-    assert git(root, 'log', '-1', '--format=%s') == 'Reviewed fixture commit'
+    assert git(root, 'log', '-1', '--format=%s') == 'chore: reviewed fixture commit'
     assert not state['writes']
 
 

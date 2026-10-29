@@ -338,3 +338,35 @@ def test_failed_remote_edit_is_recorded_as_blocker_until_a_successful_retry(dire
     output, error = registry.call('write_file', {'path': 'README.md', 'content': 'approved recovery'})
     assert not error, output
     assert 'last_remote_error' not in ctx.state
+
+
+def test_remote_secret_scan_cannot_be_disabled_by_studio_preference(direct):
+    tasks, session, _, store, _ = direct
+    _, registry = tools(direct)
+    tasks.studio.save_settings({'secret_scan': False})
+    before = len(store['calls'])
+    output, error = registry.call('write_file', {'path': 'config.txt', 'content': 'ghp_' + 'x' * 36})
+    assert error and 'DENIED' in output
+    assert 'ghp_' + 'x' * 36 not in output
+    assert all(method == 'GET' for method, _, _ in store['calls'][before:])
+
+
+def test_remote_cached_edit_is_rescanned_immediately_before_blob_creation(direct):
+    tasks, session, _, store, _ = direct
+    ctx, _ = tools(direct)
+    args = {'path': 'config.txt', 'content': 'clean configuration'}
+    tasks.proposal(session, 'write_file', args)
+    tasks.pending[tasks.key(session.task_id, 'write_file', args)][1]['after'] = 'ghp_' + 'z' * 36
+    before = len(store['calls'])
+    with pytest.raises(ValueError, match='Potential secret'):
+        tasks.mutate(session, ctx, 'write_file', args)
+    assert all(method == 'GET' for method, _, _ in store['calls'][before:])
+
+
+def test_remote_generated_commit_message_is_conventional(direct):
+    _, registry = tools(direct)
+    _, error = registry.call('write_file', {'path': 'config.txt', 'content': 'clean configuration'})
+    assert not error
+    _, _, _, store, _ = direct
+    messages = [body['message'] for method, endpoint, body in store['calls'] if endpoint.endswith('/git/commits') and method == 'POST']
+    assert messages and messages[0].startswith('chore(nexus): write_file remote file\n')

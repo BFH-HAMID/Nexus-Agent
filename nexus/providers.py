@@ -29,6 +29,7 @@ from . import keys as keyring
 from .config import AgentConfig
 from .types import (
     Completion,
+    ImageBlock,
     Message,
     Provider,
     ProviderError,
@@ -342,6 +343,8 @@ class AnthropicProvider(Provider):
             if isinstance(block, TextBlock):
                 if block.text.strip():
                     blocks.append({"type": "text", "text": block.text})
+            elif isinstance(block, ImageBlock):
+                blocks.append({"type": "image", "source": {"type": "base64", "media_type": block.media_type, "data": block.data}})
             elif isinstance(block, ToolCall):
                 blocks.append({"type": "tool_use", "id": block.id, "name": block.name, "input": block.input})
             else:
@@ -719,11 +722,14 @@ class OpenAICompatProvider(Provider):
                     out.append({"role": message.role, "content": message.content})
                 continue
             text_parts: list[str] = []
+            images: list[dict[str, Any]] = []
             tool_calls: list[dict[str, Any]] = []
             tool_results: list[dict[str, Any]] = []
             for block in message.content:
                 if isinstance(block, TextBlock):
                     text_parts.append(block.text)
+                elif isinstance(block, ImageBlock):
+                    images.append({"type": "image_url", "image_url": {"url": "data:" + block.media_type + ";base64," + block.data}})
                 elif isinstance(block, ToolCall):
                     tool_calls.append(
                         {
@@ -743,6 +749,8 @@ class OpenAICompatProvider(Provider):
                 out.extend(tool_results)
                 continue
             entry: dict[str, Any] = {"role": message.role, "content": "\n".join(p for p in text_parts if p)}
+            if images:
+                entry["content"] = [{"type": "text", "text": "\n".join(text_parts)}, *images]
             if tool_calls:
                 entry["tool_calls"] = tool_calls
                 # Gemini's compatibility layer rejects `content: null`
@@ -938,7 +946,7 @@ class ProviderRegistry:
             tried.append(current)
             provider = self.get(current)
             if self.wire_guard:
-                provider.payload_guard = lambda payload, name=current: self.wire_guard(name, payload)
+                provider.payload_guard = lambda payload, name=current: self.wire_guard(name, payload) if self.wire_guard else None
             emitted: list[str] = []
 
             def relay(piece: str, _sink=emitted) -> None:

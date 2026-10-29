@@ -1,0 +1,11 @@
+{
+  "name": "words",
+  "server": {
+    "transport": "stdio",
+    "command": ["@python", "-I", "plugins/word_count.py"],
+    "timeout_seconds": 5,
+    "rate_per_minute": 5,
+    "max_calls_day": 20,
+    "tools": [{"name": "count", "description": "Count words locally", "inputSchema": {"type": "object", "properties": {"text": {"type": "string", "maxLength": 4000}}, "required": ["text"], "additionalProperties": false}}]
+  }
+}
