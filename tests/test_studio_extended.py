@@ -166,9 +166,9 @@ def test_managed_process_real_start_logs_and_stop(studio):
     records = studio.execution.start(payload)
     ident = records[0]['id']
     try:
-        deadline = time.monotonic() + 3
+        deadline = time.monotonic() + 10
         while 'ready' not in studio.execution.list()[0]['log'] and time.monotonic() < deadline:
-            time.sleep(.02)
+            threading.Event().wait(.02)  # Real yield; provider retry sleep is patched globally.
         assert 'ready' in studio.execution.list()[0]['log']
         assert studio.execution.list()[0]['running']
     finally:

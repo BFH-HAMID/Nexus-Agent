@@ -461,7 +461,10 @@ def test_action_consent_feedback_reuses_existing_learning_store(runtime):
 def test_wheel_manifest_includes_real_operator_policy_examples():
     from pathlib import Path
 
-    import tomllib
+    try:
+        import tomllib
+    except ImportError:  # Python 3.10
+        import tomli as tomllib
     root = Path(__file__).resolve().parents[1]
     config = tomllib.loads((root / 'pyproject.toml').read_text())
     included = config['tool']['hatch']['build']['targets']['wheel']['force-include']

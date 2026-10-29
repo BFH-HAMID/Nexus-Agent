@@ -36,7 +36,7 @@ dependencies = [
 context = ["mss>=9,<11", "Pillow>=10,<13", "pytesseract>=0.3.13,<1"]
 mcp = ["jsonschema>=4.23,<5", "keyring>=25"]
 hud = ["fastapi>=0.115,<1", "uvicorn>=0.30,<1", "websockets>=13,<17", "textual>=0.80,<9"]
-dev = ["jsonschema>=4.23,<5", "fastapi>=0.115,<1", "uvicorn>=0.30,<1", "websockets>=13,<17", "textual>=0.80,<9", "pytest>=8.0", "ruff>=0.6", "cryptography>=44", "keyring>=25", "faiss-cpu>=1.8,<2", "numpy>=1.25,<3", "python-docx>=1.1,<2", "openpyxl>=3.1,<4", "python-pptx>=1.0,<2"]
+dev = ["jsonschema>=4.23,<5", "fastapi>=0.115,<1", "uvicorn>=0.30,<1", "websockets>=13,<17", "textual>=0.80,<9", "pytest>=8.0", "tomli>=2; python_version < '3.11'", "ruff>=0.6", "cryptography>=44", "keyring>=25", "faiss-cpu>=1.8,<2", "numpy>=1.25,<3", "python-docx>=1.1,<2", "openpyxl>=3.1,<4", "python-pptx>=1.0,<2"]
 orchestrator = ["faiss-cpu>=1.8,<2", "numpy>=1.25,<3"]
 computer = ["playwright>=1.50,<2", "python-docx>=1.1,<2", "openpyxl>=3.1,<4", "python-pptx>=1.0,<2"]
 secure-state = ["cryptography>=44", "keyring>=25", "filelock>=3.16"]
