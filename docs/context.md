@@ -113,3 +113,19 @@ native inputs, separate cloud consent, actual existing adapter HTTP contracts,
 no retry/fallback, cleanup, terminal event ingestion and truthful HUD status.
 Native Win32/X11/VS Code UI, actual OCR quality and live model/account delivery need
 host acceptance. Scripted desktop fixtures are not claims of native Windows success.
+
+## One-time collection in the original GUI
+
+**Control center → Context & privacy** edits this same policy. Collection remains
+default OFF. Saving a policy is not a collection request. **Collect local context
+once** needs a saved enabled policy, its current revision and fresh exact
+`COLLECT LOCAL CONTEXT` consent. It does not capture screenshots or invoke local/
+cloud vision. All existing private-window/browser exclusions, native dependency
+checks and emergency stop remain in force; the GUI does not weaken them. Project/
+Git reference collection can be used without enabling window/clipboard signals.
+
+**Clear cached context references** separately requires `CLEAR LOCAL CONTEXT` and
+clears only this workspace's existing reference records. It does not disable the
+policy, delete unrelated Studio records or revoke/delete exported screen images.
+One-time output is plain text/JSON and clears on pane switch/dialog close; it is
+not persisted in browser storage or used as agent instructions.

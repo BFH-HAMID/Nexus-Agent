@@ -56,7 +56,8 @@ There is no automatic Open-Meteo fallback. See [privacy/setup](world-widget.md).
 **Settings → Overview** has shortcuts into the existing native controls. The
 [control-coverage audit](gui-control-coverage.md) distinguishes available controls
 from CLI-only setup. Context/MCP/Telegram policy and reviewed OS service registration now have native
-controls. Foreground Telegram transport, screen/cloud vision, OS recovery and
+controls. Supervised Telegram Start/Stop/status and confirmed local context collect/clear
+are also available. Independent CLI pollers, screen/cloud vision, OS recovery and
 credential revocation retain their existing separately managed workflows. Context remains
 OFF by default; privacy and destructive/external approvals remain unchanged.
 
@@ -193,7 +194,7 @@ Desktop-only focus: no separate mobile work is required.
 
 Python: `python -m pytest -q`; lint: `ruff check nexus tests`.
 Browser fixtures: `cd tests/browser; npm ci; npm test`.
-Actual-server integration: run `node --test --test-concurrency=1 tests/browser/unified.test.mjs tests/browser/management.test.mjs tests/browser/world-settings.test.mjs tests/browser/desktop.test.mjs` from
+Actual-server integration: run `node --test --test-concurrency=1 tests/browser/unified.test.mjs tests/browser/management.test.mjs tests/browser/world-settings.test.mjs tests/browser/desktop.test.mjs tests/browser/desktop-runtime.test.mjs` from
 repository root with `NEXUS_TEST_URL` and a disposable `NEXUS_GUI_TEST_TOKEN` set.
 This suite exercises actual queue mutations, worker lifecycle and configuration
 saves (no model inference): **use a disposable workspace, never your production queue**. Browser
@@ -202,12 +203,13 @@ support libraries/Chromium may need installation on minimal Linux hosts.
 
 ### Verified integration snapshot
 
-- Full Python suite: **1,325 passed**, no skips; one upstream FastAPI/HTTPX
+- Full Python suite: **1,333 passed**, no skips; one upstream FastAPI/HTTPX
   deprecation warning.
-- Original GUI browser regression + actual-server unified tests: **41 passed**
-  (31 original/dashboard, including GitHub detach/reconnect + 7 unified + 1 actual-server configuration-management flow + 1 RSS/WeatherAPI/settings and shortcut-navigation flow + 1 desktop control/setup flow), including real queue/lifecycle, mobile/desktop scroll,
+- Original GUI browser regression + actual-server unified tests: **42 passed**
+  (31 original/dashboard, including GitHub detach/reconnect + 7 unified + 1 actual-server configuration-management flow + 1 RSS/WeatherAPI/settings and shortcut-navigation flow + 1 desktop control/setup flow + 1 consent-guarded local context/Telegram runtime flow), including real queue/lifecycle, mobile/desktop scroll,
   native WebGL, hidden-view polling, remembered/session-only login/logout,
-  mobile settings, key nonexposure and password clearing. Public display fixtures
+  mobile settings, key nonexposure/password clearing and safe runtime Stop/Clear
+  availability when policy details are unavailable. Public display fixtures
   are explicitly labelled; no external-provider live validation is implied.
 - Ruff, World asset build and VS Code TypeScript compilation passed. A clean
   **base-only wheel install** served original GUI/static assets and authenticated

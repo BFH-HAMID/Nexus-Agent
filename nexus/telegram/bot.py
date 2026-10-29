@@ -8,6 +8,7 @@ import logging
 import os
 import re
 import secrets
+import threading
 import time
 from datetime import datetime, timezone
 
@@ -54,8 +55,10 @@ def settings(root):
 
 
 class Bot:
-    def __init__(self, studio, *, client=None):
+    def __init__(self, studio, *, client=None, stop_event=None):
         self.studio = studio
+        self.stop_event = stop_event if stop_event is not None else threading.Event()
+        self.authority_lock = threading.RLock()
         self.queue = Queue(studio)
         self.root = studio.root
         self.cfg = settings(self.root)
@@ -80,7 +83,21 @@ class Bot:
             self.client.close()
         logging.getLogger('httpx').removeFilter(self.log_filter)
 
+    def check_active(self):
+        if self.stop_event.is_set():
+            raise ValueError("Telegram polling stop requested")
+        current = settings(self.root)
+        if (not current["enabled"] or os.environ.get("TELEGRAM_BOT_TOKEN") != self.token
+                or os.environ.get("TELEGRAM_APPROVAL_PIN") != self.pin):
+            raise ValueError("Telegram transport authority revoked")
+        return current
+
     def api(self, method, payload):
+        with self.authority_lock:
+            self.check_active()
+            return self._api(method, payload)
+
+    def _api(self, method, payload):
         if method not in ('getUpdates', 'sendMessage'):
             raise ValueError('Telegram API method not authorized')
         current = settings(self.root)
@@ -225,7 +242,9 @@ class Bot:
             self.studio.put('telegram-state', state, self.key)
             message = update.get('message', {})
             try:
-                reply = self.handle(message)
+                with self.authority_lock:
+                    self.cfg = self.check_active()
+                    reply = self.handle(message)
             except (ValueError, OSError, KeyError, TypeError):
                 # Only reply after independent identity check, never to arbitrary IDs.
                 user = message.get('from', {}).get('id')
@@ -257,11 +276,15 @@ class Bot:
         state['notice_digest'] = fingerprint
         self.studio.put('telegram-state', state, self.key)
 
-    def run(self):
+    def run(self, *, on_ready=None, on_poll=None):
         path = self.queue.directory() / 'telegram.lock'
         if path.is_symlink():
             raise ValueError('Unsafe Telegram lock')
         with FileLock(str(path), timeout=0):
-            while settings(self.root)['enabled']:
-                self.cfg = settings(self.root)
+            if on_ready:
+                on_ready()
+            while not self.stop_event.is_set() and settings(self.root)['enabled']:
+                self.cfg = self.check_active()
                 self.poll_once()
+                if on_poll:
+                    on_poll()

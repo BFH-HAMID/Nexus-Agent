@@ -70,7 +70,8 @@ def read(state, kind):
 
 
 def snapshot(state):
-    result = {'policies': {}, 'platform': sys.platform, 'demo': state.demo,
+    from .gui_telegram import status
+    result = {'telegram_runtime': status(state), 'policies': {}, 'platform': sys.platform, 'demo': state.demo,
               'credentials': {k: bool(os.environ.get(k)) for k in ('TELEGRAM_BOT_TOKEN', 'TELEGRAM_APPROVAL_PIN')},
               'notice': 'Policy only. No context collected, bot polling started or MCP tool connected.'}
     with state.lock:
@@ -87,6 +88,30 @@ def action(state, payload):
     if state.demo:
         raise ValueError('Desktop setup requires live mode')
     operation = payload.get('operation')
+    if operation in {'telegram-start', 'telegram-stop'}:
+        from .gui_telegram import runtime
+        expected = 'START TELEGRAM POLLING' if operation == 'telegram-start' else 'STOP TELEGRAM POLLING'
+        if payload.get('confirmation') != expected:
+            raise ValueError('Explicit polling lifecycle confirmation required')
+        with state.lock:
+            if operation == 'telegram-stop':
+                return runtime(state).stop()
+            cfg = read(state, 'telegram')
+            if not cfg['enabled'] or payload.get('revision') != revision(target(state, 'telegram')):
+                raise ValueError('Review current enabled Telegram policy before starting')
+            return runtime(state).start()
+    if operation in {'context-collect', 'context-clear'}:
+        from .context.core import Context
+        expected = 'COLLECT LOCAL CONTEXT' if operation == 'context-collect' else 'CLEAR LOCAL CONTEXT'
+        if payload.get('confirmation') != expected:
+            raise ValueError('Explicit one-time context consent required')
+        with state.lock:
+            if operation == 'context-collect':
+                cfg = read(state, 'context')
+                if not cfg['enabled'] or payload.get('revision') != revision(target(state, 'context')):
+                    raise ValueError('Review current enabled context policy before collecting')
+            context = Context(state.workspace, state.workbench.studio)
+            return context.collect() if operation == 'context-collect' else context.clear()
     if operation in {'service-preview', 'service-install'}:
         from .jarvis.services import install, manifest
         platform = payload.get('platform', '')

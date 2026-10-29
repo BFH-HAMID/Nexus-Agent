@@ -81,6 +81,7 @@ packages = ["nexus"]
 "docs/desktop-control-center.md" = "nexus/_config/docs/desktop-control-center.md"
 "docs/images/gui-control-center.png" = "nexus/_config/docs/images/gui-control-center.png"
 "docs/images/gui-desktop-setup.png" = "nexus/_config/docs/images/gui-desktop-setup.png"
+"docs/images/gui-telegram-runtime.png" = "nexus/_config/docs/images/gui-telegram-runtime.png"
 "docs/gui-control-coverage.md" = "nexus/_config/docs/gui-control-coverage.md"
 "docs/images/gui-main.png" = "nexus/_config/docs/images/gui-main.png"
 "docs/images/gui-operations.png" = "nexus/_config/docs/images/gui-operations.png"

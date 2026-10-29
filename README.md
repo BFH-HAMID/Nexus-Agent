@@ -918,3 +918,8 @@ views remain one click away. Native desktop setup now edits Context/privacy,
 MCP declarations and Telegram policy, and previews/downloads/explicitly installs
 reviewed OS user-service manifests. No save starts a collector, bot or plugin.
 See the [desktop guide and explicit remaining limits](docs/desktop-control-center.md).
+
+Desktop setup also supports separately confirmed Telegram polling Start/Stop/status
+and one-time local context collect/clear. It reuses the original Bot/Context and
+shared Studio, with duplicate-poller locking and cancellation checks. No policy
+save starts these actions; screen/cloud vision still needs separate approval.

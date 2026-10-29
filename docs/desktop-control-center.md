@@ -34,6 +34,17 @@ private-app exclusions, emergency stop, short-lived references and separate fres
 vision/upload approvals remain enforced. The original task-reference/context
 workflow consumes this policy; native desktop availability is still OS-dependent.
 
+**Collect local context once** requires fresh `COLLECT LOCAL CONTEXT` consent and
+the current enabled policy revision. It uses the existing Context collector and
+shared Studio, never a second knowledge base. Only selected permitted signals are
+read; screenshot capture/cloud vision are not part of this action. Additional
+private-app blocking, emergency stop and collection-time policy checks still apply.
+**Clear cached context references** separately requires `CLEAR LOCAL CONTEXT`;
+it clears this workspace's reference records, not unrelated records or previously
+exported images. Output is plain text/JSON, is not saved to browser storage, and
+clears on pane switching or dialog close. It is one-time reference data, not a live
+watcher and not agent instructions.
+
 ### MCP & plugins
 
 Enable/disable discovery, select a confined plugin-manifest directory and edit
@@ -51,10 +62,26 @@ promise that every possible unknown secret can be identified.
 Enroll exact numeric private-chat IDs, configure poll/challenge limits and UTC
 quiet hours, and explicitly opt into report-text export if required. Bot token
 and approval PIN stay in the server environment; GUI shows only their presence,
-not validity or values. Save does not launch polling. The existing foreground
-Telegram transport is still started/stopped through its CLI process; no fake
-running indicator or silent second bot is created. Its transport rechecks current
-policy and credential authority before requests.
+not validity or values. Save does not launch polling.
+
+**Start Telegram polling** separately requires `START TELEGRAM POLLING` and a
+matching enabled-policy revision. The original Bot runs in a GUI-owned supervised
+thread, using the **same cross-process FileLock as the CLI** to refuse duplicates.
+There is no automatic restart after failure. **Stop Telegram polling** requires
+`STOP TELEGRAM POLLING`; status distinguishes starting, polling, stopping, stopped
+and failed, with actual thread liveness and last completed-poll time. Use Refresh
+polling status to observe acknowledgement. Polling is not account validity or a
+claim that an independently launched CLI process is stopped.
+
+Stop sets cancellation immediately. In-flight requests/already-started actions
+cannot be recalled; wait for **alive:false**, not merely a Stop acknowledgement.
+New update handling and outbound API calls recheck cancellation and current
+policy/credential authority. Restart is refused while the old thread is alive.
+Closing/logging out of a browser tab does not stop this server-owned poller.
+GUI server shutdown requests cancellation and waits briefly; a daemon thread does not
+become an orphan process. The foreground CLI remains an alternative, not a second
+required service. Environment credentials and existing private-ID/PIN/fresh-action
+approval restrictions are unchanged.
 
 ### OS user service
 
@@ -79,8 +106,8 @@ validators, bounded regular-file/symlink checks and atomic YAML replacement.
 Malformed/private policy errors never echo file content. Discovery/readiness
 executes no plugin and reads no ambient context. There is no new learning store.
 
-**Not every conceivable operation is now a GUI button.** Foreground Telegram
-transport lifecycle, separately reviewed screen/cloud vision, plugin source-file
+**Not every conceivable operation is now a GUI button.** Control of independently
+launched CLI pollers, separately reviewed screen/cloud vision, plugin source-file
 authoring, OS uninstall/recovery and environment/OS-vault credential revocation
 still use their existing tools/workflows. These are explicit limits, not hidden
 behind decorative controls. See [control coverage](gui-control-coverage.md).
@@ -88,3 +115,12 @@ behind decorative controls. See [control coverage](gui-control-coverage.md).
 ![Desktop control center](images/gui-control-center.png)
 
 ![Native desktop privacy setup, default OFF](images/gui-desktop-setup.png)
+
+When a Context/Telegram policy is malformed or private, the GUI withholds its
+fields and disables collection/start/save. **Stop polling** and **Clear cached
+references** remain available with their own fresh confirmations. They do not
+repair or overwrite the private policy. The malformed-policy UI error path is
+tested with an explicitly scripted read-only snapshot; its Stop/Clear posts still
+reach the actual server.
+
+![Telegram controls, stopped with missing prerequisites; no live account](images/gui-telegram-runtime.png)

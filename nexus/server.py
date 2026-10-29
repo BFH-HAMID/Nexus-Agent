@@ -1005,6 +1005,8 @@ def serve(*, host: str = "127.0.0.1", port: int = 8787, workspace: Path | None =
     except KeyboardInterrupt:
         print("\nshutting down")
     finally:
+        if getattr(state, "telegram_runtime", None):
+            state.telegram_runtime.stop(timeout=2)
         with state.lock:
             sessions = list(state.sessions.values())
         for session in sessions:
