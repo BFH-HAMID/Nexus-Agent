@@ -1423,9 +1423,9 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         else:
             add(f"agent:{name}", ok, f"{cfg.provider} {cfg.model} - {detail}", hint)
 
-    token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
+    token = os.environ.get("GITHUB_TOKEN")
     add("github token", bool(token), "GITHUB_TOKEN set" if token else "GITHUB_TOKEN not set",
-        "only needed for the REST fallback when `gh` is missing")
+        "required for GitHub tools; GH_TOKEN/CLI-login fallback is disabled")
 
     add("memory dir", True, str(workspace / config.settings.memory_dir),
         "created on first `remember` call")
@@ -1888,6 +1888,20 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--version", action="store_true", help="print version and exit")
     sub = parser.add_subparsers(dest="command")
+    from .delegation.cli import add_parser as add_delegation_parser
+    add_delegation_parser(sub)
+    from .hud.cli import add_parser as add_hud_parser
+    add_hud_parser(sub)
+    from .extensions.cli import add_parser as add_extensions_parser
+    add_extensions_parser(sub)
+    from .telegram.cli import add_parser as add_telegram_parser
+    add_telegram_parser(sub)
+    from .context.cli import add_parser as add_context_parser
+    add_context_parser(sub)
+    from .evaluation.cli import add_parser as add_evaluation_parser
+    add_evaluation_parser(sub)
+    from .evaluation.cli import add_trace_parser
+    add_trace_parser(sub)
 
     p = sub.add_parser("chat", help="interactive REPL (default)")
     add_common(p)
@@ -1911,6 +1925,15 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--no-route", action="store_true")
     p.add_argument("--max-turns", type=int, default=0)
     p.set_defaults(func=cmd_ask)
+
+    from .orchestration.cli import add_parser as add_orchestration_parser
+    add_orchestration_parser(sub)
+    from .github_cli import add_parser as add_github_parser
+    add_github_parser(sub)
+    from .computer_cli import add_parser as add_computer_parser
+    add_computer_parser(sub)
+    from .jarvis.cli import add_parser as add_jarvis_parser
+    add_jarvis_parser(sub)
 
     p = sub.add_parser("roles", help="list / search / inspect roles")
     p.add_argument("--workspace", "-C")

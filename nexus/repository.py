@@ -33,10 +33,23 @@ class Repositories:
             pass
 
     def command(self, root, argv, timeout=25):
+        if argv[:2] in (['git', 'push'], ['git', 'ls-remote']):
+            from .github_git import typed_transport
+            return typed_transport(root, argv[1:])
         env = dict(os.environ, GIT_TERMINAL_PROMPT='0', GCM_INTERACTIVE='Never')
+        github_env = None
+        if argv[0] == 'gh':
+            from .github_safety import github_environment
+            github_env = github_environment(root)
+            env.update(github_env)
         if argv[0] == 'git':
-            argv = ['git', '-c', 'core.fsmonitor=false', *argv[1:]]
+            argv = ['git', '-c', 'core.fsmonitor=false', '-c', 'core.hooksPath=' + os.devnull, *argv[1:]]
         result = subprocess.run(argv, cwd=root, env=env, capture_output=True, text=True, timeout=timeout)
+        if github_env is not None:
+            from .github_safety import safe_output
+            if result.returncode:
+                raise ValueError('GitHub operation failed; verify GITHUB_TOKEN permissions and connection (provider output withheld)')
+            result.stdout = safe_output(result.stdout, github_env)
         if result.returncode:
             raise ValueError((result.stderr or result.stdout or 'Operation failed')[-3000:])
         if len(result.stdout) > 2_000_000:
@@ -205,10 +218,15 @@ class Repositories:
             message = str(payload.get('message', '')).strip()
             if not message or len(message) > 2000 or '\x00' in message:
                 raise ValueError('Commit message required (up to 2000 characters)')
+            from .github_safety import conventional_message, scan_text
+            message = conventional_message(message)
+            scan_text(message, workspace=root)
             allowed = set(self.paths(root))
             if not isinstance(paths, list) or not paths or len(paths) > 200 or any(not isinstance(p, str) or p not in allowed for p in paths):
                 raise ValueError('Select actual changed files; private/runtime files cannot be selected')
             paths = sorted(set(paths))
+            from .github_safety import scan_files
+            scan_files(root, paths)
             previews = []
             tracked = set(self.command(root, ['git', 'ls-files', '-z']).split('\0'))
             for name in paths:
@@ -234,7 +252,7 @@ class Repositories:
             data['repository'] = repository
             data['remote_head'] = self.remote_head(root, branch)
             if action == 'push':
-                data.update(confirmation='PUSH ' + branch, warning='Push committed HEAD only to origin, without force. Hooks/credential helpers may execute.')
+                data.update(confirmation='PUSH ' + branch, warning='Push scanned immutable HEAD to the canonical HTTPS GitHub repository, without force. Requires GITHUB_TOKEN; hooks/SSH/ambient helpers are disabled. Binary/private/oversized outbound history is refused.')
             elif action == 'create-pr':
                 if data['remote_head'] != head:
                     raise ValueError('Push this exact committed HEAD first; creating a PR never implicitly pushes')
@@ -245,12 +263,14 @@ class Repositories:
                 self.command(root, ['git', 'check-ref-format', '--branch', base])
                 if base == branch or base.startswith('-'):
                     raise ValueError('Choose a different base branch')
+                data['test_evidence'] = self.github.require_tests(repository, head)
                 data.update(title=title, body=body, base=base, confirmation='CREATE PR ' + branch,
                             diff=self.command(root, ['git', 'diff', '--no-ext-diff', '--no-textconv', 'origin/' + base + '...HEAD']),
                             note='Diff uses local origin/base ref; no automatic fetch. GitHub evaluates the current remote base.')
             else:
                 pr = self.pr(root, repository, payload.get('number'))
                 self.merge_ready(pr, branch, head)
+                data['test_evidence'] = self.github.require_tests(repository, head)
                 method = payload.get('method', 'merge')
                 if method not in {'merge', 'squash', 'rebase'}:
                     raise ValueError('Choose merge, squash or rebase')
@@ -287,6 +307,10 @@ class Repositories:
                 raise ValueError('Origin/remote branch changed; review again')
             self.previews.pop(ident, None)  # consumed even if an external operation fails
             if action == 'commit':
+                from .github_safety import conventional_message, scan_files, scan_text
+                conventional_message(preview['message'])
+                scan_text(preview['message'], workspace=root)
+                scan_files(root, preview['paths'])
                 self.command(root, ['git', 'add', '-A', '--', *preview['paths']])
                 try:
                     output = self.command(root, ['git', 'commit', '--only', '-m', preview['message'], '--', *preview['paths']], timeout=120)
@@ -295,12 +319,14 @@ class Repositories:
             elif action == 'push':
                 output = self.command(root, ['git', 'push', 'origin', branch], timeout=120)
             elif action == 'create-pr':
+                self.github.require_tests(preview['repository'], preview['head'])
                 output = self.command(root, ['gh', 'pr', 'create', '--repo', preview['repository'], '--head', branch,
                     '--base', preview['base'], '--title', preview['title'], '--body', preview['body']], timeout=120)
             else:
                 number = preview['pr']['number']
                 current = self.pr(root, preview['repository'], number)
                 self.merge_ready(current, branch, preview['head'])
+                self.github.require_tests(preview['repository'], preview['head'])
                 if current['baseRefOid'] != preview['pr']['baseRefOid']:
                     raise ValueError('PR base advanced; review the merge again')
                 output = self.command(root, ['gh', 'pr', 'merge', str(number), '--repo', preview['repository'],

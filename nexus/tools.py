@@ -126,6 +126,30 @@ class ApprovalDecision:
 ApprovalCallback = Callable[[ToolSpec, dict[str, Any], Risk, str], ApprovalDecision]
 
 
+def fresh_confirmation_required(spec, args):
+    """Typed external mutations/destructive actions cannot inherit --yes scope."""
+    if spec.risk is Risk.DANGEROUS or spec.name in {'gh_create_pr', 'gh_merge_pr'}:
+        return True
+    if spec.name == 'git_prepare':
+        return bool(args.get('push'))
+    if spec.name in {'git', 'gh'}:
+        raw = args.get('args', [])
+        try:
+            parts = shlex.split(raw) if isinstance(raw, str) else list(raw)
+        except (TypeError, ValueError):
+            return True
+        if any(not isinstance(p, str) for p in parts):
+            return True
+        if spec.name == 'git':
+            return bool(parts and parts[0] in {'push', 'fetch', 'pull', 'clone', 'send-email'})
+        readonly = {('pr', 'list'), ('pr', 'view'), ('pr', 'diff'), ('pr', 'checks'),
+                    ('issue', 'list'), ('issue', 'view'), ('repo', 'list'), ('repo', 'view'),
+                    ('run', 'list'), ('run', 'view'), ('workflow', 'list'), ('workflow', 'view'),
+                    ('release', 'list'), ('release', 'view')}
+        return len(parts) < 2 or tuple(parts[:2]) not in readonly
+    return False
+
+
 class ApprovalGate:
     """Decides whether a tool call may run.
 
@@ -154,9 +178,38 @@ class ApprovalGate:
         self.emit = emit or (lambda _event: None)
         self.decisions: list[tuple[str, bool]] = []
         self.policy = None
+        self.permissions = None
 
     # ------------------------------------------------------------------ #
     def check(self, spec: ToolSpec, args: dict[str, Any]) -> ApprovalDecision:
+        decision = self._checked(spec, args)
+        observer = getattr(self, 'decision_observer', None)
+        if observer:
+            observer(spec, args, decision)
+        return decision
+
+    def _checked(self, spec: ToolSpec, args: dict[str, Any]) -> ApprovalDecision:
+        from .computer_control import EmergencyStop
+        if EmergencyStop().stopped():
+            return ApprovalDecision(False, reason='Emergency stop latched')
+        if self.permissions is None:
+            decision = self._check(spec, args)
+            return ApprovalDecision(False, reason='Emergency stop latched') if EmergencyStop().stopped() else decision
+        try:
+            rule = self.permissions.evaluate(spec, args)
+            decision = self._check(spec, args, rule)
+            if decision.approved and (EmergencyStop().stopped() or self.permissions.evaluate(spec, args) != rule):
+                decision = ApprovalDecision(False, reason='Permission policy changed during approval; review again')
+            if decision.approved and self.policy:
+                reason = self.policy(spec, args)
+                if reason:
+                    decision = ApprovalDecision(False, reason=reason)
+            self.permissions.audit(spec, args, rule, decision)
+            return decision
+        except (ValueError, OSError, TimeoutError):
+            return ApprovalDecision(False, reason='Permission configuration/path/audit validation failed; no tool execution')
+
+    def _check(self, spec: ToolSpec, args: dict[str, Any], rule=None) -> ApprovalDecision:
         name = spec.name
         if self.policy:
             reason = self.policy(spec, args)
@@ -173,22 +226,29 @@ class ApprovalGate:
             if not self.allow_dangerous:
                 return ApprovalDecision(False, reason=f"blocked command pattern: {blocked}")
 
-        if spec.is_readonly_call(args):
+        readonly = rule['readonly'] if rule is not None else spec.is_readonly_call(args)
+        if rule is not None and rule['mode'] == 'READ_ONLY' and not readonly:
+            return ApprovalDecision(False, reason='permissions.yaml: READ_ONLY refuses mutation/execution')
+        if readonly:
             return ApprovalDecision(True, scope="auto", reason="read-only")
 
         if self.mode == "plan":
             return ApprovalDecision(False, reason="plan mode is read-only (use `nexus task` to apply changes)")
 
-        if name in self.always_allow or name in self.session_allowed:
+        fresh = bool(blocked) or fresh_confirmation_required(spec, args) or bool(rule and (rule['mode'] == 'ASK_EVERY_TIME' or rule['forced']))
+        if rule and rule['mode'] == 'AUTO_ALLOW' and not fresh and self.mode == 'auto':
+            return ApprovalDecision(True, scope='auto', reason='permissions.yaml: AUTO_ALLOW within existing tool/policy ceiling')
+        if not fresh and (name in self.always_allow or name in self.session_allowed):
             return ApprovalDecision(True, scope="auto", reason="pre-approved")
 
-        if self.mode == "auto" and (not blocked or self.allow_dangerous):
+        if not fresh and self.mode == "auto":
             return ApprovalDecision(True, scope="auto", reason="--yes")
 
         if self.callback is None:
             return ApprovalDecision(
                 False,
-                reason="no approval channel available (non-interactive run without --yes)",
+                reason=("fresh human approval required; --yes/saved approvals cannot authorize this action" if fresh
+                        else "no approval channel available (non-interactive run without --yes)"),
             )
 
         preview = preview_args(spec, args)
@@ -196,7 +256,7 @@ class ApprovalGate:
                                              "risk": spec.risk.value, "blocked": bool(blocked)}))
         decision = self.callback(spec, args, spec.risk, preview)
         self.decisions.append((name, decision.approved))
-        if decision.approved and decision.scope in {"session", "always"}:
+        if not fresh and decision.approved and decision.scope in {"session", "always"}:
             self.session_allowed.add(name)
         return decision
 
@@ -220,6 +280,8 @@ class ApprovalGate:
 def preview_args(spec: ToolSpec, args: dict[str, Any], limit: int = 400) -> str:
     """One-line human readable summary shown before y/N."""
     name = spec.name
+    if spec.approval_context is not None:
+        return json.dumps({"operator_review": spec.approval_context, "arguments": args}, ensure_ascii=False)
     if name == "run_command":
         return str(args.get("command", ""))[:limit]
     if name == "write_file":
@@ -286,11 +348,14 @@ class ToolRegistry:
         risk: Risk = Risk.WRITE,
         read_only: bool = False,
         readonly_subcommands: Sequence[str] = (),
+        readonly_actions: Sequence[str] = (),
+        approval_context: dict[str, Any] | None = None,
     ) -> None:
         self._tools[name] = Tool(
             spec=ToolSpec(name=name, description=description, input_schema=input_schema,
                           risk=risk, read_only=read_only,
-                          readonly_subcommands=frozenset(readonly_subcommands)),
+                          readonly_subcommands=frozenset(readonly_subcommands), readonly_actions=frozenset(readonly_actions),
+                          approval_context=approval_context),
             handler=handler,
         )
 
@@ -337,6 +402,18 @@ class ToolRegistry:
             self._emit_failure(name, message)
             return message, True
 
+        if (name.startswith('mcp_') or name in {'gh', 'gh_create_pr', 'gh_merge_pr', 'git', 'git_prepare'}
+                or (self.ctx.gate.permissions is not None and name in {'write_file', 'edit_file', 'office_file', 'browser_action', 'vscode_open', 'run_command', 'project_action'})):
+            from .github_safety import scan_text
+            try:
+                scan_text(json.dumps(args), workspace=self.ctx.workspace)
+            except ValueError:
+                message = 'DENIED: Potential credential/unsafe content in tool arguments; refused before approval or logging'
+                self._emit_failure(name, message)
+                return message, True
+        from .computer_control import EmergencyStop
+        if EmergencyStop().stopped():
+            return 'DENIED: Nexus emergency stop latched; operator must resume-tools', True
         decision = self.ctx.gate.check(tool.spec, args)
         if not decision.approved:
             message = f"DENIED: {decision.reason or 'user rejected this call'}."
@@ -345,12 +422,15 @@ class ToolRegistry:
             self._emit_failure(name, message)
             return message, True
 
+        if EmergencyStop().stopped() or self.ctx.cancel_event is not None and self.ctx.cancel_event.is_set():
+            return 'DENIED: task cancelled before tool execution', True
         call_id = uuid.uuid4().hex
         self.ctx.state["active_call_id"] = call_id
         self.ctx.state["active_tool"] = name
         self.ctx.emit(Event(EventType.TOOL_CALL, {
             "call_id": call_id, "tool": name, "args": args, "preview": preview_args(tool.spec, args),
             "risk": tool.spec.risk.value,
+            "spec_sha256": __import__("nexus.evaluation.trace", fromlist=["fingerprint"]).fingerprint(tool.spec),
         }))
         started = time.monotonic()
         result = ""
@@ -363,7 +443,14 @@ class ToolRegistry:
             result, is_error = f"command timed out after {exc.timeout}s", True
         except Exception as exc:  # noqa: BLE001 - keep the loop alive
             result, is_error = f"{exc.__class__.__name__}: {exc}", True
-        result = clip(str(result if result is not None else ""), self.ctx.max_output_chars)
+        from .github_safety import GitHubSafetyError, safe_output, token_from_environment
+        from .studio import redact
+        result = str(result if result is not None else "")
+        try:
+            result = safe_output(result, {'GITHUB_TOKEN': token_from_environment(self.ctx.workspace)})
+        except GitHubSafetyError:
+            result = redact(result)
+        result = clip(result, self.ctx.max_output_chars)
         self.ctx.emit(Event(EventType.TOOL_RESULT, {
             "call_id": call_id, "tool": name, "is_error": is_error, "preview": clip(result, 1200),
             "output": clip(result, 64_000), "output_truncated": len(result) > 64_000,
@@ -417,7 +504,7 @@ def run_shell(
 
 def run_git(args: Sequence[str], cwd: Path, *, timeout: float = 60.0) -> tuple[str, int]:
     quoted = " ".join(shlex.quote(str(a)) for a in args)
-    return run_shell(f"git {quoted}", cwd, timeout=timeout)
+    return run_shell(f"git --no-pager -c core.fsmonitor=false -c log.showSignature=false -c core.hooksPath={shlex.quote(os.devnull)} {quoted}", cwd, timeout=timeout)
 
 
 # --------------------------------------------------------------------------- #
@@ -684,7 +771,7 @@ def build_tools(ctx: ToolContext, *, role: str = "general", include_ask_agent: b
     # -- github ------------------------------------------------------------ #
     reg.register(
         "gh_create_pr",
-        "Open a pull request with the GitHub CLI (falls back to the REST API). Auto-fills the body "
+        "Open a tested, reviewed pull request with exact-head CI evidence. Auto-fills the body "
         "with what changed and which Nexus role did it.",
         {
             "type": "object",
@@ -850,12 +937,31 @@ def build_tools(ctx: ToolContext, *, role: str = "general", include_ask_agent: b
         read_only=True,
     )
 
+    from .computer import register as register_computer
+    register_computer(reg, ctx)
     return reg
 
 
 # --------------------------------------------------------------------------- #
 # tool implementations
 # --------------------------------------------------------------------------- #
+
+
+def _permitted_file(ctx, path):
+    if ctx.gate.permissions is None:
+        return True
+    try:
+        ctx.gate.permissions.path(str(path))
+        return True
+    except (ValueError, OSError, RuntimeError):
+        return False
+
+
+def _mutation_bytes(ctx, path):
+    if ctx.gate.permissions is not None:
+        from .snapshots import Snapshots
+        return Snapshots.read(path)[0]
+    return path.read_bytes() if path.is_file() else None
 
 
 def tool_list_files(ctx: ToolContext, args: dict[str, Any]) -> str:
@@ -871,14 +977,14 @@ def tool_list_files(ctx: ToolContext, args: dict[str, Any]) -> str:
         entries = []
         for entry in sorted(start.iterdir(), key=lambda p: (p.is_file(), p.name.lower())):
             rel = entry.relative_to(ctx.workspace).as_posix() if entry.is_absolute() else entry.name
-            if entry.name in SENSITIVE_DIRS or _is_excluded(rel, ctx.excludes):
+            if entry.name in SENSITIVE_DIRS or _is_excluded(rel, ctx.excludes) or not _permitted_file(ctx, entry):
                 continue
             entries.append(rel + ("/" if entry.is_dir() else ""))
             if len(entries) >= limit:
                 break
         return "\n".join(entries) or "(empty)"
 
-    files = walk_files(start, ctx.excludes, limit)
+    files = [f for f in walk_files(start, ctx.excludes, limit) if _permitted_file(ctx, start / f)]
     if pattern:
         files = [f for f in files if fnmatch.fnmatch(f, pattern) or fnmatch.fnmatch(Path(f).name, pattern)]
     total = len(files)
@@ -921,6 +1027,8 @@ def tool_grep(ctx: ToolContext, args: dict[str, Any]) -> str:
     targets: list[Path] = [root] if root.is_file() else [root / f for f in walk_files(root, ctx.excludes, 5000)]
     hits: list[str] = []
     for path in targets:
+        if not _permitted_file(ctx, path) or path.stat().st_size > 5_000_000:
+            continue
         rel = ctx.guard.rel(path)
         if glob_pat and not (fnmatch.fnmatch(rel, glob_pat) or fnmatch.fnmatch(path.name, glob_pat)):
             continue
@@ -941,15 +1049,19 @@ def tool_write_file(ctx: ToolContext, args: dict[str, Any]) -> str:
     content = str(args.get("content", ""))
     append = bool(args.get("append"))
     existed = path.exists()
-    old = path.read_text(encoding="utf-8", errors="replace") if existed and path.is_file() else ""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    if append:
-        with path.open("a", encoding="utf-8") as handle:
-            handle.write(content)
-        action = "appended to"
-    else:
-        path.write_text(content, encoding="utf-8")
-        action = "updated" if existed else "created"
+    before_data = _mutation_bytes(ctx, path)
+    old = before_data.decode("utf-8", errors="replace") if before_data is not None else ""
+    from .snapshots import file_snapshot
+    planned = (before_data if append and before_data is not None else b'') + content.encode('utf-8')
+    with file_snapshot(ctx, path, 'write_file', planned, expected=before_data):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        if append:
+            with path.open("ab") as handle:
+                handle.write(content.encode('utf-8'))
+            action = "appended to"
+        else:
+            path.write_bytes(content.encode('utf-8'))
+            action = "updated" if existed else "created"
     ctx.state.setdefault("changed_files", set()).add(ctx.guard.rel(path))
     updated = old + content if append else content
     detail = unified_diff_snippet(ctx.guard.rel(path), old, updated, max_lines=400)
@@ -963,7 +1075,8 @@ def tool_edit_file(ctx: ToolContext, args: dict[str, Any]) -> str:
     new_text = str(args.get("new_text", ""))
     if not old_text:
         raise ToolFailure("old_text must not be empty (use write_file to create a new file)")
-    original = path.read_text(encoding="utf-8", errors="replace")
+    original_data = _mutation_bytes(ctx, path)
+    original = original_data.decode("utf-8", errors="replace")
     count = original.count(old_text)
     if count == 0:
         fuzzy = _fuzzy_find(original, old_text)
@@ -983,7 +1096,9 @@ def tool_edit_file(ctx: ToolContext, args: dict[str, Any]) -> str:
     updated = original.replace(old_text, new_text) if args.get("replace_all") else original.replace(old_text, new_text, 1)
     if updated == original:
         raise ToolFailure("no change produced (old_text == new_text)")
-    path.write_text(updated, encoding="utf-8")
+    from .snapshots import file_snapshot
+    with file_snapshot(ctx, path, 'edit_file', updated.encode('utf-8'), expected=original_data):
+        path.write_bytes(updated.encode('utf-8'))
     ctx.state.setdefault("changed_files", set()).add(ctx.guard.rel(path))
     detail = unified_diff_snippet(ctx.guard.rel(path), original, updated, max_lines=400)
     emit_file_change(ctx, path, detail, "updated")
@@ -1003,6 +1118,7 @@ def _fuzzy_find(haystack: str, needle: str) -> str | None:
 def emit_file_change(ctx: ToolContext, path: Path, diff: str, action: str) -> None:
     ctx.emit(Event(EventType.FILE_CHANGE, {"call_id": ctx.state.get("active_call_id", ""),
         "path": ctx.guard.rel(path), "action": action, "diff": clip(diff, 24_000),
+        "snapshot_id": ctx.state.get("last_snapshot"),
         "note": "Applied change; diff may be bounded, not a complete workspace snapshot"}))
 
 
@@ -1021,10 +1137,12 @@ def tool_delete_file(ctx: ToolContext, args: dict[str, Any]) -> str:
                     diff = unified_diff_snippet(ctx.guard.rel(path), old, "", max_lines=400)
             except UnicodeError:
                 pass
-    if path.is_dir():
-        path.rmdir()
-    else:
-        path.unlink()
+    from .snapshots import file_snapshot
+    with file_snapshot(ctx, path, 'delete_file', None):
+        if path.is_dir():
+            path.rmdir()
+        else:
+            path.unlink()
     emit_file_change(ctx, path, diff, "deleted")
     ctx.state.setdefault("changed_files", set()).add(ctx.guard.rel(path))
     return f"deleted {ctx.guard.rel(path)}"
@@ -1035,7 +1153,7 @@ def run_live_command(ctx: ToolContext, command: str, cwd: Path, timeout: float) 
 
     output, code = stream_shell(command, cwd, timeout=min(timeout, ctx.command_timeout), emit=ctx.emit,
         cancel=ctx.cancel_event, call_id=ctx.state.get("active_call_id", ""), max_chars=ctx.max_output_chars,
-        tool=ctx.state.get("active_tool", "run_command"))
+        tool=ctx.state.get("active_tool", "run_command"), redact_workspace=ctx.workspace)
     ctx.state["last_exit_code"] = code
     return output, code
 
@@ -1049,7 +1167,11 @@ def tool_run_command(ctx: ToolContext, args: dict[str, Any]) -> str:
     timeout = float(ctx.command_timeout if args.get("timeout") is None else args["timeout"])
     if not math.isfinite(timeout) or timeout <= 0:
         raise ToolFailure("timeout must be a positive finite number")
-    output, code = run_live_command(ctx, command, cwd, timeout)
+    if ctx.gate.permissions is not None and ctx.gate.permissions.load()['computer']['shell_backend'] == 'docker':
+        from .computer import sandbox
+        output, code = sandbox(ctx, command, cwd, min(timeout, ctx.command_timeout))
+    else:
+        output, code = run_live_command(ctx, command, cwd, timeout)
     ctx.state["last_exit_code"] = code
     prefix = f"$ {command}\n"
     result = prefix + (output or "(no output)")
@@ -1060,6 +1182,26 @@ def tool_run_command(ctx: ToolContext, args: dict[str, Any]) -> str:
 
 GIT_READ_ONLY = {"status", "diff", "log", "show", "branch", "remote", "tag", "rev-parse",
                  "ls-files", "describe", "shortlog", "config", "stash"}  # noqa: E501  (used above too)
+
+
+def run_git_transport(ctx, parts):
+    from .github_git import typed_transport
+    from .live_process import stream_shell
+
+    def execute(argv, env):
+        def emit(event):
+            if event.type != EventType.TOOL_OUTPUT:
+                ctx.emit(Event(event.type, {**event.data, 'command': 'git [authenticated transport arguments withheld]'}))
+        output, code = stream_shell(argv, ctx.workspace, env=env, timeout=min(120, ctx.command_timeout), emit=emit,
+            cancel=ctx.cancel_event, max_chars=ctx.max_output_chars, tool=ctx.state.get('active_tool', 'git'),
+            call_id=ctx.state.get('active_call_id', ''))
+        ctx.state['last_exit_code'] = code
+        # stream_shell appends an exit marker; transport parses protocol stdout only.
+        return output.removesuffix('\n[exit 0]').removesuffix('[exit 0]'), code
+    try:
+        return typed_transport(ctx.workspace, parts, execute=execute, cancel=ctx.cancel_event), 0
+    except ValueError as exc:
+        raise ToolFailure(str(exc)) from None
 
 
 def tool_git(ctx: ToolContext, args: dict[str, Any]) -> str:
@@ -1075,7 +1217,20 @@ def tool_git(ctx: ToolContext, args: dict[str, Any]) -> str:
     if parts[0].startswith("-"):
         raise ToolFailure("pass git subcommands, not bare flags")
     sub = parts[0]
-    output, code = run_live_command(ctx, "git " + shlex.join(parts), ctx.workspace, 60)
+    if sub in {'merge', 'rebase', 'cherry-pick', 'revert', 'am', 'commit-tree', 'update-ref'}:
+        raise ToolFailure('Commit-producing raw Git operations are refused; stage reviewed changes and use git commit/git_prepare')
+    if sub == 'commit':
+        from .github_safety import conventional_message as validate_message
+        from .github_safety import scan_index, scan_text
+        if len(parts) != 3 or parts[1] not in {'-m', '--message'}:
+            raise ToolFailure('Typed git commit requires exactly -m MESSAGE; stage explicitly or use git_prepare')
+        validate_message(parts[2])
+        scan_text(parts[2], workspace=ctx.workspace)
+        scan_index(ctx.workspace)
+    if sub in {"push", "ls-remote"}:
+        output, code = run_git_transport(ctx, parts)
+    else:
+        output, code = run_live_command(ctx, "git --no-pager -c core.fsmonitor=false -c log.showSignature=false -c core.hooksPath=" + shlex.quote(os.devnull) + " " + shlex.join(parts), ctx.workspace, 60)
     ctx.state["last_exit_code"] = code
     if code != 0:
         raise ToolFailure(f"git {sub} exited with code {code}\n{output or '(no output)'}")
@@ -1136,7 +1291,7 @@ def tool_git_prepare(ctx: ToolContext, args: dict[str, Any], *, role: str) -> st
 
     log: list[str] = []
     def checked(parts):
-        output, code = run_git(parts, ctx.workspace)
+        output, code = (run_git_transport(ctx, parts) if parts[0] == 'push' else run_git(parts, ctx.workspace))
         ctx.state["last_exit_code"] = code
         if code:
             raise ToolFailure(f"git {parts[0]} failed (exit {code}): {output.strip()}\n"
@@ -1146,7 +1301,7 @@ def tool_git_prepare(ctx: ToolContext, args: dict[str, Any], *, role: str) -> st
     # 1. branch
     branch = args.get("branch") or make_branch_name(role, task, prefix)
     current, _ = run_git(["rev-parse", "--abbrev-ref", "HEAD"], ctx.workspace)
-    current = current.strip()
+    current = git_scalar(current)
     if current != branch:
         branch = unique_branch(branch, ctx.workspace)
         _, code = run_git(["rev-parse", "--verify", "--quiet", f"refs/heads/{branch}"], ctx.workspace)
@@ -1170,6 +1325,11 @@ def tool_git_prepare(ctx: ToolContext, args: dict[str, Any], *, role: str) -> st
 
     # 3. commit
     message = args.get("message") or conventional_message(task, role, ctype, staged.strip())
+    from .github_safety import conventional_message as validate_message
+    from .github_safety import scan_index, scan_text
+    validate_message(message)
+    scan_text(message, workspace=ctx.workspace)
+    scan_index(ctx.workspace)
     out = checked(["commit", "-m", message])
     log.append(f"commit: {out.strip()}")
     sha, _ = run_git(["rev-parse", "--short", "HEAD"], ctx.workspace)
@@ -1180,7 +1340,7 @@ def tool_git_prepare(ctx: ToolContext, args: dict[str, Any], *, role: str) -> st
         log.append(f"push: {out.strip()}")
 
     ctx.state["branch"] = branch
-    ctx.state["commit_sha"] = sha.strip()
+    ctx.state["commit_sha"] = git_scalar(sha)
     ctx.state["last_commit_message"] = message
     return "\n".join(log)
 
@@ -1194,29 +1354,75 @@ def gh_available() -> bool:
     return which("gh") is not None
 
 
-def github_token(ctx: ToolContext) -> str | None:
-    for var in ("GITHUB_TOKEN", "GH_TOKEN"):
-        value = os.environ.get(var)
-        if value:
-            return value
-    return None
+def github_token(ctx: ToolContext) -> str:
+    from .github_safety import token_from_environment
+    return token_from_environment(ctx.workspace)
+
+
+def run_github_command(ctx: ToolContext, parts: list[str], timeout=120) -> tuple[str, int]:
+    from .github_safety import github_environment, safe_output, validate_gh_args
+    from .live_process import stream_shell
+    try:
+        validate_gh_args(parts, ctx.workspace)
+        env = github_environment(ctx.workspace)
+        env.pop('GH_REPO', None)
+        # Never infer an enterprise identity from an arbitrary local origin.
+        explicit_repo = any(p in {'--repo', '-R'} or p.startswith(('--repo=', '-R=')) for p in parts)
+        if not explicit_repo and parts[0] not in {'api', 'search'} and parts[:2] != ['repo', 'list']:
+            slug = repo_slug(ctx)
+            if not slug:
+                raise ToolFailure('Use an explicit --repo owner/repository or a credential-free github.com origin')
+            env['GH_REPO'] = 'github.com/' + slug
+    except ValueError as exc:
+        raise ToolFailure(str(exc)) from None
+
+    def emit(event):
+        # Never emit partial stdout: a credential may be split across pipe chunks.
+        # Lifecycle events retain live cancellation/status without exposing output.
+        if event.type != EventType.TOOL_OUTPUT:
+            data = dict(event.data)
+            data['command'] = 'gh [authenticated arguments withheld]'
+            ctx.emit(Event(event.type, data))
+
+    try:
+        output, code = stream_shell(['gh', *parts], ctx.workspace, timeout=min(timeout, ctx.command_timeout),
+            emit=emit, cancel=ctx.cancel_event, call_id=ctx.state.get('active_call_id', ''),
+            max_chars=ctx.max_output_chars, tool=ctx.state.get('active_tool', 'gh'), env=env)
+    except subprocess.TimeoutExpired:
+        raise
+    except Exception:
+        raise ToolFailure('Authenticated GitHub command failed or was cancelled; output withheld') from None
+    ctx.state['last_exit_code'] = code
+    if code:
+        return 'GitHub command failed; provider output withheld', code
+    if '[output capped at ' in output:
+        return 'GitHub output exceeded its safe capture limit; narrow the request', 1
+    return safe_output(output, env), code
+
+
+def git_scalar(output, code=0):
+    """Read a scalar from run_git without treating its exit marker as data."""
+    if code:
+        return ''
+    value = output.removesuffix('\n[exit 0]').strip()
+    return value if '\n' not in value and '\r' not in value else ''
 
 
 def repo_slug(ctx: ToolContext) -> str | None:
     out, code = run_git(["config", "--get", "remote.origin.url"], ctx.workspace)
-    url = out.strip()
-    if code != 0 or not url:
+    url = git_scalar(out, code)
+    if not url:
         return None
-    match = re.search(r"github\.com[:/]([^/]+/[^/]+?)(?:\.git)?$", url)
+    match = re.fullmatch(r"(?:https://github\.com/|git@github\.com:)([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+?)(?:\.git)?/?", url)
     return match.group(1) if match else None
 
 
 def default_branch(ctx: ToolContext) -> str:
-    out, _ = run_git(["symbolic-ref", "--short", "refs/remotes/origin/HEAD"], ctx.workspace)
-    if out.strip():
-        return out.strip().split("/")[-1]
-    out, _ = run_git(["rev-parse", "--abbrev-ref", "HEAD"], ctx.workspace)
-    return out.strip() or "main"
+    out, code = run_git(["symbolic-ref", "--short", "refs/remotes/origin/HEAD"], ctx.workspace)
+    if git_scalar(out, code):
+        return git_scalar(out, code).removeprefix("origin/")
+    out, code = run_git(["rev-parse", "--abbrev-ref", "HEAD"], ctx.workspace)
+    return git_scalar(out, code) or "main"
 
 
 def pr_body(ctx: ToolContext, *, role: str, title: str, user_body: str = "") -> str:
@@ -1267,57 +1473,43 @@ def pr_body(ctx: ToolContext, *, role: str, title: str, user_body: str = "") -> 
     return body + "\n".join(extras)
 
 
+def reviewed_github_action(ctx, payload):
+    from .server import ServerState
+    github = ServerState(ctx.workspace, quiet=True).workbench.repositories.github
+    reviewed = github.preview(payload)['data']
+    if ctx.gate.callback is None:
+        raise ToolFailure('Exact reviewed GitHub action requires a human approval channel')
+    if ctx.cancel_event is not None and ctx.cancel_event.is_set():
+        raise ToolFailure('GitHub action cancelled')
+    spec = ToolSpec(name='gh_reviewed_action', description='Approve exact tested GitHub diff and immutable head',
+                    input_schema={'type': 'object'}, risk=Risk.DANGEROUS)
+    decision = ctx.gate.callback(spec, {}, Risk.DANGEROUS, json.dumps(reviewed))
+    if not decision.approved or (ctx.cancel_event is not None and ctx.cancel_event.is_set()):
+        raise ToolFailure('Reviewed GitHub action denied/cancelled')
+    result = github.execute({'preview_id': reviewed['id'], 'confirm': reviewed['confirmation']})['data']
+    ctx.state.pop('last_remote_error', None)
+    return result['output']
+
+
 def tool_gh_create_pr(ctx: ToolContext, args: dict[str, Any], *, role: str) -> str:
-    title = str(args.get("title") or "").strip()
-    if not title:
-        raise ToolFailure("title is required")
-    head = args.get("head") or run_git(["rev-parse", "--abbrev-ref", "HEAD"], ctx.workspace)[0].strip()
-    base = args.get("base") or default_branch(ctx)
-    body = pr_body(ctx, role=role, title=title, user_body=str(args.get("body") or ""))
-
-    if gh_available():
-        cmd = ["gh", "pr", "create", "--title", title, "--body", body, "--base", base, "--head", head]
-        if args.get("draft"):
-            cmd.append("--draft")
-        for label in args.get("labels") or []:
-            cmd += ["--label", str(label)]
-        for reviewer in args.get("reviewers") or []:
-            cmd += ["--reviewer", str(reviewer)]
-        output, code = run_live_command(ctx, shlex.join(cmd), ctx.workspace, 120)
-        if code == 0:
-            ctx.state.pop("last_remote_error", None)
-            ctx.state["last_pr"] = output.strip().splitlines()[-1] if output.strip() else ""
-            return f"pull request created:\n{output.strip()}"
-        raise ToolFailure(f"gh pr create failed (exit {code}):\n{output.strip()}")
-
-    token = github_token(ctx)
+    github_token(ctx)  # Explicit environment/.env-only credential boundary before any network call.
     slug = repo_slug(ctx)
-    if not token or not slug:
-        raise ToolFailure(
-            "neither the `gh` CLI nor GITHUB_TOKEN + a github.com remote is available - cannot open a PR"
-        )
-    import httpx
-
-    resp = httpx.post(
-        f"https://api.github.com/repos/{slug}/pulls",
-        headers={"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"},
-        json={"title": title, "head": head, "base": base, "body": body, "draft": bool(args.get("draft"))},
-        timeout=60,
-    )
-    if resp.status_code >= 400:
-        ctx.state["last_remote_error"] = f"GitHub PR request failed with HTTP {resp.status_code}"
-        raise ToolFailure(f"GitHub API {resp.status_code}: {resp.text[:800]}")
-    ctx.state.pop("last_remote_error", None)
-    data = resp.json()
-    ctx.state["last_pr"] = data.get("html_url", "")
-    for label in args.get("labels") or []:
-        httpx.post(
-            f"https://api.github.com/repos/{slug}/issues/{data['number']}/labels",
-            headers={"Authorization": f"Bearer {token}"},
-            json={"labels": [str(label)]},
-            timeout=30,
-        )
-    return f"pull request created: {data.get('html_url')} (#{data.get('number')})"
+    title = str(args.get('title') or '').strip()
+    if not slug or not title:
+        raise ToolFailure('A title and credential-free github.com origin are required')
+    if args.get('labels') or args.get('reviewers') or args.get('draft'):
+        raise ToolFailure('Configure labels/reviewers/draft separately after the tested review-first PR action')
+    head = args.get('head') or git_scalar(*run_git(['branch', '--show-current'], ctx.workspace))
+    from .server import ServerState
+    github = ServerState(ctx.workspace, quiet=True).workbench.repositories.github
+    base = args.get('base') or github.metadata(slug)['default_branch']
+    body = pr_body(ctx, role=role, title=title, user_body=str(args.get('body') or ''))
+    from .github_safety import scan_text
+    scan_text(title + '\n' + body, workspace=ctx.workspace)
+    output = reviewed_github_action(ctx, {'action': 'create-pr', 'repo': slug, 'head': head,
+                                          'base': base, 'title': title, 'body': body})
+    ctx.state['last_pr'] = output.strip()
+    return 'pull request created:\n' + output
 
 
 def tool_gh(ctx: ToolContext, args: dict[str, Any]) -> str:
@@ -1326,31 +1518,30 @@ def tool_gh(ctx: ToolContext, args: dict[str, Any]) -> str:
     parts = [str(a) for a in (args.get("args") or [])]
     if not parts:
         raise ToolFailure("no gh arguments given")
-    output, code = run_live_command(ctx, shlex.join(["gh", *parts]), ctx.workspace, 120)
+    if parts and parts[0] == 'pr' and (len(parts) < 2 or parts[1] not in {'list', 'view', 'checks', 'diff'}):
+        raise ToolFailure('Use gh_create_pr/gh_merge_pr for tested review-first PR actions')
+    output, code = run_github_command(ctx, parts, 120)
     if code:
         raise ToolFailure(f"gh exited with code {code}: {output.strip()}")
     return f"$ gh {' '.join(shlex.quote(p) for p in parts)}\n{output.strip() or '(no output)'}"
 
 
 def tool_gh_merge_pr(ctx: ToolContext, args: dict[str, Any]) -> str:
-    number = int(args.get("number") or 0)
-    if number <= 0:
-        raise ToolFailure("a positive PR number is required")
-    if not gh_available():
-        raise ToolFailure("the `gh` CLI is required to merge/close a PR")
-    if args.get("close"):
-        cmd = ["gh", "pr", "close", str(number)]
-    else:
-        method = str(args.get("method") or "merge")
-        if method not in {"merge", "squash", "rebase"}:
-            raise ToolFailure("method must be merge|squash|rebase")
-        cmd = ["gh", "pr", "merge", str(number), f"--{method}"]
-        if args.get("delete_branch"):
-            cmd.append("--delete-branch")
-    output, code = run_live_command(ctx, shlex.join(cmd), ctx.workspace, 180)
-    if code:
-        raise ToolFailure(f"gh pr operation exited with code {code}: {output.strip()}")
-    return f"$ {' '.join(shlex.quote(c) for c in cmd)}\n{output.strip() or '(no output)'}"
+    number = args.get('number')
+    if type(number) is not int or number <= 0:
+        raise ToolFailure('a positive PR number is required')
+    if args.get('delete_branch'):
+        raise ToolFailure('Automatic branch deletion is not offered')
+    if args.get('close'):
+        output, code = run_github_command(ctx, ['pr', 'close', str(number)], 180)
+        if code:
+            raise ToolFailure(f'gh pr operation exited with code {code}: {output}')
+        return output
+    slug = repo_slug(ctx)
+    if not slug:
+        raise ToolFailure('Merge requires a credential-free github.com origin')
+    return reviewed_github_action(ctx, {'action': 'merge', 'repo': slug, 'number': number,
+                                       'method': args.get('method', 'merge')})
 
 
 # -- memory / collaboration ------------------------------------------------ #
@@ -1562,6 +1753,7 @@ def tool_recall(ctx: ToolContext, args: dict[str, Any]) -> str:
 
 
 READ_ONLY_TOOLS = {
+    "office_file",
     "list_files", "read_file", "grep", "git", "ask_agent", "finish", "skill_view", "recall",
 }
 

@@ -1,0 +1,45 @@
+# Operator-owned admission policy. Daemon lifecycle starts explicitly; task execution is OFF by default.
+schema: 1
+level: L1
+max_queue: 20
+max_depth: 3
+cooldown_seconds: 60
+ttl_seconds: 86400
+# Admission estimates only, not runtime cost accounting or permission to spend.
+max_reserved_cost: 1.0
+# Explicit opt-in only. Configure a trusted installed local (not cloud-proxy) model.
+runtime:
+  enabled: false
+  local_model: ""
+  # read_only default; reviewed_write only exposes scoped snapshot-backed file tools.
+  mode: read_only
+  write_roots: []
+  # L2/L3 admission only for these explicit sources. Never tool/action consent.
+  auto_sources: []
+  # L3 new-file/append only; also requires explicit per-tool AUTO_ALLOW.
+  allow_safe_writes: false
+  # Existing Module 2 project names; no raw Git or arbitrary repositories.
+  projects: []
+  # Operator-declared network state. Model inference remains local in BOTH states.
+  connectivity: offline
+  max_seconds: 120
+  max_turns: 4
+  max_requests: 8
+  max_request_bytes: 100000
+  max_output_tokens: 512
+  max_runs_day: 10
+  max_runs_hour: 5
+  max_requests_day: 80
+  max_requests_hour: 40
+  # Conservative reservations: maximum input bytes + maximum output tokens.
+  max_tokens_day: 2000000
+  max_tokens_hour: 1000000
+  max_actions: 20
+  max_actions_day: 200
+  max_actions_hour: 100
+  max_bytes_day: 1000000
+  max_seconds_day: 1200
+  max_memory_mb: 512
+  max_cpu_percent: 90
+# Opt-in file/schedule/TODO/build/Git/CI/system/inbox/queue-idle probes; see docs/jarvis.md.
+triggers: []

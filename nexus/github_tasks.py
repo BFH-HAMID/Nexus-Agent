@@ -2,7 +2,7 @@
 
 Every mutation is approved through the existing task approval channel. Git Data
 ref updates are non-force, so concurrent branch advances fail rather than overwrite.
-Credentials remain in the server's gh authentication / environment, never records.
+Credentials come only from GITHUB_TOKEN in environment/.env, never records.
 """
 from __future__ import annotations
 
@@ -11,9 +11,8 @@ import difflib
 import hashlib
 import json
 import re
-import tempfile
 import time
-from pathlib import Path, PurePosixPath
+from pathlib import PurePosixPath
 from urllib.parse import quote
 
 from .tools import ToolFailure
@@ -28,14 +27,7 @@ class GitHubTasks:
         self.pending = {}
 
     def api(self, endpoint, body=None, method=None):
-        args = ['gh', 'api', endpoint]
-        if body is None:
-            return json.loads(self.gh.command(args))
-        # Never put file contents or credentials on the process command line.
-        with tempfile.TemporaryDirectory(prefix='nexus-github-') as directory:
-            path = Path(directory) / 'request.json'
-            path.write_text(json.dumps(body), encoding='utf-8')
-            return json.loads(self.gh.command([*args, '--method', method or 'POST', '--input', str(path)], timeout=90))
+        return self.gh.api(endpoint, body, method)
 
     def get(self, ident):
         if not isinstance(ident, str) or not re.fullmatch(r'[a-f0-9]{12}', ident):
@@ -111,7 +103,7 @@ class GitHubTasks:
             raise ValueError('Unsafe remote file path')
         for part in path.parts:
             part = part.lower()
-            if part in {'.git', '.nexus', '.env', 'keys.json', '.venv', 'node_modules', '.ssh', '.aws', '.npmrc', '.netrc', 'credentials'} or part.startswith('.env.') or part.endswith(('.pem', '.key')):
+            if part in {'.git', '.nexus', '.env', 'keys.json', '.venv', 'node_modules', '.ssh', '.aws', '.npmrc', '.netrc', 'credentials'} or (part.startswith('.env.') and part != '.env.example') or part.endswith(('.pem', '.key')):
                 raise ValueError('Private/runtime paths are not available to GitHub task tools')
         return path.as_posix()
 
@@ -159,8 +151,9 @@ class GitHubTasks:
             after = None
         if after is not None and (len(after.encode()) > 500_000 or '\x00' in after):
             raise ValueError('Only text changes up to 500 KB are supported')
-        if after is not None and self.studio.settings()['secret_scan'] and self.studio.redact_text(after) != after:
-            raise ValueError('Potential secret in remote file change; refused before approval/commit')
+        if after is not None:
+            from .github_safety import scan_text
+            scan_text(after, workspace=self.studio.wb.workspace)
         diff = ''.join(difflib.unified_diff((before or '').splitlines(True), (after or '').splitlines(True),
                                            fromfile='GitHub/' + path, tofile=record['branch'] + '/' + path))
         if len(diff.encode()) > 1_000_000:
@@ -199,13 +192,17 @@ class GitHubTasks:
             raise ToolFailure('Task branch advanced since review; nothing committed')
         if edit['before'] == edit['after']:
             return 'No change; no GitHub commit created'
+        from .github_safety import conventional_message, scan_text
+        if edit['after'] is not None:
+            scan_text(edit['after'], workspace=self.studio.wb.workspace)
+        message = conventional_message(f'chore(nexus): {tool} remote file\n\nTask: {session.task_id}')
         root = 'repos/' + record['repository']
         commit = self.api(root + '/git/commits/' + edit['head'])
         entry = {'path': edit['path'], 'mode': edit['mode'], 'type': 'blob', 'sha': None}
         if edit['after'] is not None:
             entry['sha'] = self.api(root + '/git/blobs', {'content': edit['after'], 'encoding': 'utf-8'})['sha']
         tree = self.api(root + '/git/trees', {'base_tree': commit['tree']['sha'], 'tree': [entry]})
-        new_commit = self.api(root + '/git/commits', {'message': f"Nexus task {session.task_id}: {tool} {edit['path']}",
+        new_commit = self.api(root + '/git/commits', {'message': message,
             'tree': tree['sha'], 'parents': [edit['head']]})
         if session.cancel.is_set():
             raise ToolFailure('Task cancelled before branch update; branch unchanged')

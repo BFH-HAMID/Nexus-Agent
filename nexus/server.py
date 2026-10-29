@@ -433,6 +433,8 @@ class ServerState:
                     read_only=session.read_only,
                 )
             session.result = {
+                "trace_id": getattr(result, "trace_id", ""),
+                "session_id": getattr(result, "session_id", ""),
                 "ok": result.ok,
                 "execution": result.execution,
                 "role": result.role,

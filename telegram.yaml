@@ -1,0 +1,10 @@
+# Long polling only. Mandatory TELEGRAM_BOT_TOKEN and TELEGRAM_APPROVAL_PIN env.
+# Exact private-chat numeric sender IDs, never usernames or groups.
+schema: 1
+enabled: false
+user_ids: []
+poll_seconds: 20
+challenge_seconds: 60
+quiet_utc_hours: []
+# Explicit export opt-in; default reports contain status/IDs, not task/code text.
+allow_report_text: false

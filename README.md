@@ -23,6 +23,102 @@ Three API providers, one key each — and **no `.env` file**: paste keys once wi
 
 <!-- end hero -->
 
+## GitHub automation (Module 2)
+
+The dashboard/direct-task GitHub transport now requires server-side
+`GITHUB_TOKEN` (environment or `.env`), and those review-first commit flows enforce
+secret scans and conventional messages. Typed legacy GitHub tools now use the
+same token-only policy; `git_prepare` and typed `git commit` scan actual staged
+blobs. Registered dangerous/known typed external mutations require fresh approval,
+not `--yes` or saved scope. Local toolbar/typed push now uses constrained,
+non-force HTTPS with token-only credentials and bounded outbound history scans;
+SSH/ambient credentials and unscannable binary/history cases are refused.
+New `nexus github create NAME --private`
+and `nexus github issue OWNER/REPO --title "..." --body "..."` commands default to
+**preview only**; `--execute` requires interactive exact approval.
+
+Runnable Python/Node scaffolds now include tests, README, MIT license and push/PR CI,
+with separate project Git folders and durable repo/branch/PR mappings. Use
+`nexus github scaffold NAME --repo OWNER/REPO --stack python --execute`, then
+`nexus github project NAME push|pr|merge --execute`. Exact-head successful test
+checks are required before both PR creation and merge, revalidated after approval.
+
+See [setup, commands, acceptance and explicit runtime limits](docs/github-extension.md).
+Supported flows are offline integration-tested; live GitHub/native Windows acceptance
+has not been performed. General shell containment is Module 3, not a GitHub feature.
+No new autonomy is enabled.
+
+### Permissioned computer tools (Module 3 core)
+
+`permissions.yaml` is now consumed by the existing agent approval gate. Default
+`ASK_EVERY_TIME`, `READ_ONLY` and bounded `AUTO_ALLOW` cannot bypass existing role/tool
+ceilings, fresh dangerous/external approval or workspace path checks. Shell execution
+still requires fresh consent. Local typed file writes/edits/deletes now create bounded
+pre-image snapshots. `nexus agent -C WORKSPACE snapshots` lists records;
+`nexus agent -C WORKSPACE undo [ID]` previews and `--execute` requires exact fresh
+confirmation. Later user edits block undo; proven agent-only chains support repeated
+undo. Binary/directory/shell recovery is not claimed. See
+[permission and recovery details](docs/permissions.md). Opt-in Playwright, isolated
+VS Code launch and DOCX/XLSX/PPTX editing now share the same gate. CLI dry-run,
+emergency `nexus agent kill`, Windows global-hotkey listener and optional no-network
+Docker copy execution are implemented. See [computer setup, scope and platform
+acceptance gates](docs/computer-control.md); live Windows/desktop/Docker acceptance
+is not claimed.
+
+### Jarvis daemon (Module 4)
+
+`nexus jarvis -C WORKSPACE start|stop|pause|resume|kill|daemon-status` controls a
+single-instance, crash-aware daemon. Existing Studio state persists priority jobs,
+approvals, leases, budgets and notices; agents/router/learning are reused.
+**Default L1, execution OFF, read-only/offline, context OFF.** Explicit policies
+support L2/L3 source admission, narrow snapshot-backed reviewed edits, one-use
+per-action consent and existing CI/scanned Module 2 project actions. Dangerous and
+external actions never inherit autonomy approval. File/TODO/build/Git/CI/system/
+inbox/queue-idle/schedule probes, offline→online deferral, inbox/digests/quiet/DND,
+opt-in counts-only desktop notifications and reviewed OS user-service installers
+have working consumers. Native host/account acceptance is distinct from fixture
+tests; nothing is installed or remotely mutated implicitly. Module 5 implementation now includes delegation, HUD/TUI, MCP/plugins, Telegram
+and default-OFF context. Native/live acceptance boundaries remain explicit.
+See [setup, commands, safety boundaries and acceptance](docs/jarvis.md).
+
+### Durable delegation (Module 5 first slice)
+
+`nexus delegate -C WORKSPACE create "TASK" --max-seconds 60` creates an
+approval-pending Jarvis job. `tasks|status|report|cancel|resume` use actual persisted
+jobs and per-attempt tool checkpoints. Parent-enforced deadlines, one-shot 80% time
+alerts and explicit reapproval on recovery are implemented; tools are never replayed
+from checkpoints. The subsequent Module 5 integrations are now implemented; see their guides. See [delegation safety/setup](docs/delegation.md).
+
+### Authenticated operations HUD and Textual TUI (Module 5)
+
+Install `.[hud]`, set a private `NEXUS_HUD_TOKEN`, then run `nexus hud -C WORKSPACE`.
+The loopback FastAPI/WebSocket UI displays actual Jarvis/delegation/workflow/audit
+state and local metrics, with exact-reviewed approvals and working lifecycle,
+autonomy/quiet/DND controls. `nexus hud -C WORKSPACE --tui` uses the same adapter
+locally without a network listener. No implicit model launch or fake telemetry;
+context stays OFF. See [HUD security, setup and tests](docs/hud.md).
+
+## Opt-in multi-role project planning (Module 1 preview)
+
+A new `nexus orchestrate` path reuses the existing roles, model adapters, learning
+storage and Studio workflows: local FAISS indexing, hybrid top-15 retrieval,
+validated 3–7-role selection, and a phase DAG with bounded reviewer/repair gates.
+It does not execute projects until you explicitly run a saved Studio workflow.
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -e ".[orchestrator]"
+nexus orchestrate --encoder lexical-hash index
+nexus orchestrate --encoder lexical-hash plan "Build an e-commerce website with login, admin panel and payment" --save-workflow
+```
+
+`lexical-hash` is offline lexical retrieval, **not semantic embeddings**. The
+default semantic encoder requires your existing local Ollama embedding model.
+Planning calls configured models and respects persisted Workbench local-only
+policy. This is a tested **first Module 1 slice**, not a completed six-module
+extension. See [usage, boundaries and verification](docs/orchestration.md) and the
+[full rollout/acceptance ledger](docs/agent-extension-plan.md).
+
+
 ```
                          ┌─────────────────────────┐
                          │        User (you)        │
@@ -729,3 +825,47 @@ available NVIDIA GPU telemetry in place of GitHub/VS Code setup instructions.
 Approved command stdout/stderr now stream while commands run, with observed
 exit/stop status, expandable tool output and applied code diffs. See
 [hardware and live execution](docs/live-dashboard.md) for limits and verification.
+
+
+### Reviewed MCP plugins and Telegram controls (Module 5)
+
+`nexus extensions -C WORKSPACE list|run` and foreground model tools use real bounded
+stdio/HTTP MCP, fresh existing approval gates and operator-declared manifests.
+Discovery executes nothing; plugin additions need no core edits. See [MCP](docs/mcp.md).
+`nexus telegram -C WORKSPACE` explicitly starts whitelist-only private-chat polling
+with persisted offsets, one-use PIN challenges and quiet-hour count notifications;
+see [Telegram](docs/telegram.md). Both are OFF by default. Delegation also supports
+optional operator-priced local-model allocation caps (`--max-cost`), not fake invoice
+costs. **Module 5 implementation/automated acceptance is complete; native/live host checks
+remain separate.** [Context/privacy](docs/context.md) was implemented last and stays
+OFF by default. Module 6 is now starting on existing session/learning storage.
+
+
+### Opt-in local context and separately approved vision
+
+`nexus context -C WORKSPACE status|collect|resolve|signal|clear|vision` has real
+bounded consumers; opening the HUD does not collect anything. The existing VS Code
+extension adds **Share Active Editor Context Reference (Opt-in)**. Reference-bearing
+agent runs cannot silently send context to cloud routing/learning/fallbacks. Local
+capture and cloud upload need separate fresh existing-gate consent; unavailable
+native identity/OCR refuses capture. See [setup, privacy and honest acceptance
+boundaries](docs/context.md). No native Windows or live vision claim follows from
+scripted native/HTTP tests.
+
+
+### Module 6: measured learning, traces and safe inspection
+
+`nexus evaluate -C WORKSPACE --days 7` and HUD/TUI consume the existing
+sessions.db: measured outcomes/reviews/retries/approvals, time, usage and historical
+operator-priced model/project/UTC-day cost snapshots. Missing billing/usage remains
+unknown; agent claims and command exits are not independent test certification.
+Evidence-weighted ranking retains exploration; weekly role advice never auto-deletes.
+
+`nexus trace -C WORKSPACE inspect TRACE_ID` / `why TRACE_ID` expose bounded redacted
+observations, not hidden reasoning. `replay TRACE_ID --step N` has **no effects**.
+Explicit `--execute` is limited to eligible workspace file tools, requires fresh
+bound consent plus current policy, and creates a separate linked trace. No terminal,
+plugin, payment or external replay; no HUD execution endpoint. Context stays OFF.
+
+See [operation, privacy, costs and limits](docs/evaluation.md) and the
+[six-module audit / six scripted integration demos](docs/six-module-audit.md).

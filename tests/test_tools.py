@@ -409,7 +409,7 @@ def test_read_only_subset(repo):
 @pytest.mark.parametrize('failed_step', ['checkout', 'add', 'commit', 'push'])
 def test_git_prepare_stops_at_failed_step_and_never_pushes_failed_commit(repo, monkeypatch, failed_step):
     from nexus import tools
-    ctx = make_ctx(repo)
+    ctx = make_ctx(repo, gate=ApprovalGate(mode='auto', callback=lambda *a: ApprovalDecision(True)))
     calls = []
     def scripted(args, cwd):
         calls.append(args)
@@ -423,6 +423,7 @@ def test_git_prepare_stops_at_failed_step_and_never_pushes_failed_commit(repo, m
             return 'M app/main.py', 0
         return 'scripted result', 0
     monkeypatch.setattr(tools, 'run_git', scripted)
+    monkeypatch.setattr(tools, 'run_git_transport', lambda ctx, parts: scripted(parts, ctx.workspace))
     registry = build_tools(ctx)
     output, error = registry.call('git_prepare', {'task': 'Fix fixture', 'push': True})
     assert error and f'git {failed_step} failed' in output
@@ -435,17 +436,18 @@ def test_git_prepare_stops_at_failed_step_and_never_pushes_failed_commit(repo, m
 def test_failed_git_push_is_a_tool_error(repo, monkeypatch):
     from nexus import tools
     ctx = make_ctx(repo)
-    monkeypatch.setattr(tools, 'run_live_command', lambda *a, **k: ('permission denied (test only)', 128))
+    monkeypatch.setattr(tools, 'run_git_transport', lambda *a, **k: ('permission denied (test only)', 128))
+    ctx.gate.callback = lambda *a: ApprovalDecision(True)
     output, error = build_tools(ctx).call('git', {'args': ['push', 'origin', 'test-branch']})
     assert error and 'exited with code 128' in output
     assert ctx.state['last_exit_code'] == 128
 
 
-@pytest.mark.parametrize('name,args', [('gh', {'args': ['pr', 'list']}), ('gh_merge_pr', {'number': 42})])
+@pytest.mark.parametrize('name,args', [('gh', {'args': ['pr', 'list']}), ('gh_merge_pr', {'number': 42, 'close': True})])
 def test_failed_github_cli_operations_are_not_success(repo, monkeypatch, name, args):
     from nexus import tools
     monkeypatch.setattr(tools, 'gh_available', lambda: True)
-    monkeypatch.setattr(tools, 'run_live_command', lambda *a, **k: ('scripted permission failure', 1))
+    monkeypatch.setattr(tools, 'run_github_command', lambda *a, **k: ('scripted permission failure', 1))
     handler = tools.tool_gh if name == 'gh' else tools.tool_gh_merge_pr
     with pytest.raises(tools.ToolFailure, match='exited with code 1'):
         handler(make_ctx(repo), args)

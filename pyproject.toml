@@ -33,7 +33,12 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0", "ruff>=0.6", "cryptography>=44", "keyring>=25"]
+context = ["mss>=9,<11", "Pillow>=10,<13", "pytesseract>=0.3.13,<1"]
+mcp = ["jsonschema>=4.23,<5", "keyring>=25"]
+hud = ["fastapi>=0.115,<1", "uvicorn>=0.30,<1", "websockets>=13,<17", "textual>=0.80,<9"]
+dev = ["jsonschema>=4.23,<5", "fastapi>=0.115,<1", "uvicorn>=0.30,<1", "websockets>=13,<17", "textual>=0.80,<9", "pytest>=8.0", "ruff>=0.6", "cryptography>=44", "keyring>=25", "faiss-cpu>=1.8,<2", "numpy>=1.25,<3", "python-docx>=1.1,<2", "openpyxl>=3.1,<4", "python-pptx>=1.0,<2"]
+orchestrator = ["faiss-cpu>=1.8,<2", "numpy>=1.25,<3"]
+computer = ["playwright>=1.50,<2", "python-docx>=1.1,<2", "openpyxl>=3.1,<4", "python-pptx>=1.0,<2"]
 secure-state = ["cryptography>=44", "keyring>=25", "filelock>=3.16"]
 # only if you point agents.yaml at the legacy Anthropic Messages API
 anthropic = ["anthropic>=0.40"]
@@ -54,9 +59,25 @@ packages = ["nexus"]
 "roles.d" = "nexus/_config/roles.d"
 "pipelines.yaml" = "nexus/_config/pipelines.yaml"
 "skills" = "nexus/_config/skills"
+"role-index.yaml" = "nexus/_config/role-index.yaml"
+"permissions.yaml" = "nexus/_config/permissions.yaml"
+"autonomy.yaml" = "nexus/_config/autonomy.yaml"
+".env.example" = "nexus/_config/.env.example"
+"docs/jarvis.md" = "nexus/_config/docs/jarvis.md"
+"docs/delegation.md" = "nexus/_config/docs/delegation.md"
+"hud.yaml" = "nexus/_config/hud.yaml"
+"mcp.yaml" = "nexus/_config/mcp.yaml"
+"telegram.yaml" = "nexus/_config/telegram.yaml"
+"context.yaml" = "nexus/_config/context.yaml"
+"docs/hud.md" = "nexus/_config/docs/hud.md"
+"docs/mcp.md" = "nexus/_config/docs/mcp.md"
+"docs/telegram.md" = "nexus/_config/docs/telegram.md"
+"docs/context.md" = "nexus/_config/docs/context.md"
+"docs/evaluation.md" = "nexus/_config/docs/evaluation.md"
+"examples/mcp" = "nexus/_config/examples/mcp"
 
 [tool.hatch.build.targets.sdist]
-include = ["nexus", "roles.d", "skills", "tests", "scripts", "agents.yaml", "roles.yaml", "pipelines.yaml", "README.md", "LICENSE"]
+include = ["nexus", "roles.d", "skills", "tests", "scripts", "examples", "agents.yaml", "roles.yaml", "pipelines.yaml", "role-index.yaml", "permissions.yaml", "autonomy.yaml", "hud.yaml", "mcp.yaml", "telegram.yaml", "context.yaml", ".env.example", "docs", "README.md", "LICENSE"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

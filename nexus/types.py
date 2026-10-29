@@ -130,6 +130,13 @@ class TextBlock:
 
 
 @dataclass
+class ImageBlock:
+    data: str  # base64 JPEG; callers must enforce privacy, bounds and consent
+    media_type: str = "image/jpeg"
+    type: str = "image"
+
+
+@dataclass
 class ToolCall:
     id: str
     name: str
@@ -145,7 +152,7 @@ class ToolResultBlock:
     type: str = "tool_result"
 
 
-ContentBlock = TextBlock | ToolCall | ToolResultBlock
+ContentBlock = TextBlock | ImageBlock | ToolCall | ToolResultBlock
 
 
 @dataclass
@@ -172,6 +179,8 @@ class Message:
         for b in self.content:
             if isinstance(b, TextBlock):
                 total += len(b.text)
+            elif isinstance(b, ImageBlock):
+                total += len(b.data)
             elif isinstance(b, ToolCall):
                 total += len(b.name) + len(str(b.input))
             else:
@@ -191,8 +200,12 @@ class ToolSpec:
     # subcommands of a wrapper tool (``git``) that stay read-only: they never
     # need approval, even in plan mode
     readonly_subcommands: frozenset[str] = frozenset()
+    readonly_actions: frozenset[str] = frozenset()
+    approval_context: dict[str, Any] | None = None  # human-only; never sent as model authority
 
     def is_readonly_call(self, args: dict[str, Any]) -> bool:
+        if self.readonly_actions and isinstance(args.get('action'), str) and args['action'] in self.readonly_actions:
+            return True
         if self.read_only or self.risk is Risk.READ:
             return True
         if not self.readonly_subcommands:

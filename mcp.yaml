@@ -1,0 +1,6 @@
+# Operator-owned, disabled by default. Discovery reads manifests; it runs no code.
+# Each actual capability is always DANGEROUS/fresh-reviewed, even with AUTO_ALLOW.
+schema: 1
+enabled: false
+servers: {}
+plugin_directory: plugins

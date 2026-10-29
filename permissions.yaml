@@ -1,0 +1,25 @@
+# Operator-owned policy. Agent tools cannot edit this file.
+# Modes: READ_ONLY, ASK_EVERY_TIME, AUTO_ALLOW.
+# Missing file also defaults to ASK_EVERY_TIME; --yes does not override it.
+schema: 1
+default: ASK_EVERY_TIME
+tools:
+  read_file: READ_ONLY
+  list_files: READ_ONLY
+  grep: READ_ONLY
+  run_command: ASK_EVERY_TIME
+  git: ASK_EVERY_TIME
+  gh: ASK_EVERY_TIME
+# Shell/Git execution and registered dangerous/external mutations always require
+# fresh approval, even under AUTO_ALLOW. This is not an OS sandbox.
+
+# Optional adapters remain OFF until the operator reviews their scope.
+computer:
+  browser: false
+  editor: false
+  office: false
+  browser_origins: []
+  shell_backend: host
+  image: ""
+# For Docker, choose shell_backend: docker and an installed IMAGE@sha256:DIGEST.
+# Host shell execution is explicitly approved, not claimed to be sandboxed.

@@ -119,6 +119,8 @@ def test_loop_stops_when_the_model_just_talks(repo):
 def test_max_turns_is_respected(repo):
     script = [tool_completion([("run_command", {"command": "echo hi"})])] * 10
     agent = make_agent(repo, script)
+    from nexus.tools import ApprovalDecision
+    agent.gate.callback = lambda *a: ApprovalDecision(True)  # Explicit test-only shell consent.
     result = agent.run("loop forever", max_turns=3)
     assert result.turns == 3
     assert "max_turns" in result.stopped_reason
@@ -531,6 +533,8 @@ def test_failed_command_followed_by_success_can_recover(repo):
     success = shlex.join([sys.executable, '-c', 'print("real recovery")'])
     agent = make_agent(repo, [tool_completion([('run_command', {'command': fail})]),
         tool_completion([('run_command', {'command': success})]), finish_completion('recovered')])
+    from nexus.tools import ApprovalDecision
+    agent.gate.callback = lambda *a: ApprovalDecision(True)  # Explicit test-only shell consent.
     result = agent.run('Run the checks', role='general')
     assert result.ok and result.execution['successful_workspace_tools'] == 1
 

@@ -19,6 +19,7 @@ htmlcov/
 # ── Secrets: never commit real keys ───────────────────────────────────────
 .env
 .env.*
+!.env.example
 keys.json
 *.pem
 *.key
@@ -47,3 +48,12 @@ Thumbs.db
 !.vscode/launch.json
 !.vscode/settings.json
 !.vscode/extensions.json
+
+# Opt-in orchestration runtime (vectors, plans, statuses)
+.nexus/orchestration/
+
+# Explicit new-project workspaces each own a separate Git repository
+projects/
+
+# Permission audit is runtime state, never training data or source
+.nexus/permissions/
