@@ -1,7 +1,7 @@
 /* Review-first Studio. All server-derived text is rendered with textContent. */
 (() => {
   'use strict';
-  const token = new URLSearchParams(location.search).get('token');
+  const token = ''; // Shared HttpOnly GUI session; no URL credentials.
   const dialog = document.createElement('dialog'); dialog.id = 'nexusStudio';
   dialog.innerHTML = `<div class="wb-shell"><header class="wb-header"><h2>Nexus Studio · Review & evidence</h2><button id="stClose">Close</button></header><nav class="wb-nav" id="stNav"></nav><main class="wb-main"><p id="stError" role="status"></p><div id="stPane"></div></main></div>`;
   document.body.append(dialog);
@@ -10,7 +10,7 @@
   document.querySelector('.topbar').append(open);
   let selected = null, activePane = 'Sessions', attachments = [], notify = false;
   async function api(path, body) {
-    const response = await fetch('/api/workbench/studio/' + path, {method: body === undefined ? 'GET' : 'POST',
+    const response = await (window.nexusGui?.fetch || fetch)('/api/workbench/studio/' + path, {method: body === undefined ? 'GET' : 'POST',
       headers: {'Content-Type':'application/json', ...(token ? {'X-Nexus-Token':token} : {})},
       ...(body === undefined ? {} : {body:JSON.stringify(body)})});
     const result = await response.json(); if (!response.ok) throw new Error(result.error || 'Request failed');
@@ -51,7 +51,7 @@
   async function evidence() {
     pre('Only recorded subprocess results are verification evidence. Commands execute repository tooling on this host, NOT in an OS sandbox.');
     for (const kind of ['tests', 'lint', 'types']) button('Run ' + kind, async () => pre(await api('verify', {kind, confirm:confirm('RUN TRUSTED CHECK')})));
-    button('Refresh verification jobs', async () => { const r = await fetch('/api/workbench/jobs', {headers:token ? {'X-Nexus-Token':token} : {}}); pre(await r.json()); });
+    button('Refresh verification jobs', async () => { const r = await (window.nexusGui?.fetch || fetch)('/api/workbench/jobs', {headers:token ? {'X-Nexus-Token':token} : {}}); pre(await r.json()); });
     for (const kind of ['verification', 'evidence', 'context']) button('Inspect ' + kind, async () => pre(await records(kind)));
     for (const evidence of await records('evidence')) {
       if (!evidence.criteria.length) continue;
@@ -62,7 +62,7 @@
     button('Review dependency changes', async () => pre(await api('dependencies')));
     for (const c of await records('checkpoint')) { pre({id:c.id, path:c.path, status:c.status, task_id:c.task_id}); button('Preview rollback ' + c.id, async () => pre(await api('rollback-preview', {id:c.id}))); button('Restore reviewed checkpoint ' + c.id, async () => pre(await api('rollback', {id:c.id, confirm:confirm('RESTORE ' + c.id)}))); }
     const id = input('Pending task ID (from live run)'); button('Inspect selectable diff hunks', async () => {
-      const response = await fetch('/api/task/' + encodeURIComponent(id.value), {headers:token ? {'X-Nexus-Token':token} : {}}); const run = await response.json(); if (!response.ok) throw new Error(run.error || 'Cannot read task');
+      const response = await (window.nexusGui?.fetch || fetch)('/api/task/' + encodeURIComponent(id.value), {headers:token ? {'X-Nexus-Token':token} : {}}); const run = await response.json(); if (!response.ok) throw new Error(run.error || 'Cannot read task');
       const approval = run.pending; if (!approval) throw new Error('No pending approval');
       const h = await api('hunks', {task_id:id.value, approval_id:approval.approval_id}); const chosen = [];
       for (const change of h.changes) { pre(change); const label = document.createElement('label'); const check = document.createElement('input'); check.type = 'checkbox'; check.checked = true; chosen.push({id:change.id, check}); label.append(check, document.createTextNode('Include hunk ' + change.id)); $('stPane').append(label); }

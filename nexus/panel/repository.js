@@ -1,7 +1,7 @@
 /* Real repository controls; no mutation on load, selection, refresh, or preview. */
 (() => {
   'use strict';
-  const token = new URLSearchParams(location.search).get('token');
+  const token = ''; // Shared HttpOnly GUI session; no URL credentials.
   const bar = document.createElement('section'); bar.id = 'repoBar'; bar.setAttribute('aria-label','Repository controls');
   const branchIcon = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><circle cx="6" cy="5" r="3"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="19" r="3"/><path d="M6 8v8m12-7a9 9 0 0 1-9 9"/></svg>';
   const repositoryIcon = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 19c-4.3 1.3-4.3-2.2-6-2.7m12 5v-3.8c.1-1-.3-1.8-.8-2.3 2.7-.3 5.5-1.3 5.5-6A4.7 4.7 0 0 0 18.4 6c.1-.3.6-1.6-.1-3.3 0 0-1-.3-3.3 1.2a11.5 11.5 0 0 0-6 0C6.7 2.4 5.7 2.7 5.7 2.7 5 4.4 5.5 5.7 5.6 6A4.7 4.7 0 0 0 4.3 9c0 4.7 2.8 5.7 5.5 6-.4.4-.8 1.1-.8 2.2V21"/></svg>';
@@ -24,7 +24,7 @@
   window.nexusGitHubRepository = () => $('repoSelect').value || null;
   let repositories = [], loadGeneration = 0, statusGeneration = 0;
   async function api(path, body) {
-    const response = await fetch('/api/workbench/repository/' + path, {method:body===undefined?'GET':'POST',headers:{'Content-Type':'application/json',...(token?{'X-Nexus-Token':token}:{})},...(body===undefined?{}:{body:JSON.stringify(body)})});
+    const response = await (window.nexusGui?.fetch || fetch)('/api/workbench/repository/' + path, {method:body===undefined?'GET':'POST',headers:{'Content-Type':'application/json',...(token?{'X-Nexus-Token':token}:{})},...(body===undefined?{}:{body:JSON.stringify(body)})});
     const result = await response.json(); if(!response.ok) throw new Error(result.error || 'Repository operation failed'); return result.data;
   }
   function error(id, e) { $(id).textContent = e.message || String(e); }

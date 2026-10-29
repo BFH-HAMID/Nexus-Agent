@@ -10,7 +10,7 @@
   "use strict";
 
   const $ = (id) => document.getElementById(id);
-  const token = new URLSearchParams(location.search).get("token") || "";
+  const token = ''; // Shared HttpOnly GUI session; no URL credentials.
   const REDUCED = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   const MAX_STEPS = 400;
   const processCards = new Map();
@@ -67,7 +67,7 @@
     options.headers["Content-Type"] = "application/json";
     if (token) options.headers["X-Nexus-Token"] = token;
     try {
-      const r = await fetch(path, options);
+      const r = await (window.nexusGui?.fetch || fetch)(path, options);
       let body = {};
       try { body = await r.json(); } catch (_) { body = {}; }
       return { ok: r.ok, status: r.status, body: body };
@@ -96,10 +96,18 @@
     refreshMemory();
     refreshBrain();
     await restoreRun();
+    notifyHost({type:'ready'});
     setInterval(refreshStats, 15000);
     setInterval(refreshBrain, 30000);
     setInterval(tickMeters, 1000);
   }
+
+  window.nexusRefreshConfiguration = async () => {
+    const selected=$('roleSelect').value;
+    const roles=await api('/api/roles');
+    if(roles.ok&&Array.isArray(roles.body)){state.roles=roles.body;fillRoles();if(state.roles.some(r=>r.name===selected))$('roleSelect').value=selected;}
+    await refreshStats();
+  };
 
   async function refreshStats() {
     const { ok, body } = await api("/api/stats");
@@ -1027,6 +1035,31 @@
       tag: row.id,
     })), "no past runs match that yet");
   }
+
+  // Preserve the existing VS Code host protocol in the canonical GUI.
+  let trustedHostOrigin='';
+  function notifyHost(data) {
+    if(window.parent!==window&&(trustedHostOrigin||data.type==='ready'))window.parent.postMessage({source:'nexus-panel',...data},trustedHostOrigin||'*');
+  }
+  window.addEventListener('message',e=>{
+    if(window.parent===window||e.source!==window.parent)return;
+    let origin;try{origin=new URL(e.origin);}catch{return;}
+    if(origin.protocol!=='vscode-webview:'&&!(origin.protocol==='https:'&&/^[a-z0-9-]+\.vscode-cdn\.net$/.test(origin.hostname)))return;
+    const data=e.data||{};if(data.source!=='nexus-host')return;
+    trustedHostOrigin=e.origin;
+    if(data.type==='role')$('roleSelect').value=data.role||'';
+    if(data.type==='task'){
+      window.nexusGui?.show('run');$('taskInput').value=String(data.task||'');
+      if(data.role)$('roleSelect').value=data.role;
+      $('readOnly').checked=!!data.readOnly;
+      if(data.autorun)$('runBtn').click();
+    }
+    if(data.type==='approve')decide(!!data.approved,data.scope==='session'?'session':'once');
+  });
+  window.addEventListener('nexus:event',({detail:e})=>{
+    if(e.type==='approval_request')notifyHost({type:'approval',tool:e.tool,risk:e.risk,preview:e.preview});
+    if(e.type==='done')notifyHost({type:'done',result:e.result});
+  });
 
   /* ── UI wiring ────────────────────────────────────────────────────── */
   function wireUi() {

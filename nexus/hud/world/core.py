@@ -119,7 +119,7 @@ class Cache:
         path = self.directory / 'public-cache.json'
         try:
             if path.stat().st_size < 8_000_000:
-                rows = json.loads(path.read_text())
+                rows = json.loads(path.read_text(encoding='utf-8'))
                 if isinstance(rows, dict):
                     self.rows = {k: v for k, v in list(rows.items())[:64] if isinstance(v, dict) and isinstance(v.get('at'), (int, float)) and 'data' in v}
         except (OSError, ValueError, TypeError):
@@ -205,7 +205,7 @@ def parse_feed(payload, source, matcher):
 class World:
     def __init__(self, root, *, cache_dir=None, transport=None, clock=time.time, sleep=time.sleep):
         self.config = settings(root)
-        self.countries = json.loads((ASSETS / 'countries.json').read_text())
+        self.countries = json.loads((ASSETS / 'countries.json').read_text(encoding='utf-8'))
         self.matcher = Matcher(self.countries)
         if cache_dir is None:
             from ...config import nexus_home
