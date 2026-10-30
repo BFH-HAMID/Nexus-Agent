@@ -701,6 +701,27 @@ def make_handler(state: ServerState):
                         "versions": studio.versions(state.workspace),
                         "store": f"{studio.STORE_DIR}/{studio.HISTORY_DIR} (runtime state, never committed)"})
                 return self._router_read("routerstudio.lab", lambda studio: studio.lab(state))
+            if path.startswith("/api/computer/"):
+                if path not in {"/api/computer/state", "/api/computer/files", "/api/computer/trash",
+                                "/api/computer/browser", "/api/computer/snapshots"}:
+                    return self._send_json({"error": f"no route for {path}"}, 404)
+                query = parse_qs(parsed.query)
+                if path == "/api/computer/state":
+                    return self._computer_read("computer.state", lambda studio: studio.state_view(state))
+                if path == "/api/computer/files":
+                    try:
+                        depth = int((query.get("depth") or ["1"])[0])
+                    except ValueError:
+                        depth = 1
+                    return self._computer_read("computer.files", lambda studio: studio.tree(state, {
+                        "path": (query.get("path") or ["."])[0], "depth": depth}))
+                if path == "/api/computer/trash":
+                    return self._computer_read("computer.trash", lambda studio: studio.trash_view(state))
+                if path == "/api/computer/browser":
+                    return self._computer_read("computer.browser", lambda studio: studio.browser_view(state))
+                return self._computer_read("computer.snapshots", lambda studio: {
+                    "schema": studio.SCHEMA, "observed_at": __import__("time").time(),
+                    "items": studio.snapshots(state)})
             if path.startswith("/api/roles/") and path not in {"/api/roles/index", "/api/roles/detail",
                                                                "/api/roles/history", "/api/roles/diff",
                                                                "/api/roles/quality"}:
@@ -838,6 +859,13 @@ def make_handler(state: ServerState):
                 if action not in {"simulate", "rule", "weights", "enable", "lab", "restore"}:
                     return self._send_json({"error": f"no route for {path}"}, 404)
                 return self._router_action(action, payload)
+
+            if path.startswith("/api/computer/"):
+                action = path.removeprefix("/api/computer/")
+                if action not in {"settings", "file/preview", "file/write", "file/undo", "file/trash",
+                                 "trash/restore", "browser/open", "panic", "resume"}:
+                    return self._send_json({"error": f"no route for {path}"}, 404)
+                return self._computer_action(action, payload)
 
             if path.startswith("/api/workbench/"):
                 try:
@@ -1091,6 +1119,65 @@ def make_handler(state: ServerState):
             except OSError:
                 return self._send_json(webapi.failed(
                     "store_unavailable", "The router store is unavailable; nothing was saved."), 503)
+            return self._send_json(webapi.ok(data))
+
+        def _computer_read(self, action: str, build) -> None:
+            """Computer Control reads: limited per client, audited (sampled), redacted."""
+            from . import computerstudio, webapi
+
+            client = self._rolehub_client()
+            bucket = "computer:" + client
+            if not state.api_limiter.allow(bucket):
+                wait = state.api_limiter.retry_after(bucket)
+                return self._send_json(webapi.failed("rate_limited",
+                                                     f"Too many computer reads; retry in {wait}s."), 429)
+            try:
+                data = build(computerstudio)
+                computerstudio.audit(state, client, action)
+            except ValueError as exc:
+                return self._send_json(webapi.failed("invalid_request", str(exc)[:400]), 400)
+            except (OSError, KeyError):
+                return self._send_json(webapi.failed(
+                    "store_unavailable", "Computer state withheld: the local store is unavailable."), 503)
+            return self._send_json(webapi.ok(data))
+
+        def _computer_action(self, action: str, payload: dict) -> None:
+            """Every mutation is validated, limited, and audited on the spot."""
+            from . import computerstudio, webapi
+
+            client = self._rolehub_client()
+            bucket = ("computer:" if action == "file/preview" else "computer-write:") + client
+            if not state.api_limiter.allow(bucket):
+                wait = state.api_limiter.retry_after(bucket)
+                return self._send_json(webapi.failed("rate_limited",
+                                                     f"Too many computer actions; retry in {wait}s."), 429)
+            if not isinstance(payload, dict):
+                return self._send_json(webapi.failed("invalid_request", "A JSON object is required"), 400)
+            payload = {**payload, "_client": client}
+            try:
+                if action == "settings":
+                    data = computerstudio.save_settings(state, payload)
+                elif action == "file/preview":
+                    data = computerstudio.preview(state, payload)
+                elif action == "file/write":
+                    data = computerstudio.write(state, payload)
+                elif action == "file/undo":
+                    data = computerstudio.undo(state, payload)
+                elif action == "file/trash":
+                    data = computerstudio.trash(state, payload)
+                elif action == "trash/restore":
+                    data = computerstudio.restore(state, payload)
+                elif action == "browser/open":
+                    data = computerstudio.browser_open(state, payload)
+                elif action == "panic":
+                    data = computerstudio.panic(state, payload)
+                else:
+                    data = computerstudio.resume(state, payload)
+            except ValueError as exc:
+                return self._send_json(webapi.failed("invalid_request", str(exc)[:400]), 400)
+            except OSError:
+                return self._send_json(webapi.failed(
+                    "store_unavailable", "The computer store is unavailable; nothing was changed."), 503)
             return self._send_json(webapi.ok(data))
 
         def _mission_client(self) -> str:

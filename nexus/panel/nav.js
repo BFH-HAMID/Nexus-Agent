@@ -33,8 +33,8 @@
       detail: '1000 roles, prompts, history'},
     {id: 'router', group: 'operate', icon: 'i-route', label: 'nav.router', view: 'router',
       detail: 'rules, dry runs, fallback ladders'},
-    {id: 'computer', group: 'operate', icon: 'i-monitor', label: 'nav.computer', run: () => openWorkbench('desktopSetup'),
-      detail: 'permissions, browser, editor, service'},
+    {id: 'computer', group: 'operate', icon: 'i-monitor', label: 'nav.computer', view: 'computer',
+      detail: 'permissions, files, browser, panic'},
     {id: 'workflows', group: 'operate', icon: 'i-workflow', label: 'nav.workflows', run: () => openStudio('Workflows'),
       detail: 'pipelines & Studio workflows'},
     {id: 'approvals', group: 'operate', icon: 'i-shield', label: 'nav.approvals', aria: 'nav.approvalAria', view: 'operations', anchor: 'reviews',
@@ -55,7 +55,7 @@
   ];
 
   const byId = new Map(SECTIONS.map((section) => [section.id, section]));
-  const viewTitles = {mission: 'nav.mission', roles: 'nav.roles', router: 'nav.router', run: 'nav.run',
+  const viewTitles = {mission: 'nav.mission', roles: 'nav.roles', router: 'nav.router', computer: 'nav.computer', run: 'nav.run',
     operations: 'nav.approvals', world: 'nav.world', control: 'nav.controls'};
   let activeId = null;
   let pendingAnchor = null;
