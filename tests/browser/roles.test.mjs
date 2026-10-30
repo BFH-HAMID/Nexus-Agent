@@ -71,7 +71,9 @@ test('search, filter and sort are answered by the server', async () => {
     }, null, {timeout: 20000});
     const meta = await page.locator('#rhMeta').innerText();
     const matched = Number(meta.match(/of (\d+) matched/)[1]);
-    assert.ok(matched > 0 && matched < 1000, meta);
+    const total = await page.evaluate(() => window.nexusRoleHub.state().total);
+    assert.ok(matched > 0 && matched < total, meta);
+    assert.ok(total >= 1000, 'the shipped roster is never filtered down by the shell');
 
     await page.locator('#rhSort').selectOption('persona');
     await page.waitForFunction(() => window.nexusRoleHub.state().sort === 'persona');

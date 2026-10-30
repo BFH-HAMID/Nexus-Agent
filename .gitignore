@@ -60,3 +60,4 @@ projects/
 
 # Role Hub version snapshots are runtime state, never source
 .nexus/rolehub/
+.nexus/router/

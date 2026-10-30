@@ -53,7 +53,7 @@
   };
   let worldLoaded = false;
   async function show(view) {
-    if (!['mission','roles','run','operations','world','control'].includes(view)) return;
+    if (!['mission','roles','router','run','operations','world','control'].includes(view)) return;
     gui.view = view;
     document.body.classList.toggle('gui-module-view',view!=='run');
     document.querySelectorAll('[data-gui-view]').forEach(n => n.hidden = n.dataset.guiView !== view);
@@ -80,7 +80,7 @@
   });
   gui.show=show;
   // Hash deep links (#run, #mission, …) follow the address bar without a reload.
-  window.addEventListener('hashchange',()=>{const next=location.hash.slice(1);if(['mission','roles','run','operations','world','control'].includes(next)&&next!==gui.view)show(next);});
+  window.addEventListener('hashchange',()=>{const next=location.hash.slice(1);if(['mission','roles','router','run','operations','world','control'].includes(next)&&next!==gui.view)show(next);});
   document.getElementById('guiSettings').onclick=()=>document.getElementById('wbOpen')?.click();
   // Shared label helper: feature scripts write into .btn-label so icons survive language switches.
   gui.label=(node,text)=>{if(!node)return;const label=node.querySelector('.btn-label');if(label)label.textContent=text;else node.textContent=text;};
@@ -96,7 +96,7 @@
   setInterval(async()=>{if(document.hidden||login.open||gui.view==='operations')return;try{const state=await gui.api('/api/operations/state');const count=state.pending_actions_total||0;text.textContent=count+' background action(s) await your approval.';attention.hidden=count===0;}catch{/* No invented alert when status is unavailable. */}},10000);
   window.addEventListener('nexus:view',e=>{if(e.detail==='operations')attention.hidden=true;});
   const hash=location.hash.slice(1);const bookmarked=document.getElementById(hash)?.closest('[data-gui-view]')?.dataset.guiView;
-  show(bookmarked||(['mission','roles','run','operations','world','control'].includes(hash)?hash:'mission'));
+  show(bookmarked||(['mission','roles','router','run','operations','world','control'].includes(hash)?hash:'mission'));
 })();
 
 /* Desktop presentation: reuse native controls; never execute or grant permissions. */

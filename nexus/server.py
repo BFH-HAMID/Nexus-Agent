@@ -680,6 +680,27 @@ def make_handler(state: ServerState):
                 return self._mission_summary()
             if path == "/api/mission/stream":
                 return self._mission_stream()
+            if path.startswith("/api/router/"):
+                if path not in {"/api/router/overview", "/api/router/rules", "/api/router/chains",
+                                "/api/router/models", "/api/router/accuracy", "/api/router/history",
+                                "/api/router/lab"}:
+                    return self._send_json({"error": f"no route for {path}"}, 404)
+                if path == "/api/router/overview":
+                    return self._router_read("routerstudio.overview", lambda studio: studio.overview(state))
+                if path == "/api/router/rules":
+                    return self._router_read("routerstudio.rules", lambda studio: studio.rules(state))
+                if path == "/api/router/chains":
+                    return self._router_read("routerstudio.chains", lambda studio: studio.chains(state))
+                if path == "/api/router/models":
+                    return self._router_read("routerstudio.models", lambda studio: studio.model_ranking(state))
+                if path == "/api/router/accuracy":
+                    return self._router_read("routerstudio.accuracy", lambda studio: studio.accuracy(state))
+                if path == "/api/router/history":
+                    return self._router_read("routerstudio.history", lambda studio: {
+                        "schema": studio.SCHEMA, "observed_at": __import__("time").time(),
+                        "versions": studio.versions(state.workspace),
+                        "store": f"{studio.STORE_DIR}/{studio.HISTORY_DIR} (runtime state, never committed)"})
+                return self._router_read("routerstudio.lab", lambda studio: studio.lab(state))
             if path.startswith("/api/roles/") and path not in {"/api/roles/index", "/api/roles/detail",
                                                                "/api/roles/history", "/api/roles/diff",
                                                                "/api/roles/quality"}:
@@ -811,6 +832,12 @@ def make_handler(state: ServerState):
 
             if path in {"/api/roles/route", "/api/roles/export", "/api/roles/restore"}:
                 return self._rolehub_action(path.rsplit("/", 1)[-1], payload)
+
+            if path.startswith("/api/router/"):
+                action = path.rsplit("/", 1)[-1]
+                if action not in {"simulate", "rule", "weights", "enable", "lab", "restore"}:
+                    return self._send_json({"error": f"no route for {path}"}, 404)
+                return self._router_action(action, payload)
 
             if path.startswith("/api/workbench/"):
                 try:
@@ -1010,6 +1037,60 @@ def make_handler(state: ServerState):
                 rolehub.audit(state, client, f"rolehub.{action}", every=0)
             except (ValueError, OSError) as exc:
                 return self._send_json(webapi.failed("invalid_request", str(exc)[:400]), 400)
+            return self._send_json(webapi.ok(data))
+
+        def _router_read(self, action: str, build) -> None:
+            """Read-only Router Studio surface: limited, audited (sampled), redacted."""
+            from . import routerstudio, webapi
+
+            client = self._rolehub_client()
+            bucket = "router:" + client
+            if not state.api_limiter.allow(bucket):
+                wait = state.api_limiter.retry_after(bucket)
+                return self._send_json(webapi.failed("rate_limited",
+                                                     f"Too many router reads; retry in {wait}s."), 429)
+            try:
+                data = build(routerstudio)
+                routerstudio.audit(state, client, action)
+            except ValueError as exc:
+                return self._send_json(webapi.failed("invalid_request", str(exc)), 400)
+            except (OSError, KeyError):
+                return self._send_json(webapi.failed(
+                    "audit_unavailable", "Router data withheld: the local store or audit trail is unavailable."), 503)
+            return self._send_json(webapi.ok(data))
+
+        def _router_action(self, action: str, payload: dict) -> None:
+            """simulate/rule/weights/enable/lab/restore: validated, limited, audited."""
+            from . import routerstudio, webapi
+
+            client = self._rolehub_client()
+            bucket = ("router:" if action == "simulate" else "router-write:") + client
+            if not state.api_limiter.allow(bucket):
+                wait = state.api_limiter.retry_after(bucket)
+                return self._send_json(webapi.failed("rate_limited",
+                                                     f"Too many router actions; retry in {wait}s."), 429)
+            if not isinstance(payload, dict):
+                return self._send_json(webapi.failed("invalid_request", "A JSON object is required"), 400)
+            payload = {**payload, "_client": client}
+            try:
+                if action == "simulate":
+                    data = routerstudio.simulate(state, payload)
+                    routerstudio.audit(state, client, "routerstudio.simulate")
+                elif action == "rule":
+                    data = routerstudio.rule_action(state, payload)
+                elif action == "weights":
+                    data = routerstudio.save_weights(state, payload)
+                elif action == "enable":
+                    data = routerstudio.set_enabled(state, payload)
+                elif action == "lab":
+                    data = routerstudio.run_lab(state, payload)
+                else:  # pragma: no cover - the route table above decides this
+                    return self._send_json(webapi.failed("unknown_action", "Unknown router action"), 404)
+            except ValueError as exc:
+                return self._send_json(webapi.failed("invalid_request", str(exc)[:400]), 400)
+            except OSError:
+                return self._send_json(webapi.failed(
+                    "store_unavailable", "The router store is unavailable; nothing was saved."), 503)
             return self._send_json(webapi.ok(data))
 
         def _mission_client(self) -> str:

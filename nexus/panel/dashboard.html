@@ -84,8 +84,12 @@
       <span class="nav-kbd" aria-hidden="true">Alt+2</span>
     </button>
     <button class="nav-item" type="button" data-nav-id="roles" aria-label="Roles & router" data-i18n-aria="nav.roles">
-      <svg class="ic" aria-hidden="true"><use href="#i-route"/></svg>
+      <svg class="ic" aria-hidden="true"><use href="#i-users"/></svg>
       <span class="nav-label" data-i18n="nav.roles">Roles &amp; router</span><span class="nav-label-short" aria-hidden="true" data-i18n="nav.roles">Roles</span>
+    </button>
+    <button class="nav-item" type="button" data-nav-id="router" aria-label="Router Studio" data-i18n-aria="nav.router">
+      <svg class="ic" aria-hidden="true"><use href="#i-route"/></svg>
+      <span class="nav-label" data-i18n="nav.router">Router Studio</span><span class="nav-label-short" aria-hidden="true" data-i18n="nav.router">Router</span>
     </button>
     <button class="nav-item" type="button" data-nav-id="computer" aria-label="Computer Control" data-i18n-aria="nav.computer">
       <svg class="ic" aria-hidden="true"><use href="#i-monitor"/></svg>
@@ -381,6 +385,9 @@
             </label>
             <label class="toggle"><input type="checkbox" id="readOnly" /><i></i><span>Read-only</span></label>
             <label class="toggle"><input type="checkbox" id="autoYes" /><i></i><span>Auto-approve</span></label>
+            <button class="btn ghost" type="button" id="routePreviewBtn" title="Offline route preview; nothing runs"
+              data-i18n-title="router.previewHint"><svg class="ic" aria-hidden="true"><use href="#i-route"/></svg><span class="btn-label" data-i18n="router.preview">Preview route</span></button>
+            <button class="route-preview" type="button" id="routePreview" aria-live="polite" data-i18n-title="router.previewOpen"></button>
             <span class="spacer"></span>
           </div>
           <div class="composer-row main-row">
@@ -648,5 +655,6 @@
 <script src="/dashboard/palette.js"></script>
 <script src="/dashboard/mission.js"></script>
 <script src="/dashboard/rolehub.js"></script>
+<script src="/dashboard/routerstudio.js"></script>
 </body>
 </html>

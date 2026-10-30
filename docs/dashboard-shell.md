@@ -1,12 +1,14 @@
 # Dashboard shell — navigation, command palette, Mission Control
 
-Prompt 1 of the dashboard build. Everything here is served by the existing GUI
+Prompt 1 of the dashboard build (updated by prompts 2–4; see the sibling
+`docs/dashboard-mission.md`, `docs/dashboard-roles.md` and
+`docs/dashboard-router.md`). Everything here is served by the existing GUI
 server (`nexus gui`) at `/dashboard`; there is no second application, no CDN and
 no build step. All assets are local files under `nexus/panel/`.
 
 ## Sections
 
-`nexus/panel/nav.js` owns the registry. Thirteen rows, two groups (`operate`,
+`nexus/panel/nav.js` owns the registry. Fourteen rows, two groups (`operate`,
 `configure`), each row either switches a `data-gui-view` page, deep-links inside
 the Workbench/Studio drawers, or opens a dialog:
 
@@ -15,6 +17,7 @@ the Workbench/Studio drawers, or opens a dialog:
 | `mission` | Mission Control / মিশন কন্ট্রোল | `view-mission` |
 | `run` | Run & chat | `view-run` |
 | `roles` | Roles & router | `view-roles` (Role Hub, Prompt 3) |
+| `router` | Router Studio / রাউটার স্টুডিও | `view-router` (Router Studio, Prompt 4) |
 | `computer` | Computer Control | Workbench → *desktopSetup* |
 | `workflows` | Workflows | Studio → *Workflows* |
 | `approvals` | Approvals | `view-operations`, anchor `#reviews`, badge |
@@ -93,6 +96,8 @@ anything; cancelling leaves the daemon untouched.
 window.nexusNav     = {sections, go(id), active, setActive(id), detail};
 window.nexusPalette = {open, close, search(text), lastMs, count, data, loadIndex};
 window.nexusMission = {load, root, state(), streamUrl()};   // Prompt 2: see docs/dashboard-mission.md
+window.nexusRoleHub = {load, root, state(), open, switchTab, previewRoute, history, quality};
+window.nexusRouter  = {load, root, state(), tab, simulate, preview};   // Prompt 4: see docs/dashboard-router.md
 window.nexusShell   = {setNav(open), closeNav};
 window.nexusToast   = (message, {tone, title, timeout}) => void;
 window.nexusI18n    = {t(key, vars), setLang(lang), missing()};

@@ -17,6 +17,8 @@
   const FALLBACK = [
     {id: 'mission', group: 'operate', icon: 'i-radar', label: 'nav.mission', view: 'mission'},
     {id: 'run', group: 'operate', icon: 'i-chat', label: 'nav.run', view: 'run'},
+    {id: 'roles', group: 'operate', icon: 'i-users', label: 'nav.roles', view: 'roles'},
+    {id: 'router', group: 'operate', icon: 'i-route', label: 'nav.router', view: 'router'},
     {id: 'approvals', group: 'operate', icon: 'i-shield', label: 'nav.approvals', view: 'operations', anchor: 'reviews'},
     {id: 'world', group: 'configure', icon: 'i-globe', label: 'nav.world', view: 'world'},
     {id: 'controls', group: 'configure', icon: 'i-grid', label: 'nav.controls', view: 'control'},
