@@ -1,26 +1,180 @@
-.integration-setup { padding: 16px; line-height: 1.6; overflow-wrap: anywhere; }
-.integration-setup summary { cursor: pointer; font-weight: 700; color: var(--cyan, #22e3ff); }
-.integration-setup p { margin: 10px 0; }
-.integration-setup small { display: block; opacity: .75; font-size: 12px; }
-.integration-setup pre { white-space: pre-wrap; overflow-wrap: anywhere; padding: 10px; background: #071219; border: 1px solid #23423e; border-radius: 6px; font-size: 12px; user-select: text; }
-.integration-setup select { width: 100%; max-width: 100%; margin: 6px 0; background: #071219; color: #d5f7ec; border: 1px solid #315951; padding: 8px; border-radius: 6px; }
-.integration-setup button { cursor: pointer; background: #102a29; color: #d5f7ec; border: 1px solid #315951; padding: 6px 10px; border-radius: 5px; }
-.integration-setup hr { border: 0; border-top: 1px solid #23423e; margin: 16px 0; }
+/* ──────────────────────────────────────────────────────────────────────────
+   Integrations card: local model selection + measured server hardware.
+   Values come from the server; nothing here invents a reading.
+   ────────────────────────────────────────────────────────────────────────── */
 
+.integration-setup { padding: 0; }
+.integration-setup > details { padding: 0; }
+.integration-setup > details > *:not(summary) { margin: 10px 16px; }
+.integration-setup summary {
+  display: flex; align-items: center; gap: 8px;
+  padding: 12px 16px; cursor: pointer; list-style: none;
+  font-size: 11.5px; font-weight: 700; letter-spacing: .07em;
+  text-transform: uppercase; color: var(--muted);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.integration-setup summary::-webkit-details-marker { display: none; }
+.integration-setup summary::before { content: "▸"; color: var(--faint); font-size: 10px; }
+.integration-setup details[open] > summary::before { content: "▾"; }
+.integration-setup p {
+  font-size: 12.5px; line-height: 1.6; color: var(--muted); overflow-wrap: anywhere;
+}
+.integration-setup small { display: block; font-size: 11.5px; line-height: 1.55; color: var(--faint); }
+.integration-setup label {
+  display: block; margin: 10px 16px 4px;
+  font-size: 11px; font-weight: 600; letter-spacing: .04em;
+  text-transform: uppercase; color: var(--faint);
+}
+.integration-setup select {
+  width: calc(100% - 32px); max-width: none; height: 34px; margin: 0 16px;
+  background: var(--surface-2); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); font-size: 12.5px;
+}
+.integration-setup button {
+  height: 30px; margin-top: 8px; padding: 0 11px;
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--surface-2); color: var(--text-2);
+  font-size: 12px; cursor: pointer;
+}
+.integration-setup button:hover { background: var(--surface-3); color: var(--text); }
+.integration-setup pre {
+  padding: 10px 12px; overflow: auto; max-height: 220px;
+  background: var(--surface-2); border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  font: 11.5px/1.6 var(--mono); color: var(--text-2);
+  white-space: pre-wrap; overflow-wrap: anywhere; user-select: text;
+}
+.integration-setup hr { border: 0; border-top: 1px solid var(--border-subtle); margin: 14px 16px; }
+.integration-setup a { color: var(--info); }
+#ollamaStatus { margin: 8px 16px 12px !important; font-size: 11.5px !important; color: var(--faint) !important; }
 
-/* Measured resource cards: animation follows requests/values, never invented data. */
-#serverMonitor{--hw-accent:var(--cyan,#22e3ff);position:relative;margin-top:20px;padding-top:16px;border-top:1px solid var(--edge,#23423e)}
-.hardware-head,.hardware-title,.hardware-card-top,.hardware-sample{display:flex;align-items:center;gap:8px}.hardware-head,.hardware-card-top{justify-content:space-between}.hardware-title{min-width:0}.hardware-title b{display:block;font-size:12px;letter-spacing:.05em}.hardware-title small{font-size:8px;letter-spacing:.17em;color:var(--dim);line-height:1.8}.hardware-beacon{width:7px;height:7px;flex-shrink:0;border-radius:2px;background:var(--hw-accent);box-shadow:0 0 12px #22e3ff55}#refreshHardware{font-size:10px;padding:5px 7px;white-space:nowrap}#refreshHardware span{display:inline-block;font-size:16px;line-height:1;vertical-align:middle}
-.hardware-sample{align-items:flex-start;margin:12px 0}#hardwareState,#hardwareGpuState{flex-shrink:0;font-size:8px;letter-spacing:.1em;line-height:1.8;border:1px solid #22e3ff30;color:var(--hw-accent);padding:1px 5px;border-radius:4px;background:#22e3ff08}#hardwareStatus{font-size:9px;line-height:1.6;color:var(--dim);margin:0}
-.hardware-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px}.hardware-card{min-width:0;position:relative;padding:12px;border:1px solid var(--edge);border-radius:9px;background:linear-gradient(135deg,#0c2521b0,#061310d9);transition:border-color .3s,box-shadow .3s;overflow:hidden}.hardware-card:hover{border-color:var(--edge-2);box-shadow:inset 0 0 20px #00ffa306}.hardware-card:before{content:"";position:absolute;top:0;left:12px;right:12px;height:1px;background:linear-gradient(90deg,transparent,#22e3ff50,transparent)}.hardware-primary,.hardware-ram{grid-column:1/-1}.hardware-primary{display:flex;align-items:center;gap:14px}.hardware-label{display:block;color:var(--dim);font-size:9px;letter-spacing:.08em}.hardware-label>span{color:var(--hw-accent);margin-right:3px}.hardware-card b{display:block;color:var(--fg);font-size:15px;font-variant-numeric:tabular-nums;line-height:1.6;letter-spacing:-.02em}.hardware-card small{font-size:9px;color:var(--dim)}.hardware-card-copy{min-width:0}.hardware-unit{font-size:9px;color:var(--neon)}.hardware-mini{padding:10px}.hardware-mini b{font-size:12px;margin-top:7px;overflow-wrap:anywhere}.hardware-process b{font-size:19px;color:var(--violet)}
-.hardware-dial{--usage:0%;width:58px;height:58px;flex-shrink:0;display:grid;place-items:center;border-radius:50%;background:conic-gradient(var(--cyan) var(--usage),#173530 0);position:relative;box-shadow:0 0 18px #22e3ff0a}.hardware-dial:before{content:"";position:absolute;inset:4px;border-radius:50%;background:#081a17}.hardware-dial span{z-index:1;color:var(--cyan);font-size:11px;letter-spacing:.1em}.hardware-dial.no-reading{opacity:.35}
-.hardware-track{height:5px;overflow:hidden;background:#18342e;border-radius:8px;margin:9px 0 5px}.hardware-track>span{display:block;height:100%;width:var(--usage,0%);border-radius:inherit;background:linear-gradient(90deg,#008f7d,var(--neon));box-shadow:0 0 8px #00ffa330;transition:width .65s cubic-bezier(.22,.61,.36,1)}.hardware-mini .hardware-track>span{background:linear-gradient(90deg,#137c9a,var(--cyan))}.hardware-card meter{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
-.hardware-gpu-panel{margin-top:8px;padding:12px;border:1px solid var(--edge);border-radius:9px;background:linear-gradient(135deg,#13222570,#081313)}#hardwareGpuState{color:var(--dim);border-color:var(--edge);background:transparent}#hardwareGpu{margin-top:9px;font-size:10px;line-height:1.7;color:var(--dim);overflow-wrap:anywhere}.hardware-gpu-device{margin:0!important;color:var(--fg)}.hardware-gpu-device+.hardware-gpu-device{border-top:1px solid var(--edge);padding-top:8px;margin-top:8px!important}
-.hardware-details{margin-top:12px}.integration-setup .hardware-details summary{display:flex;justify-content:space-between;gap:8px;color:var(--dim);font-size:9px;font-weight:400}.hardware-details summary span{color:var(--hw-accent);font-size:8px;letter-spacing:.08em}#hardwareNote{font-size:10px;line-height:1.7;margin-top:8px}
-#serverMonitor[data-state="loading"] #refreshHardware span{animation:hardware-spin 1s linear infinite}#serverMonitor[data-state="loading"] .hardware-beacon{animation:hardware-pulse 1s ease-in-out infinite}#serverMonitor[data-state="ready"] .hardware-card{animation:hardware-sampled .6s ease-out}#serverMonitor[data-state="partial"]{--hw-accent:var(--amber)}#serverMonitor[data-state="unavailable"]{--hw-accent:var(--dim)}
-@keyframes hardware-spin{to{transform:rotate(360deg)}}@keyframes hardware-pulse{50%{opacity:.35;box-shadow:none}}@keyframes hardware-sampled{from{border-color:#22e3ff70}to{border-color:var(--edge)}}
-@media(prefers-reduced-motion:reduce){#serverMonitor *,#serverMonitor *:before{animation:none!important;transition:none!important}}
-@property --usage{syntax:'<percentage>';inherits:false;initial-value:0%}
-.hardware-dial{transition:--usage .65s ease}
+/* resource monitor */
+#serverMonitor {
+  margin: 14px 0 0; padding: 14px 0 4px;
+  border-top: 1px solid var(--border-subtle);
+  --hw-accent: var(--accent);
+}
+#serverMonitor[data-state="partial"] { --hw-accent: var(--warn); }
+#serverMonitor[data-state="unavailable"] { --hw-accent: var(--faint); }
+#serverMonitor > *:not(.hardware-grid):not(.hardware-gpu-panel):not(.hardware-details) {
+  margin-inline: 16px;
+}
+.hardware-head, .hardware-title, .hardware-card-top, .hardware-sample {
+  display: flex; align-items: center; gap: 8px;
+}
+.hardware-head { justify-content: space-between; }
+.hardware-title { min-width: 0; }
+.hardware-beacon {
+  width: 8px; height: 8px; border-radius: 50%; flex: 0 0 auto;
+  background: var(--hw-accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--hw-accent) 18%, transparent);
+}
+.hardware-title > div { min-width: 0; }
+.hardware-title small {
+  font-size: 9.5px; font-weight: 700; letter-spacing: .12em;
+  text-transform: uppercase; color: var(--faint); line-height: 1.7;
+}
+.hardware-title b { display: block; font-size: 12.5px; font-weight: 650; letter-spacing: .02em; }
+#refreshHardware {
+  height: 28px; margin: 0; padding: 0 10px; font-size: 11.5px;
+  white-space: nowrap;
+}
+#refreshHardware span { display: inline-block; vertical-align: middle; }
+.hardware-sample { align-items: flex-start; margin: 12px 0; }
+#hardwareState, #hardwareGpuState {
+  flex-shrink: 0; padding: 2px 7px; border-radius: 5px;
+  background: var(--surface-2); color: var(--hw-accent);
+  font-size: 9.5px; font-weight: 700; letter-spacing: .08em;
+  line-height: 1.7; text-transform: uppercase;
+}
+#hardwareStatus { margin: 0 !important; font-size: 11.5px; line-height: 1.6; color: var(--faint); }
+.hardware-grid {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px; margin: 0 16px;
+}
+.hardware-card {
+  position: relative; min-width: 0; padding: 12px;
+  background: var(--surface-2); border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm); overflow: hidden;
+  transition: border-color .25s;
+}
+.hardware-card:hover { border-color: var(--border); }
+.hardware-primary, .hardware-ram { grid-column: 1 / -1; }
+.hardware-primary { display: flex; align-items: center; gap: 14px; }
+.hardware-label {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 9.5px; font-weight: 700; letter-spacing: .07em;
+  text-transform: uppercase; color: var(--faint);
+}
+.hardware-label > span { color: var(--hw-accent); }
+.hardware-card b {
+  display: block; margin-top: 4px;
+  font-size: 15px; font-weight: 650; color: var(--text);
+  font-variant-numeric: tabular-nums; line-height: 1.4;
+  letter-spacing: -.01em;
+}
+.hardware-card small { font-size: 10.5px; color: var(--faint); }
+.hardware-card-copy { min-width: 0; }
+.hardware-unit { font-size: 9.5px; font-weight: 700; color: var(--faint); letter-spacing: .08em; }
+.hardware-mini { padding: 10px; }
+.hardware-mini b { font-size: 12.5px; margin-top: 6px; overflow-wrap: anywhere; }
+.hardware-process b { font-size: 17px; color: var(--text); }
+.hardware-dial {
+  --usage: 0%;
+  width: 56px; height: 56px; flex: 0 0 auto;
+  display: grid; place-items: center; border-radius: 50%;
+  background: conic-gradient(var(--hw-accent) var(--usage), var(--surface-3) 0);
+  position: relative;
+  transition: --usage .6s ease;
+}
+.hardware-dial::before {
+  content: ""; position: absolute; inset: 4px; border-radius: 50%;
+  background: var(--surface-2);
+}
+.hardware-dial span { position: relative; z-index: 1; font-size: 10px; font-weight: 700; color: var(--muted); letter-spacing: .08em; }
+.hardware-dial.no-reading { opacity: .4; }
+.hardware-track {
+  height: 5px; margin: 9px 0 5px; overflow: hidden;
+  background: var(--surface-3); border-radius: 999px;
+}
+.hardware-track > span {
+  display: block; height: 100%; width: var(--usage, 0%);
+  border-radius: inherit; background: var(--hw-accent);
+  transition: width .6s cubic-bezier(.22, .61, .36, 1);
+}
+.hardware-card meter {
+  position: absolute; width: 1px; height: 1px;
+  overflow: hidden; clip-path: inset(50%);
+}
+.hardware-gpu-panel {
+  margin: 8px 16px 0; padding: 12px;
+  background: var(--surface-2); border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+}
+.hardware-gpu-panel .hardware-card-top { justify-content: space-between; }
+#hardwareGpuState { background: transparent; color: var(--faint); padding: 0; }
+#hardwareGpu {
+  margin-top: 8px; font-size: 11.5px; line-height: 1.7;
+  color: var(--muted); overflow-wrap: anywhere;
+}
+.hardware-gpu-device { margin: 0 !important; color: var(--text-2) !important; }
+.hardware-gpu-device + .hardware-gpu-device {
+  margin-top: 8px !important; padding-top: 8px;
+  border-top: 1px solid var(--border-subtle);
+}
+.hardware-details { margin: 12px 16px 0 !important; }
+.integration-setup .hardware-details summary {
+  display: flex; justify-content: space-between; gap: 8px;
+  padding: 8px 0; border: 0; font-size: 11px; font-weight: 500;
+  letter-spacing: 0; text-transform: none; color: var(--muted);
+}
+.integration-setup .hardware-details summary::before { content: none; }
+.hardware-details summary span { font-size: 10px; color: var(--faint); letter-spacing: .06em; text-transform: uppercase; }
+#hardwareNote { margin-top: 6px; font-size: 11px; line-height: 1.6; }
 
-#hardwareDisk{white-space:pre-line}
+#serverMonitor[data-state="loading"] #refreshHardware span { animation: hardware-spin 1s linear infinite; }
+#serverMonitor[data-state="loading"] .hardware-beacon { animation: pulse 1s ease-in-out infinite; }
+@keyframes hardware-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  #serverMonitor *, #serverMonitor *::before { animation: none !important; transition: none !important; }
+}

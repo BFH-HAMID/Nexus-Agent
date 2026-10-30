@@ -45,8 +45,10 @@ from urllib.parse import parse_qs, unquote, urlparse
 from . import __version__
 from .agent import NexusAgent
 from .config import load_config
+from .mission import Mission
 from .tools import ApprovalDecision
 from .types import Event, EventType
+from .webapi import Limiter
 
 PANEL_DIR = Path(__file__).resolve().parent / "panel"
 APPROVAL_TIMEOUT = 600.0
@@ -118,6 +120,10 @@ class ServerState:
         self.demo = demo or os.environ.get("NEXUS_DEMO", "").lower() in {"1", "true", "yes"}
         self.sessions: dict[str, Session] = {}
         self.lock = threading.RLock()
+        # New dashboard APIs share one process-wide limiter (see nexus/webapi.py).
+        self.api_limiter = Limiter(limit=120, window=60.0)
+        # Mission Control: one summary projection plus the global live feed.
+        self.mission = Mission(self)
         self.config = load_config(self.workspace)
         self.started = time.time()
         from .gui_modules import GuiModules
@@ -668,6 +674,72 @@ def make_handler(state: ServerState):
                 from .integrations import github_status
 
                 return self._send_json(github_status(state.workspace))
+            if path == "/api/palette":
+                return self._palette_index()
+            if path == "/api/mission/summary":
+                return self._mission_summary()
+            if path == "/api/mission/stream":
+                return self._mission_stream()
+            if path.startswith("/api/router/"):
+                if path not in {"/api/router/overview", "/api/router/rules", "/api/router/chains",
+                                "/api/router/models", "/api/router/accuracy", "/api/router/history",
+                                "/api/router/lab"}:
+                    return self._send_json({"error": f"no route for {path}"}, 404)
+                if path == "/api/router/overview":
+                    return self._router_read("routerstudio.overview", lambda studio: studio.overview(state))
+                if path == "/api/router/rules":
+                    return self._router_read("routerstudio.rules", lambda studio: studio.rules(state))
+                if path == "/api/router/chains":
+                    return self._router_read("routerstudio.chains", lambda studio: studio.chains(state))
+                if path == "/api/router/models":
+                    return self._router_read("routerstudio.models", lambda studio: studio.model_ranking(state))
+                if path == "/api/router/accuracy":
+                    return self._router_read("routerstudio.accuracy", lambda studio: studio.accuracy(state))
+                if path == "/api/router/history":
+                    return self._router_read("routerstudio.history", lambda studio: {
+                        "schema": studio.SCHEMA, "observed_at": __import__("time").time(),
+                        "versions": studio.versions(state.workspace),
+                        "store": f"{studio.STORE_DIR}/{studio.HISTORY_DIR} (runtime state, never committed)"})
+                return self._router_read("routerstudio.lab", lambda studio: studio.lab(state))
+            if path.startswith("/api/computer/"):
+                if path not in {"/api/computer/state", "/api/computer/files", "/api/computer/trash",
+                                "/api/computer/browser", "/api/computer/snapshots"}:
+                    return self._send_json({"error": f"no route for {path}"}, 404)
+                query = parse_qs(parsed.query)
+                if path == "/api/computer/state":
+                    return self._computer_read("computer.state", lambda studio: studio.state_view(state))
+                if path == "/api/computer/files":
+                    try:
+                        depth = int((query.get("depth") or ["1"])[0])
+                    except ValueError:
+                        depth = 1
+                    return self._computer_read("computer.files", lambda studio: studio.tree(state, {
+                        "path": (query.get("path") or ["."])[0], "depth": depth}))
+                if path == "/api/computer/trash":
+                    return self._computer_read("computer.trash", lambda studio: studio.trash_view(state))
+                if path == "/api/computer/browser":
+                    return self._computer_read("computer.browser", lambda studio: studio.browser_view(state))
+                return self._computer_read("computer.snapshots", lambda studio: {
+                    "schema": studio.SCHEMA, "observed_at": __import__("time").time(),
+                    "items": studio.snapshots(state)})
+            if path.startswith("/api/roles/") and path not in {"/api/roles/index", "/api/roles/detail",
+                                                               "/api/roles/history", "/api/roles/diff",
+                                                               "/api/roles/quality"}:
+                return self._send_json({"error": f"no route for {path}"}, 404)
+            if path == "/api/roles/quality":
+                return self._rolehub_read("rolehub.quality", lambda hub: hub.quality(state))
+            if path == "/api/roles/index":
+                return self._rolehub_read("rolehub.index", lambda hub: hub.index(state, parse_qs(parsed.query)))
+            if path == "/api/roles/detail":
+                name = (parse_qs(parsed.query).get("name") or [""])[0]
+                return self._rolehub_read("rolehub.detail", lambda hub: hub.detail(state, name))
+            if path == "/api/roles/history":
+                return self._rolehub_read("rolehub.history", lambda hub: {
+                    "schema": hub.SCHEMA, "observed_at": __import__("time").time(),
+                    "versions": hub.versions(state.workspace),
+                    "store": "workspace .nexus/rolehub (runtime state, never committed)"})
+            if path == "/api/roles/diff":
+                return self._rolehub_read("rolehub.diff", lambda hub: hub.diff(state, parse_qs(parsed.query)))
             if path == "/api/roles":
                 return self._send_json([r.to_dict() for r in state.config.roles.roles.values()])
             if path == "/api/agents":
@@ -778,6 +850,22 @@ def make_handler(state: ServerState):
                 status, data = state.gui.call('POST', path, parse_qs(parsed.query), payload)
                 return self._send_json(data, status)
             payload = self._read_json()
+
+            if path in {"/api/roles/route", "/api/roles/export", "/api/roles/restore"}:
+                return self._rolehub_action(path.rsplit("/", 1)[-1], payload)
+
+            if path.startswith("/api/router/"):
+                action = path.rsplit("/", 1)[-1]
+                if action not in {"simulate", "rule", "weights", "enable", "lab", "restore"}:
+                    return self._send_json({"error": f"no route for {path}"}, 404)
+                return self._router_action(action, payload)
+
+            if path.startswith("/api/computer/"):
+                action = path.removeprefix("/api/computer/")
+                if action not in {"settings", "file/preview", "file/write", "file/undo", "file/trash",
+                                 "trash/restore", "browser/open", "panic", "resume"}:
+                    return self._send_json({"error": f"no route for {path}"}, 404)
+                return self._computer_action(action, payload)
 
             if path.startswith("/api/workbench/"):
                 try:
@@ -913,6 +1001,254 @@ def make_handler(state: ServerState):
             if not target.is_file():
                 return self._send_json({"error": f"missing panel asset {name}"}, 404)
             self._send_bytes(target.read_bytes(), content_type)
+
+        def _palette_index(self) -> None:
+            """Light command-palette index: auth already checked, one limiter, one audit line."""
+            from . import palette as palette_module
+            from . import webapi
+
+            client = str((getattr(self, "client_address", ("", 0)) or ("", 0))[0] or "local")
+            bucket = "palette:" + client
+            if not state.api_limiter.allow(bucket):
+                wait = state.api_limiter.retry_after(bucket)
+                return self._send_json(webapi.failed("rate_limited", f"Too many palette requests; retry in {wait}s."), 429)
+            try:
+                index = palette_module.build(state.config)
+                webapi.audit_api(state.workspace, "palette.index", actor="user", target="dashboard",
+                                 result="ok", risk="low", detail={"roles": len(index["roles"])})
+            except (OSError, ValueError):
+                return self._send_json(webapi.failed("audit_unavailable",
+                                                     "Palette index withheld: the audit trail is unavailable."), 503)
+            return self._send_json(webapi.ok(index))
+
+        def _rolehub_client(self) -> str:
+            return str((getattr(self, "client_address", ("", 0)) or ("", 0))[0] or "local")
+
+        def _rolehub_read(self, action: str, build) -> None:
+            """Read-only Role Hub surface: limited, audited (sampled), redacted."""
+            from . import rolehub, webapi
+
+            client = self._rolehub_client()
+            bucket = "roles:" + client
+            if not state.api_limiter.allow(bucket):
+                wait = state.api_limiter.retry_after(bucket)
+                return self._send_json(webapi.failed("rate_limited", f"Too many role reads; retry in {wait}s."), 429)
+            try:
+                data = build(rolehub)
+                rolehub.audit(state, client, action)
+            except ValueError as exc:
+                return self._send_json(webapi.failed("invalid_request", str(exc)), 400)
+            except (OSError, KeyError):
+                return self._send_json(webapi.failed(
+                    "audit_unavailable", "Role data withheld: the local store or audit trail is unavailable."), 503)
+            return self._send_json(webapi.ok(data))
+
+        def _rolehub_action(self, action: str, payload: dict) -> None:
+            """route/export/restore: validated, limited, always audited."""
+            from . import rolehub, webapi
+
+            client = self._rolehub_client()
+            bucket = ("roles-write:" if action == "restore" else "roles:") + client
+            limit_ok = state.api_limiter.allow(bucket)
+            if not limit_ok:
+                wait = state.api_limiter.retry_after(bucket)
+                return self._send_json(webapi.failed("rate_limited", f"Too many role actions; retry in {wait}s."), 429)
+            try:
+                if action == "route":
+                    data = rolehub.route(state, payload)
+                elif action == "export":
+                    data = rolehub.export(state, payload)
+                elif action == "restore":
+                    data = rolehub.restore(state, payload)
+                else:  # pragma: no cover - the route table above decides this
+                    return self._send_json(webapi.failed("unknown_action", "Unknown role action"), 404)
+                rolehub.audit(state, client, f"rolehub.{action}", every=0)
+            except (ValueError, OSError) as exc:
+                return self._send_json(webapi.failed("invalid_request", str(exc)[:400]), 400)
+            return self._send_json(webapi.ok(data))
+
+        def _router_read(self, action: str, build) -> None:
+            """Read-only Router Studio surface: limited, audited (sampled), redacted."""
+            from . import routerstudio, webapi
+
+            client = self._rolehub_client()
+            bucket = "router:" + client
+            if not state.api_limiter.allow(bucket):
+                wait = state.api_limiter.retry_after(bucket)
+                return self._send_json(webapi.failed("rate_limited",
+                                                     f"Too many router reads; retry in {wait}s."), 429)
+            try:
+                data = build(routerstudio)
+                routerstudio.audit(state, client, action)
+            except ValueError as exc:
+                return self._send_json(webapi.failed("invalid_request", str(exc)), 400)
+            except (OSError, KeyError):
+                return self._send_json(webapi.failed(
+                    "audit_unavailable", "Router data withheld: the local store or audit trail is unavailable."), 503)
+            return self._send_json(webapi.ok(data))
+
+        def _router_action(self, action: str, payload: dict) -> None:
+            """simulate/rule/weights/enable/lab/restore: validated, limited, audited."""
+            from . import routerstudio, webapi
+
+            client = self._rolehub_client()
+            bucket = ("router:" if action == "simulate" else "router-write:") + client
+            if not state.api_limiter.allow(bucket):
+                wait = state.api_limiter.retry_after(bucket)
+                return self._send_json(webapi.failed("rate_limited",
+                                                     f"Too many router actions; retry in {wait}s."), 429)
+            if not isinstance(payload, dict):
+                return self._send_json(webapi.failed("invalid_request", "A JSON object is required"), 400)
+            payload = {**payload, "_client": client}
+            try:
+                if action == "simulate":
+                    data = routerstudio.simulate(state, payload)
+                    routerstudio.audit(state, client, "routerstudio.simulate")
+                elif action == "rule":
+                    data = routerstudio.rule_action(state, payload)
+                elif action == "weights":
+                    data = routerstudio.save_weights(state, payload)
+                elif action == "enable":
+                    data = routerstudio.set_enabled(state, payload)
+                elif action == "lab":
+                    data = routerstudio.run_lab(state, payload)
+                else:  # pragma: no cover - the route table above decides this
+                    return self._send_json(webapi.failed("unknown_action", "Unknown router action"), 404)
+            except ValueError as exc:
+                return self._send_json(webapi.failed("invalid_request", str(exc)[:400]), 400)
+            except OSError:
+                return self._send_json(webapi.failed(
+                    "store_unavailable", "The router store is unavailable; nothing was saved."), 503)
+            return self._send_json(webapi.ok(data))
+
+        def _computer_read(self, action: str, build) -> None:
+            """Computer Control reads: limited per client, audited (sampled), redacted."""
+            from . import computerstudio, webapi
+
+            client = self._rolehub_client()
+            bucket = "computer:" + client
+            if not state.api_limiter.allow(bucket):
+                wait = state.api_limiter.retry_after(bucket)
+                return self._send_json(webapi.failed("rate_limited",
+                                                     f"Too many computer reads; retry in {wait}s."), 429)
+            try:
+                data = build(computerstudio)
+                computerstudio.audit(state, client, action)
+            except ValueError as exc:
+                return self._send_json(webapi.failed("invalid_request", str(exc)[:400]), 400)
+            except (OSError, KeyError):
+                return self._send_json(webapi.failed(
+                    "store_unavailable", "Computer state withheld: the local store is unavailable."), 503)
+            return self._send_json(webapi.ok(data))
+
+        def _computer_action(self, action: str, payload: dict) -> None:
+            """Every mutation is validated, limited, and audited on the spot."""
+            from . import computerstudio, webapi
+
+            client = self._rolehub_client()
+            bucket = ("computer:" if action == "file/preview" else "computer-write:") + client
+            if not state.api_limiter.allow(bucket):
+                wait = state.api_limiter.retry_after(bucket)
+                return self._send_json(webapi.failed("rate_limited",
+                                                     f"Too many computer actions; retry in {wait}s."), 429)
+            if not isinstance(payload, dict):
+                return self._send_json(webapi.failed("invalid_request", "A JSON object is required"), 400)
+            payload = {**payload, "_client": client}
+            try:
+                if action == "settings":
+                    data = computerstudio.save_settings(state, payload)
+                elif action == "file/preview":
+                    data = computerstudio.preview(state, payload)
+                elif action == "file/write":
+                    data = computerstudio.write(state, payload)
+                elif action == "file/undo":
+                    data = computerstudio.undo(state, payload)
+                elif action == "file/trash":
+                    data = computerstudio.trash(state, payload)
+                elif action == "trash/restore":
+                    data = computerstudio.restore(state, payload)
+                elif action == "browser/open":
+                    data = computerstudio.browser_open(state, payload)
+                elif action == "panic":
+                    data = computerstudio.panic(state, payload)
+                else:
+                    data = computerstudio.resume(state, payload)
+            except ValueError as exc:
+                return self._send_json(webapi.failed("invalid_request", str(exc)[:400]), 400)
+            except OSError:
+                return self._send_json(webapi.failed(
+                    "store_unavailable", "The computer store is unavailable; nothing was changed."), 503)
+            return self._send_json(webapi.ok(data))
+
+        def _mission_client(self) -> str:
+            return str((getattr(self, "client_address", ("", 0)) or ("", 0))[0] or "local")
+
+        def _mission_summary(self) -> None:
+            """Read-only projection of the local records; audited (sampled)."""
+            from . import webapi
+
+            client = self._mission_client()
+            bucket = "mission:" + client
+            if not state.api_limiter.allow(bucket):
+                wait = state.api_limiter.retry_after(bucket)
+                return self._send_json(webapi.failed("rate_limited",
+                                                     f"Too many mission reads; retry in {wait}s."), 429)
+            try:
+                state.mission.ensure_health()
+                summary = state.mission.summary()
+                state.mission.audit(client)
+            except (OSError, ValueError):
+                return self._send_json(webapi.failed(
+                    "audit_unavailable", "Mission summary withheld: the audit trail is unavailable."), 503)
+            return self._send_json(webapi.ok(summary))
+
+        def _mission_stream(self) -> None:
+            """Global SSE feed: heartbeat, task.update, approval.new, metrics.tick, alert.new."""
+            from . import mission as mission_module
+            from . import webapi
+
+            client = self._mission_client()
+            bucket = "mission-stream:" + client
+            if not state.api_limiter.allow(bucket):
+                wait = state.api_limiter.retry_after(bucket)
+                return self._send_json(webapi.failed("rate_limited",
+                                                     f"Too many stream reconnects; retry in {wait}s."), 429)
+            subscriber = state.mission.subscribe()
+            if subscriber is None:
+                return self._send_json(webapi.failed(
+                    "too_many_streams", "Too many dashboard streams are already open."), 503)
+            try:
+                state.mission.audit(client, action="mission.stream")
+                self.send_response(200)
+                self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+                self.send_header("Cache-Control", "no-cache, no-transform")
+                self.send_header("Connection", "close")
+                self.close_connection = True
+                self.send_header("Referrer-Policy", "no-referrer")
+                self.send_header("X-Content-Type-Options", "nosniff")
+                self.send_header("X-Accel-Buffering", "no")
+                self.end_headers()
+                try:
+                    self.wfile.write(b"retry: 5000\n\n")
+                    self.wfile.flush()
+                except (BrokenPipeError, ConnectionResetError, OSError):
+                    return
+                while not state.mission.stopped:
+                    item = subscriber.next(timeout=5.0)
+                    if item is None:
+                        frame = mission_module.keepalive()
+                    else:
+                        name, payload = item
+                        if payload.get("shutdown"):
+                            return
+                        frame = mission_module.encode(name, payload, payload.get("seq"))
+                    try:
+                        self.wfile.write(frame)
+                        self.wfile.flush()
+                    except (BrokenPipeError, ConnectionResetError, OSError):
+                        return
+            finally:
+                state.mission.unsubscribe(subscriber)
 
         def _sse(self, task_id: str) -> None:
             session = state.get(task_id)

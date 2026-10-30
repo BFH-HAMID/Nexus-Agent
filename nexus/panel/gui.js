@@ -39,13 +39,21 @@
     },
     async api(path, body) {
       const r = await gui.fetch(path, {method:body===undefined?'GET':'POST', headers:{'Content-Type':'application/json'},...(body===undefined?{}:{body:JSON.stringify(body)})});
-      const value = await r.json(); if(!r.ok) throw Error(value.error || value.detail || 'Request refused'); return value;
+      const value = await r.json();
+      if(!r.ok) throw Error(value?.error?.message || value?.error || value?.error_message || value?.detail || 'Request refused');
+      return value;
     },
-    view: 'run'
+    view: 'run',
+    /* EventSource cannot send headers: use the remembered cookie normally, and
+       fall back to the query token only for a session that chose not to be
+       remembered. Referrer-Policy keeps it out of Referer headers. */
+    streamUrl(path) {
+      return credential ? path + (path.includes('?') ? '&' : '?') + 'token=' + encodeURIComponent(credential) : path;
+    }
   };
   let worldLoaded = false;
   async function show(view) {
-    if (!['run','operations','world','control'].includes(view)) return;
+    if (!['mission','roles','router','computer','run','operations','world','control'].includes(view)) return;
     gui.view = view;
     document.body.classList.toggle('gui-module-view',view!=='run');
     document.querySelectorAll('[data-gui-view]').forEach(n => n.hidden = n.dataset.guiView !== view);
@@ -71,7 +79,11 @@
     if(view && view!==gui.view)show(view);
   });
   gui.show=show;
+  // Hash deep links (#run, #mission, …) follow the address bar without a reload.
+  window.addEventListener('hashchange',()=>{const next=location.hash.slice(1);if(['mission','roles','router','computer','run','operations','world','control'].includes(next)&&next!==gui.view)show(next);});
   document.getElementById('guiSettings').onclick=()=>document.getElementById('wbOpen')?.click();
+  // Shared label helper: feature scripts write into .btn-label so icons survive language switches.
+  gui.label=(node,text)=>{if(!node)return;const label=node.querySelector('.btn-label');if(label)label.textContent=text;else node.textContent=text;};
   document.getElementById('guiLogout').onclick=async()=>{
     await gui.api('/api/session',{forget:true});credential='';location.reload();
   };
@@ -80,11 +92,11 @@
     if(detail.type==='approval_request') {show('run');queueMicrotask(()=>document.getElementById('approvalCard')?.scrollIntoView({block:'nearest'}));}
   });
   const attention=document.createElement('div');attention.id='guiAttention';attention.hidden=true;attention.setAttribute('role','status');
-  const text=document.createElement('span'),review=document.createElement('button');review.className='btn';review.textContent='Review background actions';review.onclick=()=>show('operations');attention.append(text,review);document.querySelector('.gui-navigation').after(attention);
+  const text=document.createElement('span'),review=document.createElement('button');review.className='btn';review.textContent='Review background actions';review.onclick=()=>show('operations');attention.append(text,review);document.body.append(attention);
   setInterval(async()=>{if(document.hidden||login.open||gui.view==='operations')return;try{const state=await gui.api('/api/operations/state');const count=state.pending_actions_total||0;text.textContent=count+' background action(s) await your approval.';attention.hidden=count===0;}catch{/* No invented alert when status is unavailable. */}},10000);
   window.addEventListener('nexus:view',e=>{if(e.detail==='operations')attention.hidden=true;});
   const hash=location.hash.slice(1);const bookmarked=document.getElementById(hash)?.closest('[data-gui-view]')?.dataset.guiView;
-  show(bookmarked||(['run','operations','world','control'].includes(hash)?hash:'control'));
+  show(bookmarked||(['mission','roles','router','computer','run','operations','world','control'].includes(hash)?hash:'mission'));
 })();
 
 /* Desktop presentation: reuse native controls; never execute or grant permissions. */

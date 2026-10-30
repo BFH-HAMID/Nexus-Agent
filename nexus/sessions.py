@@ -358,6 +358,95 @@ class SessionStore:
                        "source": "reported outcomes + command outcomes + explicit/peer reviews; small bounded exact-retry penalty, exploration retained"}
                 for role, (count, success) in totals.items()}
 
+    def routing_stats(self, workspace, *, days: int = 90) -> dict[str, Any]:
+        """Aggregated routing evidence for the Router Studio (read-only).
+
+        Outcomes are agent-reported and durations are whole-session wall time,
+        never model latency. Anything not recorded stays ``None`` instead of
+        being replaced by a zero.
+        """
+        if type(days) is not int or not 1 <= days <= 365:
+            raise ValueError("Statistics window must be 1-365 days")
+        root = str(Path(workspace).resolve())
+        end = _now()
+        start = end - days * 86400
+        params = (root, start, end)
+        fields = """COUNT(*) AS runs, COALESCE(SUM(ok),0) AS reported_ok,
+            COALESCE(SUM(CASE WHEN duration_s IS NOT NULL THEN 1 ELSE 0 END),0) AS duration_known,
+            COALESCE(SUM(duration_s),0) AS duration_s, MAX(created) AS last_at"""
+        with self._lock, self._connect() as conn:
+            totals = dict(conn.execute(
+                f"SELECT {fields} FROM sessions WHERE workspace=? AND created>=? AND created<=?",
+                params).fetchone())
+            roles = conn.execute(
+                f"""SELECT role, {fields} FROM sessions
+                WHERE workspace=? AND created>=? AND created<=? AND role IS NOT NULL AND role<>''
+                GROUP BY role ORDER BY runs DESC, role LIMIT 101""", params).fetchall()
+            agents = conn.execute(
+                f"""SELECT agent, {fields} FROM sessions
+                WHERE workspace=? AND created>=? AND created<=? AND agent IS NOT NULL AND agent<>''
+                GROUP BY agent ORDER BY runs DESC, agent LIMIT 51""", params).fetchall()
+            feedback = dict(conn.execute(
+                """SELECT COUNT(*) AS observations, COALESCE(SUM(approved),0) AS approved,
+                MAX(created) AS last_at FROM routing_feedback
+                WHERE workspace=? AND created>=? AND created<=?""", params).fetchone())
+            feedback_rows = conn.execute(
+                """SELECT roles, approved FROM routing_feedback
+                WHERE workspace=? AND created>=? AND created<=? ORDER BY created DESC LIMIT 501""",
+                params).fetchall()
+
+        def row(item, key: str) -> dict[str, Any]:
+            runs = int(item["runs"] or 0)
+            known = int(item["duration_known"] or 0)
+            ok = int(item["reported_ok"] or 0)
+            return {
+                key: item[key],
+                "runs": runs,
+                "reported_ok": ok,
+                "reported_ok_rate": (ok / runs) if runs else None,
+                "duration_known": known,
+                "avg_duration_s": (float(item["duration_s"] or 0) / known) if known else None,
+                "last_at": item["last_at"],
+            }
+
+        per_role: dict[str, dict[str, Any]] = {}
+        for item in feedback_rows:
+            try:
+                names = json.loads(item["roles"])
+            except (TypeError, ValueError):
+                continue
+            for name in names if isinstance(names, list) else []:
+                entry = per_role.setdefault(str(name), {"role": str(name), "observations": 0, "approved": 0})
+                entry["observations"] += 1
+                entry["approved"] += int(bool(item["approved"]))
+        observations = int(feedback["observations"] or 0)
+        approved = int(feedback["approved"] or 0)
+        return {
+            "days": days,
+            "from": start,
+            "through": end,
+            "totals": {
+                "runs": int(totals["runs"] or 0),
+                "reported_ok": int(totals["reported_ok"] or 0),
+                "duration_known": int(totals["duration_known"] or 0),
+                "duration_s": float(totals["duration_s"] or 0),
+            },
+            "roles": [row(item, "role") for item in roles[:100]],
+            "agents": [row(item, "agent") for item in agents[:50]],
+            "truncated_roles": len(roles) > 100,
+            "truncated_agents": len(agents) > 50,
+            "feedback": {
+                "observations": observations,
+                "approved": approved,
+                "approval_rate": (approved / observations) if observations else None,
+                "last_at": feedback["last_at"],
+                "roles": sorted(per_role.values(), key=lambda item: (-item["observations"], item["role"]))[:50],
+                "truncated": len(feedback_rows) > 500,
+            },
+            "source": ("sessions.db run records and explicit routing feedback; outcomes are "
+                       "agent-reported, not independent verification"),
+        }
+
     def purge(self, before_days: int = 90) -> int:
         cutoff = _now() - before_days * 86400
         with self._lock, self._connect() as conn:
