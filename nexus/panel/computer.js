@@ -478,7 +478,7 @@
       tree.append(li);
     }
     set($('ccTreeNote'), state.entries.length
-      ? t('computer.treeNote', {count: state.entries.length, root: $('ccPath').value || '.'})
+      ? t('computer.treeNote', {count: state.entries.length, root: state.root || $('ccPath').value || '.'})
       : t('computer.treeEmpty'));
     set($('ccScopeChip'), t('computer.scopeChip', {roots: (state.settings?.scopes.roots || ['.']).join(', ')}), 'muted');
 
@@ -602,11 +602,14 @@
     // A slow auto-open of the default folder must never overwrite a folder the
     // operator asked for in the meantime, so only the newest request may paint.
     const seq = ++openSeq;
+    const typed = $('ccPath').value;
     try {
       const body = (await gui.api(`/api/computer/files?path=${encodeURIComponent(path)}&depth=1`)).data;
       if (seq !== openSeq) return;
       state.entries = body.entries;
-      $('ccPath').value = body.root;
+      state.root = body.root;
+      // Never overwrite a folder the operator typed while this request was running.
+      if ($('ccPath').value === typed) $('ccPath').value = body.root;
       paintFiles();
     } catch (error) {
       if (seq === openSeq) flash($('ccFileStatus'), message(error), 'error');
