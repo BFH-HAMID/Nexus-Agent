@@ -822,12 +822,13 @@
     const es = new EventSource(url);
     state.es = es;
     setUplink("streaming", "ok");
-    es.onopen = () => setUplink("streaming", "ok");
+    es.onopen = () => { setUplink("streaming", "ok"); window.dispatchEvent(new CustomEvent("nexus:sse", {detail: "streaming"})); };
     es.onmessage = (msg) => {
       if (state.es !== es || state.taskId !== id) return;
       try { onEvent(JSON.parse(msg.data)); } catch (err) { actionError("Event could not be displayed: " + err.message); }
     };
     es.onerror = () => {
+      window.dispatchEvent(new CustomEvent("nexus:sse", {detail: "idle"}));
       if (!es || es.readyState === EventSource.CLOSED) {
         setUplink("stream closed", "warn");
       } else {
@@ -841,7 +842,7 @@
     stopElapsed();
     state.running = false;
     processCards.forEach(card => { card.querySelector(".live-process-stop").disabled = true; });
-    if (state.es) { state.es.close(); state.es = null; }
+    if (state.es) { state.es.close(); state.es = null; window.dispatchEvent(new CustomEvent("nexus:sse", {detail: "idle"})); }
     $("runBtn").disabled = !state.liveReady;
     $("cancelBtn").disabled = true;
     $("clearBtn").disabled = false;

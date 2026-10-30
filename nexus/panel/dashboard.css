@@ -34,7 +34,8 @@
   --text: #e9eff8;
   --text-2: #c5d1e1;
   --muted: #8b9cb5;
-  --faint: #64758f;
+  /* nearest step that clears WCAG AA (4.5:1) on every dark surface */
+  --faint: #808fa7;
 
   /* brand + status */
   --accent: #2dd4a4;
@@ -86,11 +87,13 @@
   --text: #101828;
   --text-2: #344054;
   --muted: #667085;
-  --faint: #98a2b3;
-  --accent: #0e9f74;
-  --accent-strong: #0b8a66;
-  --accent-soft: rgba(14, 159, 116, .1);
-  --accent-soft-2: rgba(14, 159, 116, .18);
+  --faint: #5d6b80;
+  /* darker than the dark-theme accent so white-on-accent and accent-on-white
+     text both clear WCAG AA (the mint shade only passed at large sizes) */
+  --accent: #0a7a5b;
+  --accent-strong: #07714f;
+  --accent-soft: rgba(10, 122, 91, .1);
+  --accent-soft-2: rgba(10, 122, 91, .18);
   --accent-contrast: #ffffff;
   --info: #2563eb;
   --info-soft: rgba(37, 99, 235, .1);
@@ -98,9 +101,9 @@
   --warn-soft: rgba(180, 83, 9, .1);
   --danger: #d92d20;
   --danger-soft: rgba(217, 45, 32, .1);
-  --ok: #0f9d76;
-  --chart-1: #0e9f74;
-  --chart-1-fill: rgba(14, 159, 116, .16);
+  --ok: #07714f;
+  --chart-1: #0a7a5b;
+  --chart-1-fill: rgba(10, 122, 91, .16);
   --chart-2: #2563eb;
   --chart-2-fill: rgba(37, 99, 235, .14);
   --chart-3: #b45309;

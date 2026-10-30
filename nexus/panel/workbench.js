@@ -194,7 +194,7 @@
   function paletteItems(){const q=$('wbSearch').value.toLowerCase();$('wbCommands').replaceChildren();commands.filter(c=>c.name.toLowerCase().includes(q)).forEach(c=>{const b=document.createElement('button');b.textContent=c.name;b.onclick=()=>{palette.close();c.run();};$('wbCommands').append(b);});}
   $('wbSearch').oninput=paletteItems;
   $('wbSearch').onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();e.stopPropagation();$('wbCommands').querySelector('button')?.click();}};
-  document.addEventListener('keydown',e=>{if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='k'){e.preventDefault();if(palette.open)palette.close();else{palette.showModal();$('wbSearch').value='';paletteItems();$('wbSearch').focus();}}});
+  document.addEventListener('keydown',e=>{if((e.ctrlKey||e.metaKey)&&e.altKey&&e.key.toLowerCase()==='k'){e.preventDefault();if(palette.open)palette.close();else{palette.showModal();$('wbSearch').value='';paletteItems();$('wbSearch').focus();}}});
   wire('wbSavePrice','wbPolicyResult',async()=>{
     const pricing={...(prefs.pricing||{})};
     pricing[$('wbPriceModel').value.trim()]={input_per_million:Number($('wbPriceIn').value),output_per_million:Number($('wbPriceOut').value),source:$('wbPriceSource').value};

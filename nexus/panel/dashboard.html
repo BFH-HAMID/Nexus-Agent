@@ -6,6 +6,9 @@
 <meta name="color-scheme" content="dark light" />
 <title>Nexus Agent · Control Deck</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M16 2l12 7v14l-12 7L4 23V9z' fill='none' stroke='%232dd4a4' stroke-width='2'/%3E%3Cpath d='M11 21V11l10 10V11' fill='none' stroke='%232dd4a4' stroke-width='2'/%3E%3C/svg%3E" />
+<!-- The Bangla UI swaps the bundled Bengali face to the front of the stack;
+     fetching it during the first paint avoids a frame of ▯▯▯ on switch. -->
+<link rel="preload" href="/world/NotoSansBengali-Regular.ttf" as="font" type="font/ttf" crossorigin="anonymous" />
 <link rel="stylesheet" href="/dashboard/dashboard.css" />
 <link rel="stylesheet" href="/dashboard/integrations.css" />
 <link rel="stylesheet" href="/dashboard/workbench.css" />
@@ -14,6 +17,7 @@
 <link rel="stylesheet" href="/world/world.css" />
 <link rel="stylesheet" href="/dashboard/modules.css" />
 <link rel="stylesheet" href="/dashboard/desktop.css" />
+<link rel="stylesheet" href="/dashboard/shell.css" />
 </head>
 <body>
 
@@ -39,6 +43,16 @@
   <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3.5 7.2A2 2 0 0 1 5.5 5.2h4l1.8 2.2h7.2a2 2 0 0 1 2 2v7.4a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2Z"/></symbol>
   <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 5.8v4.4h-4.4"/><path d="M19.4 10.2a7.6 7.6 0 1 0-1.2 6"/></symbol>
   <symbol id="i-key" viewBox="0 0 24 24"><circle cx="8" cy="15.5" r="3.4"/><path d="m10.6 13.2 7.6-7.6M15 6.4l2.2 2.2M17.4 4l2.2 2.2"/></symbol>
+  <symbol id="i-radar" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.6"/><circle cx="12" cy="12" r="4.6"/><path d="M12 12 19 6.4M12 3.4v2.2M12 18.4v2.2M3.4 12h2.2M18.4 12h2.2"/><circle cx="12" cy="12" r="1.4"/></symbol>
+  <symbol id="i-route" viewBox="0 0 24 24"><circle cx="5.5" cy="6" r="2.4"/><circle cx="18.5" cy="18" r="2.4"/><path d="M5.5 8.4v5.1a3 3 0 0 0 3 3h3.6M14.6 16.5 12 13.9"/></symbol>
+  <symbol id="i-monitor" viewBox="0 0 24 24"><rect x="3" y="4.4" width="18" height="12.2" rx="2.2"/><path d="M9 20h6M12 16.6V20"/></symbol>
+  <symbol id="i-workflow" viewBox="0 0 24 24"><rect x="3.2" y="3.6" width="6.4" height="5.4" rx="1.4"/><rect x="14.4" y="3.6" width="6.4" height="5.4" rx="1.4"/><rect x="8.8" y="15" width="6.4" height="5.4" rx="1.4"/><path d="M6.4 9v3.2h11.2V9M12 12.2V15"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><rect x="4.4" y="10.2" width="15.2" height="10" rx="2.2"/><path d="M8 10.2V7.6a4 4 0 0 1 8 0v2.6M12 14.4v2.2"/></symbol>
+  <symbol id="i-coin" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.4"/><path d="M14.4 9.4a2.6 2.6 0 0 0-2.4-1.2c-1.5 0-2.4.8-2.4 1.9 0 3 5.2 1.4 5.2 4.2 0 1.2-1 2-2.6 2a2.9 2.9 0 0 1-2.6-1.4M12 6.6v1.6M12 16.3V18"/></symbol>
+  <symbol id="i-puzzle" viewBox="0 0 24 24"><path d="M10 3.6h4v3a2 2 0 1 0 3.4 1.4H20v4h-2.6a2 2 0 1 0 0 3.4H20v4h-4v-2.5a2 2 0 1 0-3.4 0V20H8.6v-4.6H6a2 2 0 1 1 0-3.4h2.6V8.6H10Z"/></symbol>
+  <symbol id="i-bell" viewBox="0 0 24 24"><path d="M18 16.4H6l1.4-2.2V9.8a4.6 4.6 0 0 1 9.2 0v4.4ZM10.2 19.2a1.9 1.9 0 0 0 3.6 0"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 3.8 21 19.4H3Z"/><path d="M12 9.6v4M12 16.4v.6"/></symbol>
+  <symbol id="i-command" viewBox="0 0 24 24"><path d="M9 6.5a2.5 2.5 0 1 0-2.5 2.5H17a2.5 2.5 0 1 0-2.5-2.5v11a2.5 2.5 0 1 0 2.5-2.5H6.5A2.5 2.5 0 1 0 9 17.5Z"/></symbol>
   <symbol id="i-cpu" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2.2"/><rect x="9.4" y="9.4" width="5.2" height="5.2" rx="1"/><path d="M9.5 2.8v3.2M14.5 2.8v3.2M9.5 18v3.2M14.5 18v3.2M2.8 9.5h3.2M2.8 14.5h3.2M18 9.5h3.2M18 14.5h3.2"/></symbol>
   <symbol id="i-brain" viewBox="0 0 24 24"><path d="M9.4 4.2a3 3 0 0 0-5 2.2 3 3 0 0 0-1 5.6 3 3 0 0 0 2.2 4.8 3 3 0 0 0 5 2.2V4.2ZM14.6 4.2a3 3 0 0 1 5 2.2 3 3 0 0 1 1 5.6 3 3 0 0 1-2.2 4.8 3 3 0 0 1-5 2.2V4.2Z"/></symbol>
 </svg>
@@ -57,18 +71,67 @@
     </div>
   </div>
 
-  <nav class="gui-navigation" aria-label="Dashboard sections" role="tablist">
-    <button class="btn" data-gui-tab="control" role="tab" aria-selected="false" aria-label="Control center">
-      <svg class="ic" aria-hidden="true"><use href="#i-grid"/></svg><span class="nav-label">Control center</span><span class="nav-label-short" aria-hidden="true">Control</span>
+  <nav class="gui-navigation sidebar-nav" id="sidebarNav" aria-label="Dashboard sections" role="tablist">
+    <p class="nav-group" data-i18n="group.operate">Operate</p>
+    <button class="nav-item" type="button" role="tab" data-gui-tab="mission" data-nav-id="mission" aria-selected="false" aria-label="Mission Control" data-i18n-aria="nav.missionAria">
+      <svg class="ic" aria-hidden="true"><use href="#i-radar"/></svg>
+      <span class="nav-label" data-i18n="nav.mission">Mission Control</span><span class="nav-label-short" aria-hidden="true" data-i18n="nav.missionShort">Mission</span>
+      <span class="nav-kbd" aria-hidden="true">Alt+1</span>
     </button>
-    <button class="btn" data-gui-tab="run" role="tab" aria-selected="true" aria-label="Run & chat">
-      <svg class="ic" aria-hidden="true"><use href="#i-chat"/></svg><span class="nav-label">Run &amp; chat</span><span class="nav-label-short" aria-hidden="true">Run</span>
+    <button class="nav-item" type="button" role="tab" data-gui-tab="run" data-nav-id="run" aria-selected="false" aria-label="Run & chat" data-i18n-aria="nav.runAria">
+      <svg class="ic" aria-hidden="true"><use href="#i-chat"/></svg>
+      <span class="nav-label" data-i18n="nav.run">Run &amp; chat</span><span class="nav-label-short" aria-hidden="true" data-i18n="nav.runShort">Run</span>
+      <span class="nav-kbd" aria-hidden="true">Alt+2</span>
     </button>
-    <button class="btn" data-gui-tab="operations" role="tab" aria-selected="false" aria-label="Operations & approvals">
-      <svg class="ic" aria-hidden="true"><use href="#i-shield"/></svg><span class="nav-label">Operations &amp; approvals</span><span class="nav-label-short" aria-hidden="true">Approvals</span>
+    <button class="nav-item" type="button" data-nav-id="roles" aria-label="Roles & router" data-i18n-aria="nav.roles">
+      <svg class="ic" aria-hidden="true"><use href="#i-route"/></svg>
+      <span class="nav-label" data-i18n="nav.roles">Roles &amp; router</span><span class="nav-label-short" aria-hidden="true" data-i18n="nav.roles">Roles</span>
     </button>
-    <button class="btn" data-gui-tab="world" role="tab" aria-selected="false" aria-label="World, news & weather">
-      <svg class="ic" aria-hidden="true"><use href="#i-globe"/></svg><span class="nav-label">World, news &amp; weather</span><span class="nav-label-short" aria-hidden="true">World</span>
+    <button class="nav-item" type="button" data-nav-id="computer" aria-label="Computer Control" data-i18n-aria="nav.computer">
+      <svg class="ic" aria-hidden="true"><use href="#i-monitor"/></svg>
+      <span class="nav-label" data-i18n="nav.computer">Computer Control</span><span class="nav-label-short" aria-hidden="true" data-i18n="nav.computer">Computer</span>
+    </button>
+    <button class="nav-item" type="button" data-nav-id="workflows" aria-label="Workflows" data-i18n-aria="nav.workflows">
+      <svg class="ic" aria-hidden="true"><use href="#i-workflow"/></svg>
+      <span class="nav-label" data-i18n="nav.workflows">Workflows</span><span class="nav-label-short" aria-hidden="true" data-i18n="nav.workflows">Flows</span>
+    </button>
+    <button class="nav-item" type="button" role="tab" data-gui-tab="operations" data-nav-id="approvals" aria-selected="false" aria-label="Operations & approvals" data-i18n-aria="nav.approvalAria">
+      <svg class="ic" aria-hidden="true"><use href="#i-shield"/></svg>
+      <span class="nav-label" data-i18n="nav.approvals">Approvals</span><span class="nav-label-short" aria-hidden="true" data-i18n="nav.approvalsShort">Approvals</span>
+      <span class="nav-badge" id="navApprovalBadge" hidden>0</span>
+      <span class="nav-kbd" aria-hidden="true">Alt+3</span>
+    </button>
+    <button class="nav-item" type="button" data-nav-id="security" aria-label="Security & logs" data-i18n-aria="nav.security">
+      <svg class="ic" aria-hidden="true"><use href="#i-lock"/></svg>
+      <span class="nav-label" data-i18n="nav.security">Security &amp; logs</span><span class="nav-label-short" aria-hidden="true" data-i18n="nav.security">Security</span>
+    </button>
+
+    <div class="nav-divider" role="separator"></div>
+    <p class="nav-group" data-i18n="group.configure">Configure</p>
+    <button class="nav-item" type="button" data-nav-id="memory" aria-label="Memory & knowledge" data-i18n-aria="nav.memory">
+      <svg class="ic" aria-hidden="true"><use href="#i-brain"/></svg>
+      <span class="nav-label" data-i18n="nav.memory">Memory &amp; knowledge</span><span class="nav-label-short" aria-hidden="true" data-i18n="nav.memory">Memory</span>
+    </button>
+    <button class="nav-item" type="button" data-nav-id="cost" aria-label="Cost & models" data-i18n-aria="nav.cost">
+      <svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg>
+      <span class="nav-label" data-i18n="nav.cost">Cost &amp; models</span><span class="nav-label-short" aria-hidden="true" data-i18n="nav.cost">Cost</span>
+    </button>
+    <button class="nav-item" type="button" role="tab" data-gui-tab="world" data-nav-id="world" aria-selected="false" aria-label="World, news & weather" data-i18n-aria="nav.worldAria">
+      <svg class="ic" aria-hidden="true"><use href="#i-globe"/></svg>
+      <span class="nav-label" data-i18n="nav.world">World &amp; news</span><span class="nav-label-short" aria-hidden="true" data-i18n="nav.worldShort">World</span>
+      <span class="nav-kbd" aria-hidden="true">Alt+4</span>
+    </button>
+    <button class="nav-item" type="button" data-nav-id="integrations" aria-label="Integrations" data-i18n-aria="nav.integrations">
+      <svg class="ic" aria-hidden="true"><use href="#i-puzzle"/></svg>
+      <span class="nav-label" data-i18n="nav.integrations">Integrations</span><span class="nav-label-short" aria-hidden="true" data-i18n="nav.integrations">Integrations</span>
+    </button>
+    <button class="nav-item" type="button" role="tab" data-gui-tab="control" data-nav-id="controls" aria-selected="false" aria-label="Control center" data-i18n-aria="nav.controlAria">
+      <svg class="ic" aria-hidden="true"><use href="#i-grid"/></svg>
+      <span class="nav-label" data-i18n="nav.controls">All controls</span><span class="nav-label-short" aria-hidden="true" data-i18n="nav.controlsShort">Controls</span>
+    </button>
+    <button class="nav-item" type="button" data-nav-id="settings" aria-label="Settings" data-i18n-aria="nav.settings">
+      <svg class="ic" aria-hidden="true"><use href="#i-sliders"/></svg>
+      <span class="nav-label" data-i18n="nav.settings">Settings</span><span class="nav-label-short" aria-hidden="true" data-i18n="nav.settings">Settings</span>
     </button>
   </nav>
 
@@ -81,6 +144,47 @@
 </aside>
 <div class="nav-scrim" id="navScrim" hidden></div>
 
+<nav class="tabbar" id="tabbar" aria-label="Primary sections" role="tablist">
+  <button type="button" role="tab" data-nav="mission" aria-selected="true" aria-label="Mission Control" data-i18n-aria="nav.missionAria">
+    <svg class="ic" aria-hidden="true"><use href="#i-radar"/></svg><span data-i18n="nav.missionShort">Mission</span>
+  </button>
+  <button type="button" role="tab" data-nav="controls" aria-selected="false" aria-label="Control center" data-i18n-aria="nav.controlAria">
+    <svg class="ic" aria-hidden="true"><use href="#i-grid"/></svg><span data-i18n="nav.controlsShort">Controls</span>
+  </button>
+  <button type="button" role="tab" data-nav="run" aria-selected="false" aria-label="Run & chat" data-i18n-aria="nav.runAria">
+    <svg class="ic" aria-hidden="true"><use href="#i-chat"/></svg><span data-i18n="nav.runShort">Run</span>
+  </button>
+  <button type="button" role="tab" data-nav="approvals" aria-selected="false" aria-label="Operations & approvals" data-i18n-aria="nav.approvalAria">
+    <svg class="ic" aria-hidden="true"><use href="#i-shield"/></svg><span data-i18n="nav.approvalsShort">Approvals</span>
+  </button>
+  <button type="button" role="tab" data-nav="world" aria-selected="false" aria-label="World, news & weather" data-i18n-aria="nav.worldAria">
+    <svg class="ic" aria-hidden="true"><use href="#i-globe"/></svg><span data-i18n="nav.worldShort">World</span>
+  </button>
+</nav>
+
+<aside class="toasts" id="toasts" role="region" aria-label="Notifications" aria-live="polite"></aside>
+
+<dialog class="palette" id="palette" aria-label="Command palette">
+  <div class="palette-box">
+    <div class="palette-input">
+      <svg class="ic" aria-hidden="true"><use href="#i-search"/></svg>
+      <input id="paletteInput" type="text" role="combobox" aria-expanded="true" aria-controls="paletteList"
+             aria-autocomplete="list" autocomplete="off" spellcheck="false"
+             placeholder="Search pages, roles, agents, tasks, runs…" data-i18n-ph="palette.placeholder" />
+      <kbd class="palette-esc">Esc</kbd>
+    </div>
+    <p class="palette-hint" id="paletteHint"></p>
+    <ul class="palette-list" id="paletteList" role="listbox" aria-label="Results"></ul>
+    <footer class="palette-foot">
+      <span><kbd>↑</kbd><kbd>↓</kbd> move</span>
+      <span><kbd>↵</kbd> <span data-i18n="palette.open">open</span></span>
+      <span><kbd>⇧↵</kbd> <span data-i18n="palette.panel">open in panel</span></span>
+      <span><kbd>⌃↵</kbd> <span data-i18n="palette.pin">pin</span></span>
+      <span class="spacer"></span><span id="paletteCount"></span>
+    </footer>
+  </div>
+</dialog>
+
 <!-- ── main shell ───────────────────────────────────────────────────── -->
 <div class="shell-main">
 
@@ -91,10 +195,16 @@
     <div class="breadcrumb">
       <span>Nexus</span>
       <svg class="ic" aria-hidden="true"><use href="#i-chevron"/></svg>
-      <b id="pageTitle">Run &amp; chat</b>
+      <span class="crumb-section" id="crumbSection">Operate</span>
+      <svg class="ic" aria-hidden="true"><use href="#i-chevron"/></svg>
+      <b id="pageTitle">Mission Control</b>
     </div>
     <div class="topbar-meta">
-      <div class="chip" title="Workspace the agent is operating in">
+      <span class="chip chip-agent" id="chipAgent" title="Agent that handled the current or last run; auto-route until the router picks one">
+        <svg class="ic" aria-hidden="true"><use href="#i-cpu"/></svg>
+        <span class="k" data-i18n="topbar.agent">Agent</span><b id="metaAgent" data-i18n="topbar.autoRoute">auto-route</b>
+      </span>
+      <div class="chip" id="chipWs" title="Workspace the agent is operating in">
         <svg class="ic" aria-hidden="true"><use href="#i-folder"/></svg>
         <b id="metaWs">…</b>
       </div>
@@ -117,10 +227,22 @@
       <div class="clock-sub"><span id="clockDate">—</span> · <span id="metaUptime">up 0s</span></div>
     </div>
     <div class="topbar-actions">
+      <button class="btn kill-btn" id="emergencyKill" type="button" aria-label="Emergency kill" data-i18n-aria="topbar.killHint" title="Emergency kill — reviewed double confirmation">
+        <svg class="ic" aria-hidden="true"><use href="#i-alert"/></svg><span class="btn-label" data-i18n="topbar.kill">Kill</span>
+      </button>
+      <span class="topbar-divider" aria-hidden="true"></span>
       <button class="btn tool-btn" id="guiSettings" type="button" title="Models &amp; settings — model profiles, policy, integrations">
         <svg class="ic" aria-hidden="true"><use href="#i-sliders"/></svg><span class="btn-label">Settings</span>
       </button>
-      <span class="topbar-divider" aria-hidden="true"></span>
+      <button class="icon-btn bell-btn" id="notifyBell" type="button" aria-label="Notifications" aria-expanded="false" aria-controls="bellPopover" data-i18n-aria="topbar.bellHint" title="Notifications">
+        <svg class="ic" aria-hidden="true"><use href="#i-bell"/></svg><span class="bell-count" id="bellCount" hidden>0</span>
+      </button>
+      <div class="popover bell-popover" id="bellPopover" hidden role="dialog" aria-label="Notifications">
+        <div class="popover-head"><b data-i18n="bell.title">Notifications</b>
+          <button class="icon-btn small" type="button" id="bellClose" aria-label="Close">✕</button></div>
+        <div class="popover-body" id="bellBody"><p class="muted" data-i18n="bell.empty">Nothing is waiting for you.</p></div>
+        <div class="popover-foot"><button class="btn small" type="button" id="bellOpen" data-i18n="bell.view"></button></div>
+      </div>
       <button class="icon-btn" id="themeToggle" type="button" aria-label="Switch to light theme" title="Switch theme">
         <svg class="ic" aria-hidden="true"><use href="#i-sun"/></svg>
       </button>
@@ -315,7 +437,7 @@
         <div class="pipes" id="pipeList"></div>
       </section>
 
-      <section class="card mem-card">
+      <section class="card mem-card" id="memCard">
         <div class="card-head"><span class="sq" aria-hidden="true"></span>Role memory<span class="spacer"></span><span class="micro" id="memRole">general</span></div>
         <div class="mem-body" id="memBody">no memory notes for this role yet.</div>
         <div class="mem-foot" id="memPath">—</div>
@@ -495,12 +617,14 @@
 
   <footer class="statusbar">
     <span class="sb-item"><i class="dot ok" aria-hidden="true"></i><span id="sbState">idle</span></span>
-    <span class="sb-sep">/</span>
+    <span class="sb-sep" aria-hidden="true">/</span>
     <span class="sb-item" id="sbTask">no task</span>
-    <span class="sb-sep">/</span>
+    <span class="sb-sep" aria-hidden="true">/</span>
     <span class="sb-item" id="sbRole">role —</span>
-    <span class="sb-sep">/</span>
+    <span class="sb-sep" aria-hidden="true">/</span>
     <span class="sb-item" id="sbAgent">agent —</span>
+    <span class="sb-sep" aria-hidden="true">/</span>
+    <span class="sb-item" id="sbSse" data-state="idle">SSE · idle</span>
     <span class="spacer"></span>
     <span class="sb-item micro" id="sbTicker">SSE · /api/events · POST /api/task · POST /api/approve</span>
     <span class="sb-item micro" id="sbVersion">nexus —</span>
@@ -519,5 +643,9 @@
 <script src="/dashboard/control-shortcuts.js"></script>
 <script src="/dashboard/desktop.js"></script>
 <script src="/dashboard/shell.js"></script>
+<script src="/dashboard/i18n.js"></script>
+<script src="/dashboard/nav.js"></script>
+<script src="/dashboard/palette.js"></script>
+<script src="/dashboard/mission.js"></script>
 </body>
 </html>

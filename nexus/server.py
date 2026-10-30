@@ -47,6 +47,7 @@ from .agent import NexusAgent
 from .config import load_config
 from .tools import ApprovalDecision
 from .types import Event, EventType
+from .webapi import Limiter
 
 PANEL_DIR = Path(__file__).resolve().parent / "panel"
 APPROVAL_TIMEOUT = 600.0
@@ -118,6 +119,8 @@ class ServerState:
         self.demo = demo or os.environ.get("NEXUS_DEMO", "").lower() in {"1", "true", "yes"}
         self.sessions: dict[str, Session] = {}
         self.lock = threading.RLock()
+        # New dashboard APIs share one process-wide limiter (see nexus/webapi.py).
+        self.api_limiter = Limiter(limit=120, window=60.0)
         self.config = load_config(self.workspace)
         self.started = time.time()
         from .gui_modules import GuiModules
@@ -668,6 +671,8 @@ def make_handler(state: ServerState):
                 from .integrations import github_status
 
                 return self._send_json(github_status(state.workspace))
+            if path == "/api/palette":
+                return self._palette_index()
             if path == "/api/roles":
                 return self._send_json([r.to_dict() for r in state.config.roles.roles.values()])
             if path == "/api/agents":
@@ -913,6 +918,25 @@ def make_handler(state: ServerState):
             if not target.is_file():
                 return self._send_json({"error": f"missing panel asset {name}"}, 404)
             self._send_bytes(target.read_bytes(), content_type)
+
+        def _palette_index(self) -> None:
+            """Light command-palette index: auth already checked, one limiter, one audit line."""
+            from . import palette as palette_module
+            from . import webapi
+
+            client = str((getattr(self, "client_address", ("", 0)) or ("", 0))[0] or "local")
+            bucket = "palette:" + client
+            if not state.api_limiter.allow(bucket):
+                wait = state.api_limiter.retry_after(bucket)
+                return self._send_json(webapi.failed("rate_limited", f"Too many palette requests; retry in {wait}s."), 429)
+            try:
+                index = palette_module.build(state.config)
+                webapi.audit_api(state.workspace, "palette.index", actor="user", target="dashboard",
+                                 result="ok", risk="low", detail={"roles": len(index["roles"])})
+            except (OSError, ValueError):
+                return self._send_json(webapi.failed("audit_unavailable",
+                                                     "Palette index withheld: the audit trail is unavailable."), 503)
+            return self._send_json(webapi.ok(index))
 
         def _sse(self, task_id: str) -> None:
             session = state.get(task_id)
