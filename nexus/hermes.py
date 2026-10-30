@@ -20,7 +20,6 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
-import sys
 from pathlib import Path
 from typing import Any
 
@@ -153,24 +152,9 @@ def repo_root() -> Path:
     return Path(__file__).resolve().parent.parent
 
 
-def self_update(*, pull: bool = True, reinstall: bool = True, log: Any = None) -> tuple[bool, list[str]]:
-    """``nexus update``: fast-forward this checkout and reinstall the package."""
-    log = log or (lambda _msg: None)
-    root = repo_root()
-    messages: list[str] = []
-    if not (root / ".git").exists():
-        return False, [f"{root} is not a git checkout - update with pip instead (`pip install -U nexus-agent`)"]
-    if pull:
-        log("git pull --ff-only")
-        code, out = _run(["git", "-C", str(root), "pull", "--ff-only"], timeout=180)
-        if code != 0:
-            return False, [out.strip() or "git pull failed (dirty tree or diverged branch)"]
-        messages.append(out.strip().splitlines()[-1] if out.strip() else "already up to date")
-    if reinstall:
-        log("pip install -e .")
-        code, out = _run([sys.executable, "-m", "pip", "install", "-q", "-e", str(root)], timeout=600)
-        if code != 0:
-            return False, [*messages, out.strip()[-600:] or "pip install failed"]
-        messages.append("reinstalled the package")
-    messages.append("run `nexus doctor` to confirm")
-    return True, messages
+def self_update(*, pull: bool = True, reinstall: bool = True, log: Any = None,
+                check: bool = False, extras: str = '') -> tuple[bool, list[str]]:
+    """Compatibility entry point for the trusted-source updater."""
+    from .updater import update
+
+    return update(repo_root(), pull=pull, reinstall=reinstall, log=log, check=check, extras=extras)
