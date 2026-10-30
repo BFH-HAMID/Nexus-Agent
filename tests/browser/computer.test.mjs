@@ -14,8 +14,18 @@ const token = process.env.NEXUS_GUI_TEST_TOKEN;
 const scratch = 'tests/browser/.cc-suite.txt';
 let browser;
 
+async function resumeIfLatched() {
+  const headers = {'X-Nexus-Token': token, 'Content-Type': 'application/json'};
+  const state = await fetch(base + '/api/computer/state', {headers}).then((r) => r.json()).catch(() => null);
+  if (!state?.data?.latch?.stopped) return;
+  await fetch(base + '/api/computer/resume', {
+    method: 'POST', headers, body: JSON.stringify({confirmation: 'RESUME COMPUTER', resume_queue: true}),
+  });
+}
+
 before(async () => {
   assert.ok(token, 'Set NEXUS_GUI_TEST_TOKEN for the live dashboard');
+  await resumeIfLatched();   // an earlier panic must not make every write fail
   browser = await chromium.launch({
     executablePath: process.env.CHROMIUM_EXECUTABLE_PATH || await bundled.executablePath(),
     args: bundled.args.filter((a) => !['--single-process', '--disable-web-security'].includes(a)),
@@ -119,6 +129,8 @@ test('permissions save only with the exact token and the current revision', asyn
     await reload(page);
     await page.locator('#ccTabPermissions').click();
     const before = await api(page, '/api/computer/state');
+    assert.deepEqual(await page.locator('#ccLevel-files option').evaluateAll((nodes) => nodes.map((node) => node.value)),
+      ['off', 'read', 'ask', 'auto'], 'the full trust ladder is offered');
     await page.locator('#ccLevel-files').selectOption('read');
     await page.locator('#ccSave').click();
     await page.waitForSelector('#ccConfirmRow:not([hidden])');
@@ -177,8 +189,8 @@ test('files are scoped, previewed, written with a token and undone', async () =>
     const newest = await api(page, '/api/computer/snapshots');
     const snapshot = newest.items.find((item) => item.path === scratch && item.status === 'applied');
     assert.ok(snapshot, 'the write is recorded as an applied snapshot');
-    const row = page.locator('#ccSnapshots .computer-list-row', {hasText: '.cc-suite.txt'})
-      .filter({hasText: 'applied'}).first();
+    // Older runs leave applied snapshots for the same path; match this one by its id.
+    const row = page.locator('#ccSnapshots .computer-list-row', {hasText: `#${snapshot.id.slice(0, 8)}`}).first();
     await row.locator('button').click();
     await page.waitForSelector('#ccConfirmRow:not([hidden])', {timeout: 10000});
     await page.locator('#ccConfirm').fill(`RESTORE ${snapshot.id}`);

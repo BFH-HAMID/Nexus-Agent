@@ -870,6 +870,7 @@ dialog.kill-dialog::backdrop { background: var(--scrim); backdrop-filter: blur(3
 .computer-level > span { font-size: 12.5px; font-weight: 600; }
 .computer-level select { max-width: 220px; }
 .computer-level small { color: var(--muted); font-size: 11px; }
+.computer-level .computer-capped { color: var(--warn); }
 .computer-pathrow { display: flex; gap: 8px; align-items: flex-end; }
 .computer-grow { flex: 1 1 auto; }
 

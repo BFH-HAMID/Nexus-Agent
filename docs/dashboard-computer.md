@@ -43,14 +43,16 @@ The defaults are **locked**: `files: off`, `browser: off`, profile `locked`.
 
 ## Levels, profiles and the ceiling
 
-`files` and `browser` are the two owned capabilities. Each has a level:
+`files` and `browser` are the two owned capabilities. Files carries the full
+trust ladder; the browser has no per-action dialog of its own, so it stops at
+read:
 
-| level | meaning |
-| --- | --- |
-| `off` | the page refuses to read or write; lists render their off explanation |
-| `read` | tree, preview, snapshots and trash are readable; mutations are refused |
-| `ask` | every mutation needs its exact typed token (the review-first default) |
-| `auto` | mutations are allowed, still with the same typed token |
+| level | files | browser |
+| --- | --- | --- |
+| `off` | the page refuses to read or write; lists render their off explanation | nothing may be inspected |
+| `read` | tree, preview, snapshots and trash are readable; mutations are refused | one allowlisted origin may be inspected |
+| `ask` | every mutation needs its exact typed token (the review-first default) | — (same as read) |
+| `auto` | the saved intent for "no per-action dialog"; still capped by policy, see below | — |
 
 Three profiles write a whole level set at once — `locked` (`off`/`off`),
 `read-only` (`read`/`off`) and `review` (`ask`/`read`). A profile is a shortcut,
@@ -58,8 +60,12 @@ not a policy of its own: the individual selectors stay editable before saving.
 
 `effective(state, capability)` returns the **lower** of the store level and the
 `permissions.yaml` ceiling (`computer.browser`, `computer.editor`,
-`computer.office`, `computer.shell_backend`). The panel shows the resulting level
-and names the cause when the ceiling is what limits it.
+`computer.office`, `computer.shell_backend`). Each capability row therefore
+carries both `stored` (what the operator saved) and `level` (what actually
+applies). With the shipped `ASK_EVERY_TIME` policy the files ceiling is `ask`, so
+`auto` can be stored but is applied as `ask`; the panel says so on the card and
+under the selector, and every write still needs its typed token. Nothing in this
+store can raise a level above the workspace policy.
 
 The other five capabilities are read-only facts, each with a real probe:
 
@@ -171,7 +177,11 @@ The permissions tab holds the profile select, the two level selects, the roots
 and origins textareas and a single typed confirmation for the whole save. The
 files tab is a scoped tree on the left and a preview/editor on the right, with
 the snapshot and trash lists underneath; every mutation opens the same inline
-confirmation row that names the exact token it expects.
+confirmation row that names the exact token it expects, and any failure from it
+is reported in the file card rather than in the permissions card. Snapshot rows
+end with the short id (`#a1b2c3d4`) so the typed `RESTORE <id>` can be matched to
+the row, and while panic is latched every write, trash, undo and restore control
+is disabled with that reason.
 
 Desktop is two columns at ≥1080 px and a single column at 360 px; all labels
 exist in English and Bangla (124 `computer.*` keys per language) and the page
@@ -209,20 +219,24 @@ document (`scrollWidth − innerWidth = 0`).
 
 ## Tests
 
-* `tests/test_computerstudio.py` — 28 tests: default store, revision and stale
-  writes, level/profile validation, narrowing against `permissions.yaml`,
-  capability matrix, tree/preview/write/undo/trash/restore round trips,
-  scope refusals, panic and resume semantics, audit throttling, and the HTTP
-  surface (401, 404, 429, POST-only, redaction).
+* `tests/test_computerstudio.py` — 30 tests: default store, revision and stale
+  writes, level/profile validation, the full Off/Read/Ask/Auto ladder and its
+  policy cap, narrowing against `permissions.yaml`, capability matrix,
+  tree/preview/write/undo/trash/restore round trips, scope refusals, panic and
+  resume semantics, audit throttling, and the HTTP surface (401, 404, 429,
+  POST-only, redaction).
 * `tests/browser/computer.test.mjs` — 7 tests: policy painted from the real
   store, typed save with the exact token, scoped files written and undone through
-  the UI, trash and restore, the honest browser reason, panic/resume with the
-  queue checkbox, and Bangla at 360 px.
+  the UI (the suite clears a leftover panic latch first, because a latched stop
+  really does block every write), trash and restore, the honest browser reason,
+  panic/resume with the queue checkbox, and Bangla at 360 px.
 
 ## Known limits
 
 * Only `files` and `browser` are owned by this page; terminal, Office, screen,
   apps and the VS Code bridge are reported, never driven.
+* `auto` is stored and shown but cannot take effect while `permissions.yaml`
+  asks every time; the effective level and the reason are always on screen.
 * Browser inspection needs Playwright *and* an origin allowlisted in both
   `permissions.yaml` and the studio; on a host without Playwright it stays
   unavailable by design.

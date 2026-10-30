@@ -314,12 +314,19 @@ def capabilities(state) -> list[dict[str, Any]]:
     files_ceiling = "read" if default_mode == "READ_ONLY" else "ask"
     files_reason = ("permissions.yaml default is READ_ONLY, so writes stay unavailable."
                     if files_ceiling == "read" else "Every change is one reviewed request with an exact token.")
+    files_stored = store["levels"]["files"]
     rows.append({
-        "id": "files", "owned": True, "level": store["levels"]["files"], "ceiling": files_ceiling,
-        "managed_by": "this page + permissions.yaml default",
+        "id": "files", "owned": True, "level": _clip(files_stored, files_ceiling), "stored": files_stored,
+        "ceiling": files_ceiling, "managed_by": "this page + permissions.yaml default",
         "available": True, "reason": files_reason,
-        "levels": ["off", "read", "ask"],
-        "auto_note": "Auto is not offered for files: each write and trash keeps its own typed confirmation.",
+        "levels": list(MAX_LEVELS),
+        "auto_note": (
+            "Auto applies file changes without a typed confirmation; every change is still "
+            "scope-checked, safety-scanned, snapshotted and audited."
+            if files_ceiling == "auto" else
+            "Auto can be saved here, but permissions.yaml caps this workspace at Ask: "
+            "every write and trash still keeps its typed confirmation."
+        ),
     })
 
     origins = computer.get("browser_origins") or []
@@ -332,12 +339,14 @@ def capabilities(state) -> list[dict[str, Any]]:
         browser_reason = playwright_note if not playwright else worker_note
     else:
         browser_reason = "Read-only inspection of allowlisted origins; clicks and typing stay in the agent tool."
+    browser_stored = store["levels"]["browser"]
     rows.append({
-        "id": "browser", "owned": True, "level": store["levels"]["browser"], "ceiling": browser_ceiling,
+        "id": "browser", "owned": True, "level": _clip(browser_stored, browser_ceiling),
+        "stored": browser_stored, "ceiling": browser_ceiling,
         "managed_by": "this page + permissions.yaml computer.browser",
         "available": bool(computer.get("browser") and origins and playwright and worker_ok),
         "reason": browser_reason, "levels": ["off", "read"], "origins": origins,
-        "auto_note": "Auto is not offered for the browser: every navigation is an explicit request.",
+        "auto_note": "Inspection is already one explicit request, so ask and auto add nothing above read.",
     })
 
     rows.append({
@@ -371,18 +380,20 @@ def capabilities(state) -> list[dict[str, Any]]:
     return rows
 
 
-def effective(state, capability: str) -> str:
-    """The level this page actually applies, after narrowing by the workspace."""
-    store = load_settings(Path(state.workspace))
-    row = next((item for item in capabilities(state) if item["id"] == capability), None)
-    if row is None:
-        raise ValueError("Unknown capability")
-    level = store["levels"].get(capability, "off")
-    ceiling = row.get("ceiling", "off")
-    if ceiling not in MAX_LEVELS:
+def _clip(level: str, ceiling: str) -> str:
+    """The lower of a stored level and the workspace ceiling, in ladder order."""
+    if level not in MAX_LEVELS or ceiling not in MAX_LEVELS:
         return "off"
     order = {name: index for index, name in enumerate(MAX_LEVELS)}
     return level if order[level] <= order[ceiling] else ceiling
+
+
+def effective(state, capability: str) -> str:
+    """The level this page actually applies, after narrowing by the workspace."""
+    row = next((item for item in capabilities(state) if item["id"] == capability), None)
+    if row is None:
+        raise ValueError("Unknown capability")
+    return row["level"]
 
 
 def state_view(state) -> dict[str, Any]:

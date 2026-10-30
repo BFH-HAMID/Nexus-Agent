@@ -427,6 +427,13 @@
       const ceiling = document.createElement('small');
       ceiling.textContent = t('computer.ceilingIs', {level: levelLabel(row.ceiling)});
       wrap.append(label, choice, ceiling);
+      if (row.stored && row.stored !== row.level) {
+        const capped = document.createElement('small');
+        capped.className = 'computer-capped';
+        capped.textContent = t('computer.capped',
+          {stored: levelLabel(row.stored), level: levelLabel(row.level)});
+        wrap.append(capped);
+      }
       if (row.auto_note) {
         const note = document.createElement('p');
         note.className = 'computer-hint';
@@ -444,11 +451,13 @@
     const tree = $('ccTree');
     tree.replaceChildren();
     const cap = (state.data?.capabilities || []).find((row) => row.id === 'files');
+    const latched = Boolean(state.data?.latch?.stopped);
     const filesOn = cap && cap.level !== 'off';
     $('ccOpen').disabled = !filesOn;
     $('ccPath').disabled = !filesOn;
     $('ccWrite').disabled = true;
     $('ccTrashButton').disabled = true;
+    if (filesOn && latched) set($('ccFileStatus'), t('computer.latchedHint'), 'error');
     if (!filesOn) {
       set($('ccTreeNote'), t('computer.filesOff'));
       set($('ccScopeChip'), t('computer.level.off'), 'muted');
@@ -488,18 +497,18 @@
       const li = document.createElement('li');
       li.className = 'computer-list-row';
       const text = document.createElement('span');
-      text.textContent = `${item.path} · ${clock(item.created)} · ${item.status}`;
+      text.textContent = `${item.path} · ${clock(item.created)} · ${item.status} · #${item.id.slice(0, 8)}`;
       const button = document.createElement('button');
       button.type = 'button';
       button.className = 'btn ghost';
       button.textContent = t('computer.undo');
-      button.disabled = item.status !== 'applied';
+      button.disabled = item.status !== 'applied' || latched;
       button.onclick = () => confirmAction(`RESTORE ${item.id}`, t('computer.undoHint'), async (token) => {
         const body = (await gui.api('/api/computer/file/undo', {id: item.id, confirmation: token})).data;
         flash($('ccFileStatus'), t('computer.undone', {path: body.restored.path}), 'ok');
         await load();
         await loadFiles();
-      });
+      }, $('ccFileStatus'));
       li.append(text, button);
       snapshots.append(li);
     }
@@ -516,13 +525,14 @@
       button.type = 'button';
       button.className = 'btn ghost';
       button.textContent = t('computer.restore');
+      button.disabled = latched;
       button.onclick = () => confirmAction(`RESTORE ${item.id}`, t('computer.restoreHint'), async (token) => {
         const body = (await gui.api('/api/computer/trash/restore', {id: item.id, confirmation: token})).data;
         flash($('ccFileStatus'), t('computer.restored', {path: body.restored}), 'ok');
         await load();
         await loadFiles();
         await openPath($('ccPath').value || defaultRoot());
-      });
+      }, $('ccFileStatus'));
       li.append(text, button);
       trash.append(li);
     }
@@ -568,8 +578,8 @@
   }
 
   /* ── actions ──────────────────────────────────────────────────────────── */
-  function confirmAction(token, hint, run) {
-    state.pending = {token, run};
+  function confirmAction(token, hint, run, errorNode) {
+    state.pending = {token, run, errorNode};
     $('ccConfirmRow').hidden = false;
     $('ccConfirmLabel').textContent = `${hint} ${t('computer.confirmPrompt')} ${token}`;
     $('ccConfirm').value = '';
@@ -594,7 +604,7 @@
     try {
       await pending.run(typed);
     } catch (error) {
-      flash($('ccSaveStatus'), message(error), 'error');
+      flash(state.pending?.errorNode || $('ccSaveStatus'), message(error), 'error');
     }
   }
 
@@ -626,8 +636,9 @@
       paintFiles();
       $('ccText').value = body.binary ? '' : body.text;
       $('ccText').readOnly = body.binary;
-      $('ccWrite').disabled = body.binary;
-      $('ccTrashButton').disabled = false;
+      const latched = Boolean(state.data?.latch?.stopped);
+      $('ccWrite').disabled = body.binary || latched;
+      $('ccTrashButton').disabled = latched;
     } catch (error) {
       flash($('ccFileStatus'), message(error), 'error');
     }

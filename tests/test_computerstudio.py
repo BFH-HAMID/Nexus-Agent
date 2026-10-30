@@ -125,6 +125,23 @@ def test_capabilities_report_the_real_policy(state, repo: Path):
     assert {"files", "browser", "terminal", "office", "screen", "apps", "vscode"} == set(rows)
 
 
+def test_owned_capabilities_offer_the_full_ladder(state, repo: Path):
+    rows = {row["id"]: row for row in studio.capabilities(state)}
+    assert rows["files"]["levels"] == ["off", "read", "ask", "auto"]
+    assert rows["browser"]["levels"] == ["off", "read"]
+    assert rows["files"]["stored"] == "off" and rows["files"]["level"] == "off"
+
+
+def test_auto_is_stored_but_capped_by_the_workspace_policy(state, repo: Path):
+    saved = _save(state, levels={"files": "auto", "browser": "off"})
+    assert saved["settings"]["levels"]["files"] == "auto"      # the operator's intent is kept
+    row = {item["id"]: item for item in studio.capabilities(state)}["files"]
+    assert row["stored"] == "auto" and row["level"] == "ask"  # but permissions.yaml asks
+    assert "caps this workspace at Ask" in row["auto_note"]
+    with pytest.raises(ValueError, match="Type WRITE notes.txt to confirm"):
+        studio.write(state, {"path": "notes.txt", "text": "hello", "revision": "missing"})
+
+
 def test_read_only_permissions_cap_the_studio_at_read(state, repo: Path):
     (repo / "permissions.yaml").write_text(yaml.safe_dump({"schema": 1, "default": "READ_ONLY"}))
     _save(state, levels={"files": "ask", "browser": "off"})
