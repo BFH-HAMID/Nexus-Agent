@@ -72,6 +72,8 @@
   });
   gui.show=show;
   document.getElementById('guiSettings').onclick=()=>document.getElementById('wbOpen')?.click();
+  // Shared label helper: feature scripts write into .btn-label so icons survive language switches.
+  gui.label=(node,text)=>{if(!node)return;const label=node.querySelector('.btn-label');if(label)label.textContent=text;else node.textContent=text;};
   document.getElementById('guiLogout').onclick=async()=>{
     await gui.api('/api/session',{forget:true});credential='';location.reload();
   };

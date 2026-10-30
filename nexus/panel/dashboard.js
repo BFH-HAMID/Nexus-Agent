@@ -57,10 +57,10 @@
   };
   const trunc = (s, n) => (String(s || "").length > n ? String(s).slice(0, n - 1) + "…" : String(s || ""));
   const providerColor = (provider) => ({
-    gemini: "var(--cyan)",
-    deepseek: "var(--neon)",
-    openrouter: "var(--amber)",
-  }[provider] || "var(--violet)");
+    gemini: "var(--provider-gemini)",
+    deepseek: "var(--provider-deepseek)",
+    openrouter: "var(--provider-openrouter)",
+  }[provider] || "var(--provider-local)");
 
   async function api(path, opts) {
     const options = Object.assign({ headers: {} }, opts || {});
@@ -156,7 +156,7 @@
     renderKeys();
     renderPipelines();
     buildMap();
-    if (s.prefer_local) $("chipLocal").classList.add("live");
+    if (s.prefer_local) $("chipMode").classList.add("live");
   }
 
   function startClock() {
@@ -258,10 +258,11 @@
   }
 
   /* ── cognition map ────────────────────────────────────────────────── */
-  const MAP = { w: 920, h: 440, cx: 460, cy: 212, rx: 352, ry: 152 };
+  const MAP = { w: 300, h: 214, cx: 150, cy: 104, rx: 104, ry: 62 };
 
   function buildMap() {
     const svg = $("map");
+    svg.setAttribute("viewBox", `0 0 ${MAP.w} ${MAP.h}`);
     const names = Object.keys(state.agents);
     if (!names.length) return;
     const pos = {};
@@ -293,36 +294,38 @@
       const initials = name.replace(/^(openrouter|ollama)-/, "").slice(0, 3).toUpperCase();
       const st = state.status[name] || "idle";
       return `<g class="node ${esc(st)}" tabindex="0" role="button" aria-label="${esc(name + ": " + (a.model || "") + ". Configured endpoint, not a health check.")}" data-agent="${esc(name)}" transform="translate(${p.x.toFixed(1)},${p.y.toFixed(1)})" style="--node:${color}">
-        <circle class="ring" r="21" style="stroke:${color}"/>
-        <path class="hex" d="M0,-18 L16,-9 L16,9 L0,18 L-16,9 L-16,-9 Z" style="stroke:${color};stroke-opacity:.55"/>
-        <text class="lbl" y="3" text-anchor="middle" fill="${color}" style="font-size:9px;opacity:.95">${esc(initials)}</text>
-        <text class="sub" y="32" text-anchor="middle" style="fill:#a8d9cd">${esc(name)}</text>
-        <text class="sub" y="42" text-anchor="middle" style="fill:#47706a;font-size:7px">${esc(trunc(a.model || "", 26))}</text>
+        <title>${esc(name + " · " + (a.model || "") + (a.provider ? " · " + a.provider : ""))}</title>
+        <circle class="ring" r="17" style="stroke:${color}"/>
+        <path class="hex" d="M0,-14 L12,-7.5 L12,7.5 L0,14 L-12,7.5 L-12,-7.5 Z" style="stroke:${color};stroke-opacity:.55"/>
+        <text class="lbl" y="3" text-anchor="middle" fill="${color}" style="font-size:8.5px;font-weight:700">${esc(initials)}</text>
       </g>`;
     });
 
     svg.innerHTML = `<defs>
         <radialGradient id="coreGrad">
-          <stop offset="0%" stop-color="#00ffa3" stop-opacity=".55"/>
-          <stop offset="70%" stop-color="#00ffa3" stop-opacity=".08"/>
-          <stop offset="100%" stop-color="#00ffa3" stop-opacity="0"/>
+          <stop offset="0%" stop-color="var(--accent)" stop-opacity=".22"/>
+          <stop offset="70%" stop-color="var(--accent)" stop-opacity=".05"/>
+          <stop offset="100%" stop-color="var(--accent)" stop-opacity="0"/>
         </radialGradient>
       </defs>
       <g>${edges.join("")}</g>
       <g>
-        <circle class="core-glow" cx="${MAP.cx}" cy="${MAP.cy}" r="86"/>
-        <circle cx="${MAP.cx}" cy="${MAP.cy}" r="46" fill="rgba(3,14,12,.92)" stroke="var(--neon)" stroke-opacity=".55"/>
-        <circle cx="${MAP.cx}" cy="${MAP.cy}" r="56" fill="none" stroke="var(--cyan)" stroke-opacity=".22" stroke-dasharray="2 6">
-          ${REDUCED ? "" : '<animateTransform attributeName="transform" type="rotate" from="0 460 212" to="360 460 212" dur="26s" repeatCount="indefinite"/>'}
+        <circle class="core-glow" cx="${MAP.cx}" cy="${MAP.cy}" r="58"/>
+        <circle cx="${MAP.cx}" cy="${MAP.cy}" r="26" fill="var(--surface-2)" stroke="var(--accent)" stroke-opacity=".7"/>
+        <circle cx="${MAP.cx}" cy="${MAP.cy}" r="34" fill="none" stroke="var(--border-strong)" stroke-dasharray="2 6">
+          ${REDUCED ? "" : '<animateTransform attributeName="transform" type="rotate" from="0 150 104" to="360 150 104" dur="40s" repeatCount="indefinite"/>'}
         </circle>
-        <text x="${MAP.cx}" y="${MAP.cy - 3}" text-anchor="middle" style="font-size:10px;letter-spacing:.22em;fill:#d9fff2">NEXUS</text>
-        <text x="${MAP.cx}" y="${MAP.cy + 12}" text-anchor="middle" style="font-size:7px;letter-spacing:.3em;fill:#47706a">CORE</text>
+        <text x="${MAP.cx}" y="${MAP.cy + 3}" text-anchor="middle" style="font-size:8px;letter-spacing:.1em;font-weight:700;fill:var(--text)">NEXUS</text>
       </g>
       <g>${nodes.join("")}</g>
-      <circle class="packet" id="pkt" r="3.4" cx="${MAP.cx}" cy="${MAP.cy}" opacity="0"/>
+      <circle class="packet" id="pkt" r="2.6" cx="${MAP.cx}" cy="${MAP.cy}" opacity="0"/>
     `;
 
     svg.querySelectorAll(".node").forEach((node) => {
+      node.addEventListener("pointerenter", () => { if (!state.selectedNode) previewNode(node.dataset.agent); });
+      node.addEventListener("pointerleave", () => { if (!state.selectedNode) previewNode(null); });
+      node.addEventListener("focus", () => { if (!state.selectedNode) previewNode(node.dataset.agent); });
+      node.addEventListener("blur", () => { if (!state.selectedNode) previewNode(null); });
       node.addEventListener("click", (ev) => { ev.stopPropagation(); selectNode(node.dataset.agent); });
       node.addEventListener("keydown", (ev) => {
         if (ev.key === "Enter" || ev.key === " ") {
@@ -333,6 +336,17 @@
     svg.addEventListener("click", () => clearNode());
     if (state.activeAgent) paintMapActive(state.activeAgent);
     if (state.selectedNode) selectNode(state.selectedNode, true);
+  }
+
+  function previewNode(name) {
+    const nameEl = $("ndName"), providerEl = $("ndProvider"), bodyEl = $("ndBody");
+    if (!nameEl || !providerEl || !bodyEl) return;
+    const info = name ? state.agents[name] || {} : null;
+    nameEl.textContent = name || "—";
+    providerEl.textContent = name ? (info.provider || "agent") : "—";
+    bodyEl.textContent = name
+      ? (info.model || "model not reported") + " · configured entry, not a health check"
+      : "hover a node or select one to inspect it";
   }
 
   function paintMapActive(name) {
@@ -477,6 +491,9 @@
       state.lastEventId = e.event_id;
     }
     if (e.type === "ping") return;
+    // Older/alternate emitters used "route" for the same router decision the
+    // server now sends as "role"; normalise so one renderer handles it.
+    if (e.type === "route") e = Object.assign({}, e, { type: "role" });
     state.counters.events++;
     const remoteTask=e.type==='github_task'?e.task:e.result?.github_task;
     if(remoteTask)state.githubRepo=remoteTask.repository;
@@ -684,8 +701,22 @@
       case "done":
         finishRun(e);
         break;
-      default:
-        addStep("status", e.type, "·", esc(JSON.stringify(e).slice(0, 300)));
+      case "skill": {
+        addStep("memory", "skill", "◆",
+          `<b>${esc(e.name || e.skill || "skill")}</b> ${esc(e.action || "updated")}` +
+          (e.summary ? `<span class="txt">${esc(trunc(e.summary, 800))}</span>` : ""),
+          ts());
+        refreshBrain();
+        break;
+      }
+      default: {
+        const label = e.type ? String(e.type).replace(/_/g, " ") : "event";
+        const summary = e.message || e.text || e.status || e.detail || "";
+        addStep("status", label, "·",
+          esc(trunc(summary || label + " event received", 300)) +
+          `<details class="live-output"><summary>Event details</summary><pre>${esc(trunc(JSON.stringify(e, null, 2), 4000))}</pre></details>`,
+          ts());
+      }
     }
     renderRunMetrics();
     updateSecurityLevel();
@@ -918,17 +949,22 @@
     const samples = state.spark.latency.slice(-3);
     const average = samples.length ? Math.round(samples.reduce((a, b) => a + b, 0) / samples.length) + "ms" : null;
     $("statLatency").textContent = average || "No results yet";
+    $("statLatency").title = average ? "Mean duration of the last three completed tools" : "No tool durations recorded in this run yet";
     $("monLatency").textContent = average || "—";
     $("liveRunNote").textContent = state.taskId
       ? "Task " + state.taskId + (state.running ? " · live server events. Tool timing appears after completion." : " · retained run events. Open another run from History to view its metrics.")
       : "No Nexus task selected. Start a task here or open one from History. These metrics do not track this Arena chat.";
   }
 
-  const SPARK_COLORS = {
-    events: { line: "rgba(0,255,163,.9)", fill: "rgba(0,255,163,.16)" },
-    tokens: { line: "rgba(34,227,255,.9)", fill: "rgba(34,227,255,.16)" },
-    latency: { line: "rgba(255,176,32,.9)", fill: "rgba(255,176,32,.16)" },
+  const themeVar = (name, fallback) => {
+    const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    return value || fallback;
   };
+  const sparkColors = () => ({
+    events: { line: themeVar("--chart-1", "#2dd4a4"), fill: themeVar("--chart-1-fill", "rgba(45,212,164,.18)") },
+    tokens: { line: themeVar("--chart-2", "#6aa8ff"), fill: themeVar("--chart-2-fill", "rgba(106,168,255,.18)") },
+    latency: { line: themeVar("--chart-3", "#f4bb52"), fill: themeVar("--chart-3-fill", "rgba(244,187,82,.16)") },
+  });
 
   function drawSpark(key) {
     const canvas = { events: $("sparkEvents"), tokens: $("sparkTokens"), latency: $("sparkLatency") }[key];
@@ -942,9 +978,9 @@
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, w, h * dpr);
     const data = state.spark[key];
-    const color = SPARK_COLORS[key];
+    const color = sparkColors()[key];
     // grid
-    ctx.strokeStyle = "rgba(0,255,163,.08)";
+    ctx.strokeStyle = themeVar("--chart-grid", "rgba(139,156,181,.14)");
     ctx.lineWidth = 1;
     for (let i = 1; i < 3; i++) {
       const y = (h / 3) * i;
@@ -967,11 +1003,8 @@
     ctx.beginPath();
     pts.forEach((p, i) => (i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])));
     ctx.strokeStyle = color.line;
-    ctx.lineWidth = 1.4;
-    ctx.shadowColor = color.line;
-    ctx.shadowBlur = 6;
+    ctx.lineWidth = 2;
     ctx.stroke();
-    ctx.shadowBlur = 0;
     const last = pts[pts.length - 1];
     ctx.beginPath();
     ctx.arc(last[0] - 1, last[1], 2, 0, Math.PI * 2);
@@ -980,6 +1013,7 @@
   }
 
   function drawAllSparks() { ["events", "tokens", "latency"].forEach(drawSpark); }
+  window.addEventListener("nexus:theme", () => drawAllSparks());
 
   /* ── memory card ──────────────────────────────────────────────────── */
   async function refreshMemory(role) {
