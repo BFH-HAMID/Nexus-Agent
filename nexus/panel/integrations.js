@@ -25,9 +25,9 @@
       <details class="hardware-details"><summary>Measurement details <span>5s refresh</span></summary><small id="hardwareNote">Actual server environment, not this browser. Refreshes every 5 seconds while visible.</small></details>
     </section>`;
   const select = document.getElementById("localModel");
-  const token = new URLSearchParams(location.search).get("token") || "";
+  const token = ''; // Shared HttpOnly GUI session; no URL credentials.
   async function get(path) {
-    const response = await fetch(path, {headers: token ? {"X-Nexus-Token": token} : {}});
+    const response = await (window.nexusGui?.fetch || fetch)(path, {headers: token ? {"X-Nexus-Token": token} : {}});
     const body = await response.json();
     if (!response.ok) throw new Error(body.error || `HTTP ${response.status}`);
     return body;

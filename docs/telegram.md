@@ -57,3 +57,24 @@ method passthrough exists. The HTTP transport only allows getUpdates/sendMessage
 bounds responses, disables redirects/proxies and rechecks whitelist/enable state
 before sending. Same-OS-user compromise, stolen bot account or PIN messages retained
 by Telegram are not protections this application can eliminate.
+
+## Original dashboard lifecycle controls
+
+Open **Control center → Telegram policy**. Policy saves do not start a bot.
+After saving an enabled whitelist and configuring server environment credentials,
+use separately confirmed **Start Telegram polling**, **Stop Telegram polling**
+and **Refresh polling status**. Start remains disabled when prerequisites are
+missing, and the backend independently checks consent/current policy revision.
+The GUI-owned thread uses this same Bot and workspace file lock, so it refuses
+a concurrent CLI runner. It never automatically retries/restarts after failure.
+
+Status reports observed GUI-thread liveness/phase and last completed poll, not
+account validity or independent CLI process health. Stop prevents new handling
+and sends after cancellation checks; an already-started action/request cannot be
+recalled. Wait for `alive:false` before restarting. GUI server shutdown requests
+cancellation. Closing/logging out of a browser tab does **not** stop the server
+or revoke environment credentials; explicitly Stop polling when required.
+
+No live account or external Telegram traffic was used in automated validation.
+Bot transport/cancellation/duplicate-lock tests use scripted HTTP; the browser
+test exercises real authenticated controls and refused disabled-policy startup.

@@ -77,7 +77,7 @@ external actions never inherit autonomy approval. File/TODO/build/Git/CI/system/
 inbox/queue-idle/schedule probes, offline→online deferral, inbox/digests/quiet/DND,
 opt-in counts-only desktop notifications and reviewed OS user-service installers
 have working consumers. Native host/account acceptance is distinct from fixture
-tests; nothing is installed or remotely mutated implicitly. Module 5 implementation now includes delegation, HUD/TUI, MCP/plugins, Telegram
+tests; nothing is installed or remotely mutated implicitly. Module 5 implementation now includes delegation, native GUI operations, MCP/plugins, Telegram
 and default-OFF context. Native/live acceptance boundaries remain explicit.
 See [setup, commands, safety boundaries and acceptance](docs/jarvis.md).
 
@@ -89,14 +89,25 @@ jobs and per-attempt tool checkpoints. Parent-enforced deadlines, one-shot 80% t
 alerts and explicit reapproval on recovery are implemented; tools are never replayed
 from checkpoints. The subsequent Module 5 integrations are now implemented; see their guides. See [delegation safety/setup](docs/delegation.md).
 
-### Authenticated operations HUD and Textual TUI (Module 5)
+### One original Nexus GUI: chat, operations and World
 
-Install `.[hud]`, set a private `NEXUS_HUD_TOKEN`, then run `nexus hud -C WORKSPACE`.
-The loopback FastAPI/WebSocket UI displays actual Jarvis/delegation/workflow/audit
-state and local metrics, with exact-reviewed approvals and working lifecycle,
-autonomy/quiet/DND controls. `nexus hud -C WORKSPACE --tui` uses the same adapter
-locally without a network listener. No implicit model launch or fake telemetry;
-context stays OFF. See [HUD security, setup and tests](docs/hud.md).
+```powershell
+python -m pip install -e .
+nexus gui -C .
+```
+
+Open **http://127.0.0.1:8787/dashboard**. The original Run/chat, models/roles,
+GitHub repository workflow, Workbench, Studio and settings remain. Native tabs add
+**Operations & approvals** (real worker lifecycle, queued tasks, approvals,
+autonomy, measured usage/logs/diagnostics) and **World, news & weather** (globe,
+public news, crypto and forecasts). No iframe, extra server or second login.
+`nexus panel`, `nexus hud` and old dashboard URLs are compatibility aliases for
+this same GUI; do not start them as additional dashboards. **Roles, agents & teams**
+adds reviewed role instructions/model/tool editing, agent/provider configuration,
+and ordered Red/Blue teams using the existing pipelines. Context stays OFF;
+external/destructive actions still need approval. **GitHub off / No repository**
+lets you work without a remote repo attachment; that choice survives reload.
+See [GUI setup and security](docs/gui.md).
 
 ## Opt-in multi-role project planning (Module 1 preview)
 
@@ -844,7 +855,7 @@ OFF by default. Module 6 is now starting on existing session/learning storage.
 ### Opt-in local context and separately approved vision
 
 `nexus context -C WORKSPACE status|collect|resolve|signal|clear|vision` has real
-bounded consumers; opening the HUD does not collect anything. The existing VS Code
+bounded consumers; opening the GUI does not enable context collection. The existing VS Code
 extension adds **Share Active Editor Context Reference (Opt-in)**. Reference-bearing
 agent runs cannot silently send context to cloud routing/learning/fallbacks. Local
 capture and cloud upload need separate fresh existing-gate consent; unavailable
@@ -855,7 +866,7 @@ scripted native/HTTP tests.
 
 ### Module 6: measured learning, traces and safe inspection
 
-`nexus evaluate -C WORKSPACE --days 7` and HUD/TUI consume the existing
+`nexus evaluate -C WORKSPACE --days 7` and the GUI operations adapter consume the existing
 sessions.db: measured outcomes/reviews/retries/approvals, time, usage and historical
 operator-priced model/project/UTC-day cost snapshots. Missing billing/usage remains
 unknown; agent claims and command exits are not independent test certification.
@@ -865,30 +876,55 @@ Evidence-weighted ranking retains exploration; weekly role advice never auto-del
 observations, not hidden reasoning. `replay TRACE_ID --step N` has **no effects**.
 Explicit `--execute` is limited to eligible workspace file tools, requires fresh
 bound consent plus current policy, and creates a separate linked trace. No terminal,
-plugin, payment or external replay; no HUD execution endpoint. Context stays OFF.
+plugin, payment or external replay; no evaluation execution endpoint. Context stays OFF.
 
 See [operation, privacy, costs and limits](docs/evaluation.md) and the
 [six-module audit / six scripted integration demos](docs/six-module-audit.md).
 
 ### Module 7: World observatory · globe / public news / weather
 
-The **existing FastAPI/WebSocket HUD** now includes a locally bundled interactive
+The **original Nexus GUI World tab** includes a locally bundled interactive
 3D world globe (Natural Earth borders, adaptive English/Bangla labels, hover/fly-to,
 Dinajpur Home, quakes/news/terminator layers, night texture, SVG fallback), news tabs,
-public crypto quotes and Open-Meteo forecast/favorites. It reuses the current theme,
-authentication and controls—no separate app, API accounts, CDN or model calls.
+Bangladesh-first RSS news, public crypto quotes and WeatherAPI.com forecast/favorites.
+It reuses the current theme, authentication and controls—no separate app, CDN or
+model calls. Weather requires your own WeatherAPI.com account/key.
 
 ```powershell
-python -m pip install -e ".[hud]"
-nexus hud -C .
+python -m pip install -e .
+nexus gui -C .
 ```
 
-Use the existing private local `NEXUS_HUD_TOKEN` (not an API key). Defaults remain
-loopback-only; collection starts only in a connected visible HUD. Configure
-`widget.yaml`. Internet is needed for the initial public fetch; stale cached data
+Uses the same optional `NEXUS_SERVE_TOKEN`/GUI session, not a separate World or HUD credential.
+Defaults remain loopback-only; public requests start when the World tab opens. Configure
+**News & weather settings** inside the original GUI (or `widget.yaml` for nonsecret
+settings). Enter the WeatherAPI key there, not in chat; it stays server-side in
+session memory, optionally the native OS vault. `WEATHERAPI_KEY` is also supported.
+Internet is needed for the initial public fetch; stale cached data
 is labelled offline, and an empty cache does not create sample news/weather/prices.
-**Open-Meteo free API access is non-commercial and requires attribution.** Publisher
+WeatherAPI requests three forecast days and displays only what your plan returns;
+missing keys/failed requests are labelled, never silently switched to another provider.
+Keyless Open-Meteo remains an explicit legacy option (free access is non-commercial). Publisher
 RSS permissions also apply; Cointelegraph is permission-gated by default, not silently
 scraped. External text never becomes agent instructions.
 
-See [setup, source terms, privacy, demo steps and actual offline screenshots](docs/world-widget.md).
+See [setup, source terms, privacy, demo steps and actual offline screenshots](docs/world-widget.md)
+and the [honest dashboard control-coverage audit](docs/gui-control-coverage.md).
+
+### Desktop Control Center follow-up
+
+`nexus gui` opens a searchable desktop Control center; Run/chat and all existing
+views remain one click away. Native desktop setup now edits Context/privacy,
+MCP declarations and Telegram policy, and previews/downloads/explicitly installs
+reviewed OS user-service manifests. No save starts a collector, bot or plugin.
+See the [desktop guide and explicit remaining limits](docs/desktop-control-center.md).
+
+Desktop setup also supports separately confirmed Telegram polling Start/Stop/status
+and one-time local context collect/clear. It reuses the original Bot/Context and
+shared Studio, with duplicate-poller locking and cancellation checks. No policy
+save starts these actions; screen/cloud vision still needs separate approval.
+
+OS service setup now adds read-only registration inspection, fresh observed-state
+removal preview/confirmation, and non-executing recovery instructions. It refuses
+foreign/modified/overridden registrations and reports partial outcomes; it does
+not elevate, overwrite, force-repair or claim all independent workers are stopped.

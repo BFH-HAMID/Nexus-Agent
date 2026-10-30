@@ -143,6 +143,7 @@ def weather_payload():
 
 
 def test_weather_forecast_thresholds_and_no_official_warning_claim(world):
+    world.config['weather_provider'] = 'open-meteo'
     calls = []
     world.transport = httpx.MockTransport(lambda r: calls.append(r) or httpx.Response(200, json=weather_payload()))
     row = world.weather()
@@ -202,7 +203,7 @@ def test_endpoints_share_existing_hud_auth_validation_and_websocket(repo, monkey
         assert client.get('/api/countries', headers=auth).json()['config']['default_location']['latitude'] == 25.63
         assert client.get('/api/weather?latitude=91&longitude=0', headers=auth).status_code == 422
         assert client.get('/api/weather?latitude=25', headers=auth).status_code == 422
-        assert client.get('/api/weather', headers=auth).json()['status'] == 'offline'
+        assert client.get('/api/weather', headers=auth).json()['status'] == 'configuration-required'
         assert client.get('/world/earth-night.jpg').status_code == 200
         assert client.get('/world/secret.env').status_code == 404
         with client.websocket_connect('ws://localhost/ws', headers={'Origin': 'http://localhost'}) as socket:

@@ -27,7 +27,7 @@ def settings(root):
     if path.is_symlink() or (path.exists() and (not path.is_file() or path.stat().st_size > 16000)):
         raise ValueError('HUD policy must be bounded operator YAML')
     try:
-        value = yaml.safe_load(path.read_text()) if path.exists() else {}
+        value = yaml.safe_load(path.read_text(encoding='utf-8')) if path.exists() else {}
     except yaml.YAMLError:
         raise ValueError('Invalid HUD YAML') from None
     defaults = {'schema': 1, 'host': '127.0.0.1', 'port': 8790, 'refresh_seconds': 2, 'max_connections': 4}
@@ -78,7 +78,7 @@ class HUD:
         try:
             policy = self.queue.policy()
             policy_state = {'level': policy['level'], 'runtime_enabled': policy['runtime']['enabled'],
-                            'mode': policy['runtime']['mode'], 'connectivity': policy['runtime']['connectivity']}
+                            'local_model': policy['runtime']['local_model'], 'mode': policy['runtime']['mode'], 'connectivity': policy['runtime']['connectivity']}
         except (ValueError, OSError):
             policy_state = {'error': 'Invalid policy; dispatch unavailable; stop/kill remain available'}
         daemon = Daemon(self.studio).status()
@@ -135,7 +135,7 @@ class HUD:
         permitted = {'control': {'action', 'confirmation'}, 'review': {'id', 'action', 'confirmation'},
                      'decide': {'id', 'allow', 'confirmation'}, 'create': {'task', 'max_seconds', 'max_cost_usd'},
                      'cancel': {'id'}, 'resume': {'id'}, 'delivery': {'quiet', 'minutes'},
-                     'autonomy': {'level', 'confirmation'}}
+                     'runtime': {'enabled', 'local_model', 'confirmation'}, 'autonomy': {'level', 'confirmation'}}
         if operation not in permitted or set(data) - permitted[operation]:
             raise ValueError('Unsupported action/fields')
         if operation == 'control':
@@ -159,9 +159,36 @@ class HUD:
             result = getattr(Delegations(self.studio), operation)(data['id'])
         elif operation == 'delivery':
             result = Inbox(self.studio).configure(quiet=data.get('quiet'), minutes=data.get('minutes'))
+        elif operation == 'runtime':
+            result = self.configure_runtime(data)
         else:
             result = self.autonomy(data)
         return self.clean(result)
+
+    def configure_runtime(self, data):
+        enabled = data.get('enabled')
+        phrase = 'ENABLE LOCAL RUNTIME' if enabled else 'DISABLE LOCAL RUNTIME'
+        if type(enabled) is not bool or data.get('confirmation') != phrase:
+            raise ValueError('Exact local-runtime confirmation required')
+        from ..jarvis.runtime import settings as runtime_settings
+        with self.queue.locked():
+            policy = self.queue.policy()
+            proposed = {**policy['runtime'], 'enabled': enabled, 'local_model': data.get('local_model', '')}
+            policy['runtime'] = runtime_settings(proposed)
+            self.publish_policy(policy)
+        return {'enabled': enabled, 'local_model': proposed['local_model'],
+                'note': 'Local policy saved, not a model-availability check or task/tool approval'}
+
+    def publish_policy(self, policy):
+        policy.pop('schema', None)
+        path = self.queue.root / 'autonomy.yaml'
+        fd, temporary = tempfile.mkstemp(dir=self.queue.root, prefix='.autonomy-', suffix='.tmp')
+        try:
+            with os.fdopen(fd, 'w', encoding='utf-8') as handle:
+                yaml.safe_dump(policy, handle)
+            os.replace(temporary, path)
+        finally:
+            Path(temporary).unlink(missing_ok=True)
 
     def autonomy(self, data):
         level = data.get('level')
@@ -169,15 +196,6 @@ class HUD:
             raise ValueError('Exact autonomy confirmation required')
         with self.queue.locked():
             policy = self.queue.policy()
-            # Publish only validated normalized policy, not arbitrary client YAML.
-            policy.pop('schema', None)
             policy['level'] = level
-            path = self.queue.root / 'autonomy.yaml'
-            fd, temporary = tempfile.mkstemp(dir=self.queue.root, prefix='.autonomy-', suffix='.tmp')
-            try:
-                with os.fdopen(fd, 'w', encoding='utf-8') as handle:
-                    yaml.safe_dump(policy, handle)
-                os.replace(temporary, path)
-            finally:
-                Path(temporary).unlink(missing_ok=True)
+            self.publish_policy(policy)
         return {'level': level, 'source': 'operator policy updated; autonomy never approves individual dangerous/external actions'}

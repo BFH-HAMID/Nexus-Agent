@@ -25,6 +25,8 @@ classifiers = [
   "Topic :: Utilities",
 ]
 dependencies = [
+  "tzdata>=2024.1",
+  "feedparser>=6.0,<7",
   "httpx>=0.27",
   "psutil>=5.9",
   "filelock>=3.16",
@@ -35,7 +37,7 @@ dependencies = [
 [project.optional-dependencies]
 context = ["mss>=9,<11", "Pillow>=10,<13", "pytesseract>=0.3.13,<1"]
 mcp = ["jsonschema>=4.23,<5", "keyring>=25"]
-hud = ["feedparser>=6.0,<7", "fastapi>=0.115,<1", "uvicorn>=0.30,<1", "websockets>=13,<17", "textual>=0.80,<9"]
+hud = ["keyring>=25", "feedparser>=6.0,<7", "fastapi>=0.115,<1", "uvicorn>=0.30,<1", "websockets>=13,<17", "textual>=0.80,<9"]
 dev = ["feedparser>=6.0,<7", "jsonschema>=4.23,<5", "fastapi>=0.115,<1", "uvicorn>=0.30,<1", "websockets>=13,<17", "textual>=0.80,<9", "pytest>=8.0", "tomli>=2; python_version < '3.11'", "ruff>=0.6", "cryptography>=44", "keyring>=25", "faiss-cpu>=1.8,<2", "numpy>=1.25,<3", "python-docx>=1.1,<2", "openpyxl>=3.1,<4", "python-pptx>=1.0,<2"]
 orchestrator = ["faiss-cpu>=1.8,<2", "numpy>=1.25,<3"]
 computer = ["playwright>=1.50,<2", "python-docx>=1.1,<2", "openpyxl>=3.1,<4", "python-pptx>=1.0,<2"]
@@ -75,6 +77,20 @@ packages = ["nexus"]
 "telegram.yaml" = "nexus/_config/telegram.yaml"
 "context.yaml" = "nexus/_config/context.yaml"
 "docs/hud.md" = "nexus/_config/docs/hud.md"
+"docs/gui.md" = "nexus/_config/docs/gui.md"
+"docs/desktop-control-center.md" = "nexus/_config/docs/desktop-control-center.md"
+"docs/images/gui-control-center.png" = "nexus/_config/docs/images/gui-control-center.png"
+"docs/images/gui-desktop-setup.png" = "nexus/_config/docs/images/gui-desktop-setup.png"
+"docs/images/gui-telegram-runtime.png" = "nexus/_config/docs/images/gui-telegram-runtime.png"
+"docs/images/gui-service-control.png" = "nexus/_config/docs/images/gui-service-control.png"
+"docs/gui-control-coverage.md" = "nexus/_config/docs/gui-control-coverage.md"
+"docs/images/gui-main.png" = "nexus/_config/docs/images/gui-main.png"
+"docs/images/gui-operations.png" = "nexus/_config/docs/images/gui-operations.png"
+"docs/images/gui-world.png" = "nexus/_config/docs/images/gui-world.png"
+"docs/images/gui-world-settings.png" = "nexus/_config/docs/images/gui-world-settings.png"
+"docs/images/gui-mobile.png" = "nexus/_config/docs/images/gui-mobile.png"
+"docs/images/gui-management.png" = "nexus/_config/docs/images/gui-management.png"
+
 "docs/mcp.md" = "nexus/_config/docs/mcp.md"
 "docs/telegram.md" = "nexus/_config/docs/telegram.md"
 "docs/context.md" = "nexus/_config/docs/context.md"

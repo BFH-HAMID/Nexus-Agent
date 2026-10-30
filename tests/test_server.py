@@ -188,8 +188,9 @@ def test_panel_is_served(server):
     with urllib.request.urlopen(request, timeout=10) as response:
         html = response.read().decode()
         assert response.status == 200
-    assert "<title>Nexus Agent</title>" in html
-    assert "panel.js" in html
+    assert "<title>Nexus Agent · Control Deck</title>" in html
+    assert "dashboard.js" in html
+    assert "data-gui-tab=\"operations\"" in html
 
     with urllib.request.urlopen(server.base + "/panel/panel.js", timeout=10) as response:
         assert "api/events" in response.read().decode()
@@ -376,23 +377,14 @@ def test_dashboard_is_served_with_its_assets(server):
     assert excinfo.value.headers["Location"] == "/dashboard"
 
 
-def test_console_is_served_and_reads_real_data(server):
-    status, html = server.get("/console")
-    assert status == 200
-    assert "NEXUS AGENT" in html
-    # one file: no libraries, no CDNs, no images - only same-origin API calls
-    for forbidden in ("http://", "https://", "<link", "@import", "src="):
-        assert forbidden not in html, forbidden
-    assert "<script>" in html and "<style>" in html
-    # it is wired to the real endpoints ...
-    for endpoint in ("/health", "/api/stats", "/api/roles", "/api/pipelines", "/api/events/", "/api/task"):
-        assert endpoint in html, endpoint
-    # ... and carries no invented fixtures or simulated telemetry
-    for fabricated in ("AGENT_412", "AGENT_876", "1,024", "1000+", "SIMULATION", "synthetic",
-                       "pathway speed", "OPTIMIZING"):
-        assert fabricated not in html, fabricated
-    # the /console/ asset form is served from the panel dir
-    assert server.get("/console/index.html")[0] == 200
+def test_old_web_interfaces_resolve_to_the_single_main_gui(server):
+    for route in ('/panel', '/console', '/hud', '/console/index.html', '/dashboard/panel.html'):
+        status, html = server.get(route)
+        assert status == 200
+        assert '<title>Nexus Agent · Control Deck</title>' in html
+        assert 'data-gui-tab="operations"' in html
+        assert 'data-gui-tab="world"' in html
+        assert '<iframe' not in html
 
 
 def test_dashboard_assets_never_need_a_token(repo: Path, monkeypatch):
@@ -834,3 +826,81 @@ def test_real_loop_prose_only_task_is_blocked_with_saved_context_and_evidence(se
     studio = server.state.workbench.studio
     assert studio.find('context', ident)['task_id'] == ident
     assert studio.find('evidence', 'evidence-' + ident)['result']['execution']['state'] == 'blocked'
+
+
+def test_main_gui_operations_share_state_auth_and_review_gates(server):
+    server.state.token = 'shared-main-gui-test-token'
+    assert server.get('/api/operations/state')[0] == 401
+    auth = server.state.token
+    status, snapshot = server.get('/api/operations/state', token=auth)
+    assert status == 200 and snapshot['context']['enabled'] is False
+    assert server.get('/api/stats', token=auth)[0] == 200
+    status, job = server.post('/api/operations/action/create', {'task': 'Main GUI queue task'}, token=auth)
+    assert status == 200 and job['status'] == 'awaiting_approval'
+    assert server.state.workbench.studio.find('jarvis-job', job['id'])['task'] == 'Main GUI queue task'
+    assert server.post('/api/operations/action/review', {'id': job['id'], 'action': 'approve', 'confirmation': 'wrong'}, token=auth)[0] == 409
+    assert server.post('/api/operations/action/review', {'id': job['id'], 'action': 'cancel'}, token=auth)[0] == 200
+    status, meta = server.get('/api/countries', token=auth)
+    assert status == 200 and len(meta['items']) == 242
+    assert server.get('/api/weather?latitude=nan&longitude=0', token=auth)[0] == 409
+    assert server.get('/world/../../agents.yaml')[0] in {403, 404}
+
+
+def test_one_gui_cookie_covers_original_and_new_apis(server):
+    server.state.token = 'main-gui-session-token-' + 'x' * 32
+    opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor())
+    request = urllib.request.Request(server.base + '/api/session', data=b'{}',
+                                    headers={'X-Nexus-Token': server.state.token, 'Content-Type': 'application/json', 'Origin': server.base})
+    with opener.open(request) as response:
+        cookie = response.headers['Set-Cookie']
+        assert 'HttpOnly' in cookie and 'SameSite=Strict' in cookie
+        assert server.state.token not in cookie
+    for route in ('/api/stats', '/api/operations/state', '/api/countries', '/api/workbench/settings', '/api/workbench/configuration', '/api/workbench/world-settings', '/api/workbench/desktop'):
+        with opener.open(server.base + route) as response:
+            assert response.status == 200
+            # In-flight polling must not re-create a cookie after Forget login.
+            assert response.headers.get('Set-Cookie') is None
+    with opener.open(server.base + '/api/session') as response:
+        assert 'Max-Age=' in response.headers['Set-Cookie']
+    forged = urllib.request.Request(server.base + '/api/operations/state', headers={'Host': 'evil.invalid'})
+    with pytest.raises(urllib.error.HTTPError) as exc:
+        opener.open(forged)
+    assert exc.value.code == 403
+    cross = urllib.request.Request(server.base + '/api/operations/action/control', data=b'{"action":"start"}',
+                                  headers={'Origin': 'https://evil.invalid','Content-Type':'application/json'})
+    with pytest.raises(urllib.error.HTTPError) as exc:
+        opener.open(cross)
+    assert exc.value.code == 403
+    with opener.open(urllib.request.Request(server.base + '/api/session',data=b'{"forget":true}',headers={'Content-Type':'application/json'})) as response:
+        assert 'Max-Age=0' in response.headers['Set-Cookie']
+    with pytest.raises(urllib.error.HTTPError) as exc:
+        opener.open(server.base + '/api/operations/state')
+    assert exc.value.code == 401
+
+
+def test_gui_assets_embed_original_workflows_and_only_one_login(server):
+    _, html = server.get('/dashboard')
+    for identifier in ('taskInput', 'repo', 'world-widget', 'controls', 'approvals', 'diagnostics'):
+        assert identifier in html
+    assert 'Private HUD token' not in html and 'id="token"' not in html
+    assert server.get('/dashboard/operations.js')[0] == 200
+    assert server.get('/dashboard/gui.js')[0] == 200
+    assert server.get('/world/world.js')[0] == 200
+
+def test_world_rate_and_busy_budgets_do_not_starve_private_operations(server):
+    from nexus.gui_modules import GuiModules
+    modules = GuiModules(server.state)
+    modules.requests['world'].extend([time.monotonic()] * 120)
+    assert modules.call('GET', '/api/countries', {})[0] == 429
+    assert modules.call('GET', '/api/operations/state', {})[0] == 200
+    modules.requests['world'].clear()
+    for _ in range(3):
+        assert modules.slots['world'].acquire(blocking=False)
+    try:
+        assert modules.call('GET', '/api/countries', {})[0] == 429
+        assert modules.call('GET', '/api/operations/state', {})[0] == 200
+        assert modules._world is None
+        assert modules.operations().studio is server.state.workbench.studio
+    finally:
+        for _ in range(3):
+            modules.slots['world'].release()

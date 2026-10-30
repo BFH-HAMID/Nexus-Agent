@@ -23,7 +23,7 @@ from .sources import BINANCE, CRYPTO, GEOCODE, QUAKES, SOURCES, WEATHER
 ASSETS = Path(__file__).parent / 'assets'
 DEFAULT = {'schema': 1, 'enabled': True, 'language': 'en',
            'default_location': {'name': 'Dinajpur, Bangladesh', 'latitude': 25.63, 'longitude': 88.64},
-           'refresh': {'news': 600, 'crypto': 120, 'weather': 900, 'quakes': 300},
+           'weather_provider': 'weatherapi', 'refresh': {'news': 600, 'crypto': 120, 'weather': 900, 'quakes': 300},
            'sources': list(SOURCES), 'authorized_sources': [], 'layers': dict.fromkeys(('news', 'quakes', 'home', 'terminator', 'arcs'), True),
            'theme': {'accent': '#69d6ba', 'border': '#47bedd', 'atmosphere': '#278bdb'}}
 
@@ -86,6 +86,8 @@ def settings(root):
     if (not isinstance(cfg['sources'], list) or len(cfg['sources']) > len(SOURCES)
             or any(not isinstance(s, str) or s not in SOURCES for s in cfg['sources'])):
         raise ValueError('Select known feed IDs; arbitrary URLs are refused')
+    if cfg['weather_provider'] not in {'weatherapi', 'open-meteo'}:
+        raise ValueError('Choose WeatherAPI or explicit legacy Open-Meteo')
     cfg['sources'] = list(dict.fromkeys(cfg['sources']))
     if not isinstance(cfg['authorized_sources'], list) or any(not isinstance(s, str) or s not in SOURCES for s in cfg['authorized_sources']):
         raise ValueError('Invalid authorized source IDs')
@@ -119,7 +121,7 @@ class Cache:
         path = self.directory / 'public-cache.json'
         try:
             if path.stat().st_size < 8_000_000:
-                rows = json.loads(path.read_text())
+                rows = json.loads(path.read_text(encoding='utf-8'))
                 if isinstance(rows, dict):
                     self.rows = {k: v for k, v in list(rows.items())[:64] if isinstance(v, dict) and isinstance(v.get('at'), (int, float)) and 'data' in v}
         except (OSError, ValueError, TypeError):
@@ -168,7 +170,7 @@ class Matcher:
         for c in countries:
             names = [c['name'], c.get('bn')]
             names += {'USA': ['United States', 'USA', 'U.S.'], 'GBR': ['United Kingdom', 'Britain', 'UK'],
-                      'KOR': ['South Korea'], 'PRK': ['North Korea'], 'BGD': ['Bangladesh', 'বাংলাদেশ', 'Dinajpur', 'দিনাজপুর'],
+                      'KOR': ['South Korea'], 'PRK': ['North Korea'], 'BGD': ['Bangladesh', 'বাংলাদেশ', 'Dinajpur', 'দিনাজপুর', 'Dhaka', 'ঢাকা', 'চট্টগ্রাম', 'রাজশাহী', 'সিলেট', 'খুলনা', 'বরিশাল', 'রংপুর', 'ময়মনসিংহ'],
                       'RUS': ['Russia'], 'CHN': ['China']}.get(c['id'], [])
             self.patterns.append((c['id'], re.compile(r'(?<!\w)(?:' + '|'.join(re.escape(n) for n in names if n) + r')(?!\w)', re.I)))
 
@@ -203,9 +205,11 @@ def parse_feed(payload, source, matcher):
 
 
 class World:
-    def __init__(self, root, *, cache_dir=None, transport=None, clock=time.time, sleep=time.sleep):
+    def __init__(self, root, *, cache_dir=None, transport=None, clock=time.time, sleep=time.sleep, weather_key=None):
+        from .weatherapi import credential
+        self.weather_key = weather_key or (lambda: credential(Path(root)))
         self.config = settings(root)
-        self.countries = json.loads((ASSETS / 'countries.json').read_text())
+        self.countries = json.loads((ASSETS / 'countries.json').read_text(encoding='utf-8'))
         self.matcher = Matcher(self.countries)
         if cache_dir is None:
             from ...config import nexus_home
@@ -283,15 +287,23 @@ class World:
         lon = self.config['default_location']['longitude'] if lon is None else lon
         coordinates(lat, lon)
         lat, lon = round(lat, 2), round(lon, 2)
+        provider = self.config['weather_provider']
+        if provider == 'weatherapi' and not self.weather_key():
+            return {'provider': 'WeatherAPI.com', 'status': 'configuration-required', 'data': None, 'at': None, 'offline': True, 'stale': False}
         def load():
             params = {'latitude': lat, 'longitude': lon, 'timezone': 'auto', 'forecast_days': 7, 'timeformat': 'unixtime',
                       'current': 'temperature_2m,apparent_temperature,relative_humidity_2m,wind_speed_10m,precipitation,weather_code,is_day',
                       'hourly': 'temperature_2m,precipitation_probability,precipitation,weather_code',
                       'daily': 'temperature_2m_max,temperature_2m_min,weather_code,sunrise,sunset,uv_index_max,precipitation_sum,precipitation_probability_max,wind_speed_10m_max'}
-            data = self.fetch(WEATHER, params, json_data=True)
+            if provider == 'weatherapi':
+                from .weatherapi import FORECAST, normalize
+                data = normalize(self.fetch(FORECAST, {'key': self.weather_key(), 'q': f'{lat},{lon}', 'days': 3, 'aqi': 'no', 'alerts': 'no'}, json_data=True))
+            else:
+                data = self.fetch(WEATHER, params, json_data=True)
+                data.update(provider='Open-Meteo', provider_url='https://open-meteo.com/')
             if not isinstance(data.get('current'), dict) or not isinstance(data.get('daily'), dict) or not isinstance(data.get('hourly'), dict):
                 raise ValueError('Invalid weather')
-            allowed = ('current', 'current_units', 'hourly', 'hourly_units', 'daily', 'daily_units', 'timezone', 'utc_offset_seconds')
+            allowed = ('current', 'current_units', 'hourly', 'hourly_units', 'daily', 'daily_units', 'timezone', 'utc_offset_seconds', 'provider', 'provider_url', 'forecast_days')
             result = {k: data.get(k) for k in allowed}
             daily = data['daily']
             alerts = []
@@ -303,12 +315,24 @@ class World:
                 alerts.append('Thunderstorm forecast')
             result.update(alerts=alerts, latitude=lat, longitude=lon, alert_notice='Local threshold advisory, NOT an official warning')
             return result
-        return self.cache.get(f'weather:{lat}:{lon}', self.config['refresh']['weather'], load)
+        return self.cache.get(f'weather:{provider}:{lat}:{lon}', self.config['refresh']['weather'], load)
 
     def cities(self, name):
         name = text(name, 80)
         if len(name) < 2:
             raise ValueError('Enter at least two characters')
+        if self.config['weather_provider'] == 'weatherapi':
+            from .weatherapi import SEARCH
+            if not self.weather_key():
+                return {'status': 'configuration-required', 'at': None, 'data': None, 'offline': True, 'stale': False}
+            def search():
+                rows = self.fetch(SEARCH, {'key': self.weather_key(), 'q': name}, json_data=True)
+                result = []
+                for row in rows[:5]:
+                    coordinates(row['lat'], row['lon'])
+                    result.append({'name': text(row['name'] + ', ' + row['country'], 100), 'latitude': row['lat'], 'longitude': row['lon']})
+                return result
+            return self.cache.get('city:weatherapi:' + name.casefold(), 86400, search)
         def load():
             data = self.fetch(GEOCODE, {'name': name, 'count': 5, 'language': self.config['language'], 'format': 'json'}, json_data=True)
             result = []

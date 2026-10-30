@@ -72,7 +72,7 @@ async function setup({demo = false, restore = false, width = 1568, height = 770}
     else if (path === '/api/brain') body = {skills: {}, sessions: {}, memory: {}, learning: {enabled: false}};
     await route.fulfill({status, json: body});
   });
-  await page.goto(base + '/dashboard');
+  await page.goto(base + '/dashboard#run');
   await page.waitForFunction(() => document.querySelector('#liveNotice').textContent !== 'Connecting to live server…');
   return {page, context, errors, requests, setFailure: (which, value) => {if (which === 'approval') failApproval = value; if (which === 'cancel') failCancel = value; if (which === 'recall') failRecall = value;}};
 }
@@ -758,4 +758,40 @@ test('Selected repo prompt, task branch, PR and merge need only approval, includ
     assert.ok(calls.filter(c=>c.path==='execute').every(c=>c.body.approved===true&&!('confirm' in c.body)));
     assert.deepEqual(errors,[]);
   }finally{await context.close();}
+});
+
+test('GitHub can be deselected, stays off after reload and new tasks have no remote repository',async()=>{
+ const {page,context,requests,errors}=await setup();
+ try{
+  await page.waitForFunction(()=>document.querySelector('#repoBranch').textContent.includes('feature-test'));
+  await page.selectOption('#repoSelect','');
+  assert.equal(await page.locator('#repoConnection').innerText(),'Connect GitHub');
+  assert.equal(await page.evaluate(()=>window.nexusGitHubRepository()),null);
+  assert.equal(await page.locator('#repoBar [data-repo-action="create-pr"]').isEnabled(),false);
+  assert.match(await page.locator('#taskWorkspace').innerText(),/no GitHub repository attached/);
+  requests.length=0;await page.reload();await page.waitForFunction(()=>document.querySelector('#metaUplink').textContent==='online');
+  assert.equal(await page.locator('#repoConnection').innerText(),'Connect GitHub');assert.equal(await page.locator('#repoSelect').inputValue(),'');
+  assert.equal(requests.some(r=>r.path.startsWith('/api/workbench/repository/')),false);
+  await start(page);assert.equal(requests.find(r=>r.path==='/api/task').payload.github_repo,undefined);
+  assert.deepEqual(errors,[]);
+ }finally{await context.close();}
+});
+
+test('explicit GitHub off rejects late inventory results and reconnect does not auto-attach a repo',async()=>{
+ const {page,context,errors}=await setup();let release;
+ try{
+  await page.waitForFunction(()=>document.querySelector('#repoBranch').textContent.includes('feature-test'));
+  await page.route('**/api/workbench/repository/list*',route=>new Promise(resolve=>{release=async()=>{await route.fulfill({json:{data:[{id:'repo-fixture',name:'Nexus fixture',agent_workspace:true}]}});resolve();};}));
+  await page.locator('#repoMore').click();await page.locator('#repoRefresh').click();await page.waitForFunction(()=>true);
+  assert.ok(release,'Inventory request must be in flight before detaching');
+  await page.locator('#repoConnection').click();await release();await page.waitForTimeout(100);
+  assert.equal(await page.locator('#repoSelect').inputValue(),'');assert.equal(await page.evaluate(()=>window.nexusGitHubRepository()),null);
+  await page.unroute('**/api/workbench/repository/list*');await page.locator('#repoConnection').click();
+  await page.waitForFunction(()=>document.querySelector('#repoSelect').options.length>1);
+  assert.equal(await page.locator('#repoSelect').inputValue(),'');
+  await page.reload();await page.waitForFunction(()=>document.querySelector('#repoSelect').options.length>1);
+  assert.equal(await page.locator('#repoSelect').inputValue(),'','Reconnecting without selection must remain unattached after reload');
+  await page.selectOption('#repoSelect','repo-fixture');await page.waitForFunction(()=>document.querySelector('#repoBranch').textContent.includes('feature-test'));
+  assert.equal(await page.evaluate(()=>window.nexusGitHubRepository()),'repo-fixture');assert.deepEqual(errors,[]);
+ }finally{await context.close();}
 });

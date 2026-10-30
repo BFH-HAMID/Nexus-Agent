@@ -1,37 +1,28 @@
-# Module 7 — World observatory inside the existing HUD
+# World, news and weather — original Nexus GUI
 
-A public-information component of `nexus.hud.app.create_app`, **not a second app**.
-It uses the existing fonts, panel spacing, cyan/blue borders, controls, bearer-token
-boundary and WebSocket. No account/API keys, paid SDK, CDN, location permission,
-model inference, trading, agent task or background daemon is required.
+A native **World, news & weather** tab inside the original `nexus gui` dashboard,
+not a separate HUD, console, iframe or application. It shares the original server,
+workspace and GUI session. Original chat, models, repository controls and settings
+remain in the same interface. WeatherAPI.com requires an account/API key; no paid SDK, CDN,
+location permission, model inference, trading or extra daemon is required.
 
 **Internet is necessary for the first public-feed fetch.** Offline operation means
 bundled maps plus previously fetched data, never invented headlines/quotes/weather.
-The existing **local HUD access token** is still required to protect operations;
-it is not an API key. Default launch binds only to `127.0.0.1`. Do not expose your
-operations HUD publicly. Sandbox preview uses explicit `0.0.0.0` and an exact
-preview-host allowlist only because the browser is outside the sandbox.
 
 ## Start (PowerShell)
 
 ```powershell
-python -m pip install -e ".[hud]"
-# If you already have a private NEXUS_HUD_TOKEN, keep using it.
-# Otherwise generate a local-only access token without an account/API key:
-$bytes = New-Object byte[] 32
-$rng = [Security.Cryptography.RandomNumberGenerator]::Create()
-$rng.GetBytes($bytes)
-$rng.Dispose()
-$env:NEXUS_HUD_TOKEN = [BitConverter]::ToString($bytes).Replace('-', '').ToLower()
-# Paste this local token into the existing HUD Connect field; never into a task.
-$env:NEXUS_HUD_TOKEN | Set-Clipboard
-nexus hud -C .
+python -m pip install -e .
+nexus gui -C .
 ```
 
-Open `http://127.0.0.1:8790` (the existing `hud.yaml` default). Choose another port
-in `hud.yaml` if necessary; this does not replace the separate legacy `nexus serve`
-command. The development preview for this change is on **8787**. No execution
-policy changes, native service install or cloud screenshot consent is needed.
+Open **http://127.0.0.1:8787/dashboard**, then **World, news & weather**.
+Do not start a separate HUD server. `widget.yaml` controls public sources;
+`hud.yaml` no longer selects the GUI port. Use `nexus gui --port` if necessary.
+Optional token/native-vault/browser remembering is documented in [GUI setup](gui.md).
+No execution-policy changes, native service installation or cloud screenshots
+are required. Scroll the page normally; explicitly enable globe interaction for
+map zoom/rotation. The SVG fallback works without WebGL.
 
 ## What works
 
@@ -71,18 +62,50 @@ policy changes, native service install or cloud screenshot consent is needed.
 - CoinGecko public BTC/ETH/SOL/BNB/XRP/DOGE quotes with change/sparkline; Binance
   public fallback explicitly labels **USDT**, not USD. Fallback sparklines contain
   only locally observed samples (one sample is not a fabricated history).
-- Open-Meteo current/feels-like temperature, humidity, wind, rain/chance, daily-max
-  UV, sunrise/sunset, 24 future hourly temperatures and seven forecast days.
+- **WeatherAPI.com** current/feels-like temperature, humidity, wind, rain/chance,
+  daily-max UV, sunrise/sunset and up to 24 available future hourly temperatures.
+  Requests **three forecast days**, displays the actual number returned by your
+  plan, and never invents a seven-day forecast.
   Country focus requests its bundled capital; city search requests geocoding.
   Favorites are explicit opt-in browser-local storage, maximum eight, removable;
   tokens and headlines are never stored there. Locations/queries are sent to
-  Open-Meteo; nothing silently reads the user's physical location.
+  the selected provider; nothing silently reads the user's physical location.
 - Threshold banners: >=50 mm/day rain, >=40 C daily maximum, WMO 95/96/99 storms
   in the forecast. **Advisory thresholds, not official severe-weather warnings.**
 
+## Native RSS and WeatherAPI setup
+
+Open **World, news & weather → News & weather settings**, or **Settings → News &
+weather**. Select the Bangladesh publishers, language and **WeatherAPI.com**.
+Paste your key into the password field **in this GUI, never chat**, review and
+confirm `SAVE NEWS AND WEATHER`. A key remains in server-session memory unless
+you explicitly select native OS-vault persistence. Install the optional keyring
+support for that option; an unavailable/locked vault fails closed, with **no
+plaintext fallback**. Environment configuration (`WEATHERAPI_KEY`) is also supported.
+Resolution is **GUI session → environment → native vault**. The settings response
+contains only key presence/source, never its value. Password inputs clear on save,
+cancel/close or reload; no key goes into YAML, browser storage, weather responses
+or cache files. Query keys are redacted from HTTP client logging.
+
+Without a key, weather/city lookup reports `configuration-required` **before any
+provider request**. Forecast/auth/quota/network failures remain unavailable or
+explicitly stale. There is **no silent Open-Meteo fallback**. To use that legacy
+provider, select it explicitly and review its terms. Clearing the GUI session key
+does not erase an environment/vault key or revoke a provider credential; remove
+those through their respective environment/OS/provider controls. Session keys are
+lost on server restart. Keys are workspace-scoped in the native vault.
+
+Nonsecret settings use revision checks, existing schema validation and atomic YAML
+replacement. These saves cannot enable context collection or approve agent work.
+The same authenticated GUI/session protects the settings API; API routes remain
+`/api/workbench/world-settings` (GET/POST). Public weather endpoints do not accept
+keys or arbitrary upstream URLs. Credentials travel only backend-to-WeatherAPI
+using HTTPS; browsers use same-origin Nexus endpoints.
+
 ## Backend and configuration
 
-`widget.yaml` is read at HUD startup; restart/reload after edits. It enables known
+`widget.yaml` is read when the GUI World module initializes; native settings saves
+invalidate that module automatically. Restart after manual file edits. It enables known
 source IDs, language, default coordinates, layer defaults, hex theme colors and
 TTL values. Unknown URLs/IDs, invalid coordinates and aggressive refresh values
 are refused. `authorized_sources` is operator attestation of permission, **not** a
@@ -93,16 +116,16 @@ license issued by this application.
 | `/api/countries` | Bundled metadata and validated config, no network |
 | `/api/news` | Curated RSS/Atom via feedparser; each source 600s minimum |
 | `/api/crypto` | CoinGecko, Binance fallback; 120s minimum |
-| `/api/weather?latitude=25.63&longitude=88.64` | Open-Meteo; 900s minimum, coordinates rounded to .01 degree |
+| `/api/weather?latitude=25.63&longitude=88.64` | Selected provider (default WeatherAPI); 900s minimum, provider-separated cache, coordinates rounded to .01 degree |
 | `/api/quakes` | USGS all-day GeoJSON; 300s minimum |
-| `/api/cities?q=Dhaka` | Fixed Open-Meteo geocoding endpoint; 24h cache |
+| `/api/cities?q=Dhaka` | Selected provider city search; 24h cache |
 
 HTTP fetches run off the ASGI loop with **separate public-data slots**, so a slow
 feed cannot consume the operation/snapshot slots. Five news workers isolate failed
 sources. Per-request connect/read timeouts are 3/5 seconds, body limit 3 MB,
 maximum two attempts with backoff for network/5xx failures; no retry of 429/4xx or
 redirects. There is also a process-wide public-fetch budget of 24/minute and
-5,000/day. Existing HUD auth/origin/request limits still apply.
+5,000/day. Shared GUI auth/origin/request limits still apply.
 
 Cache misses for the same key coalesce. Last-good snapshots persist atomically in
 `NEXUS_HOME/world/<workspace-hash>/public-cache.json`, not the learning DB: 64 entries,
@@ -130,12 +153,12 @@ credentials or shell commands. Ambient proxy/authorization/cookies are not forwa
 Feed text is never passed into agent prompts, delegation, tools, approvals or learning.
 No assertion that sanitization makes external reporting true or makes it an instruction.
 
-## Publisher terms / attribution — reviewed 2026-10-29
+## Publisher terms / attribution — review notes updated 2026-10-30
 
 **A publicly reachable RSS URL is not a blanket redistribution license.** This is a
 private personal reader; excerpts/links retain attribution. No full-article scraper,
 commercial republication, AI training/grounding or bulk export is supplied. Do not
-publish this HUD or resell feeds without checking current source permissions.
+publish this GUI or resell feeds without checking current source permissions.
 Source availability/terms can change; blocked feeds remain isolated/offline.
 
 | Source | Terms link / review note |
@@ -153,13 +176,28 @@ Source availability/terms can change; blocked feeds remain isolated/offline.
 | BleepingComputer | [Terms](https://www.bleepingcomputer.com/terms-of-use/); copyrighted reporting, no commercial grant assumed. |
 | Krebs on Security | [About/rights contact](https://krebsonsecurity.com/about/); RSS is not permission to reproduce full articles. |
 
+The Bangladesh catalog also includes Daily Star, bdnews24, Banglanews24, Dhaka
+Tribune, Jugantor and JagoNews24; native settings and per-source status expose
+publisher/rights links. Some point to the publisher homepage rather than verified
+terms; operators must find and review their current permissions. Fixed URLs were
+sourced from the [awesome-rss-feeds catalog](https://github.com/plenaryapp/awesome-rss-feeds)
+and secondary feed-discovery listings, **not live-validated here or certified for redistribution**. Prothom
+Alo and BBC Bangla complete the eight Bangladesh sources selected in the shipped
+`widget.yaml`. An existing workspace without that file retains the general catalog
+until you select publishers in settings. Bangladesh is the default news tab.
+
 Review limitation: current BBC/Guardian/Cointelegraph wording and Open-Meteo free-use
 restriction were confirmed from indexed public material. Not every other publisher's
 current full terms could be independently retrieved in this network-restricted
 sandbox. Their links are recorded for operator review, **not falsely certified as
 approved**. Remove any source from `sources` if its terms do not cover your use.
 
-**Open-Meteo free API access is for non-commercial use.** Data attribution is required;
+WeatherAPI.com requires your own account/key and appropriate plan; check its
+[terms](https://www.weatherapi.com/terms.aspx). Attribution follows the selected
+provider and stale/error states remain visible. No real WeatherAPI credential or
+live RSS response was available for this sandbox validation.
+
+**Legacy Open-Meteo free API access is for non-commercial use.** Data attribution is required;
 see official project/access terms [1](https://github.com/open-meteo/open-meteo) and
 [API terms](https://open-meteo.com/en/terms). Free API access and the CC BY 4.0 data
 license are different things; a commercial deployment requires an appropriate plan.
@@ -201,41 +239,21 @@ No texture or population data is generated by AI.
 
 ## Tests, screenshots and demo
 
-```powershell
-python -m pip install -e ".[dev,computer,context]"
-python -m pytest tests/test_world_widget.py tests/test_hud.py -q
-python -m pytest -q
-npm ci --prefix tests/browser
-# Start the real HUD first; use its private local token, not an account key.
-$env:NEXUS_WORLD_TEST_URL = 'http://127.0.0.1:8790'
-$env:NEXUS_WORLD_TEST_TOKEN = $env:NEXUS_HUD_TOKEN
-cd tests/browser
-node --test world.test.mjs
-```
+See [GUI verification](gui.md#verification) for the original-dashboard browser
+regression and actual-server unified integration tests. Core public-source tests:
+`python -m pytest tests/test_world_widget.py -q`. Internal legacy adapter browser
+fixtures remain compatibility tests, not a different dashboard launch workflow.
 
-Browser tests require a local Chromium installation (`CHROMIUM_EXECUTABLE_PATH`) or
-the installed bundled Chromium, plus OS libraries. They use **explicit test-only**
-HTTP feed/forecast fixtures, real auth/Three/WebGL/SVG, and fresh browser contexts;
-no fixture news, prices or weather are seeded into the shipped app/database.
+The screenshots show the **actual main GUI in the network-restricted sandbox**:
+external publisher/forecast requests cannot be certified here. Empty/offline data
+is genuine, not fabricated current news, prices or forecasts.
 
-Verified: **27 dedicated Python widget tests**, **53 widget/HUD focused tests**,
-**1,259 full Python tests passed with no skips**, **5 real widget browser tests**;
-Ruff and local npm build passed. Existing HUD browser regression: **5 passed**, its
-optional trace-fixture case skipped because no trace ID was supplied (not counted
-as a pass). Live publisher/API availability and 60 FPS hardware performance are
-not certified by these scripted tests.
+![World tab in the original GUI](images/gui-world.png)
+![Actual narrow main GUI](images/gui-mobile.png)
 
-Actual application screenshots below show the **genuine network-restricted offline
-state**, not fabricated current news/prices/forecasts:
-
-![Actual desktop WebGL offline HUD](images/world-desktop-offline.png)
-![Actual SVG fallback with Bengali labels](images/world-svg-bangla-offline.png)
-![Actual narrow SVG layout](images/world-mobile-offline.png)
-
-Demo: Connect → search Bangladesh → hover/click → observe capital/year/time → toggle
-বাংলা → Home → toggle quakes/news/terminator → zoom/reset → full-screen → 2D/3D →
-choose a news tab/country → city search → save/remove favorite. On an unrestricted
-network, wait for first fetch, inspect source timestamps, then disconnect network:
-last-good entries remain labelled offline. With an empty cache, empty panels are
-correct. Test reduced motion via OS/browser preferences and background the tab to
-verify animation/polling pause. Do not represent the screenshots as live data.
+Demo: `nexus gui` → World tab → search Bangladesh → select → inspect capital/year/
+time → বাংলা → Home → toggle layers → zoom/reset → 2D/3D. To use weather, choose a
+country with capital coordinates or search a city. On an unrestricted network,
+inspect source timestamps after first fetch, then disconnect: last-good entries
+remain labelled offline. Empty-cache panels remain empty. Hardware FPS and current
+publisher/API availability are not certified by scripted tests.

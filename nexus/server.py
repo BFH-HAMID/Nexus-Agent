@@ -1,7 +1,9 @@
 """Local HTTP + SSE server.
 
-This is the bridge for Phase 5 (VS Code sidebar) and for the zero-install
-browser panel: both load ``/panel`` and talk to the same tiny JSON/SSE API.
+The original ``/dashboard`` hosts chat, repository/model controls, native
+operations and public World modules on one shared server and identity. Legacy
+``/panel``, ``/console`` and ``/hud`` entry points redirect here; VS Code API
+consumers retain their existing JSON/SSE endpoints.
 
 Endpoints
 ---------
@@ -38,7 +40,7 @@ from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
-from urllib.parse import parse_qs, unquote, urlencode, urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 
 from . import __version__
 from .agent import NexusAgent
@@ -118,6 +120,8 @@ class ServerState:
         self.lock = threading.RLock()
         self.config = load_config(self.workspace)
         self.started = time.time()
+        from .gui_modules import GuiModules
+        self.gui = GuiModules(self)
         self.task_queue: list[str] = []
         self.active_task: str | None = None
         self.queue_paused = False
@@ -499,8 +503,9 @@ def make_handler(state: ServerState):
 
         # -- plumbing ------------------------------------------------------ #
         def log_message(self, fmt: str, *args: Any) -> None:  # noqa: A003
+            # Requests may contain legacy query credentials; never log their URLs.
             if not state.quiet:
-                super().log_message(fmt, *args)
+                pass
 
         def handle_one_request(self) -> None:
             """Swallow the disconnect noise an SSE client leaves behind."""
@@ -512,21 +517,55 @@ def make_handler(state: ServerState):
         def handle_error(self, *args: Any) -> None:  # pragma: no cover
             pass
 
+        def _origin_ok(self):
+            host = self.headers.get('Host', '')
+            try:
+                import re
+                if not re.fullmatch(r'(?:[A-Za-z0-9.-]+|\[[A-Fa-f0-9:]+\])(?::[0-9]+)?', host):
+                    return False
+                parsed_host = urlparse('http://' + host)
+                if parsed_host.port is not None and not 1 <= parsed_host.port <= 65535:
+                    return False
+                hostname = parsed_host.hostname
+                allowed = {'localhost', '127.0.0.1', '::1', str(self.server.server_address[0])}
+                allowed.update(x.strip() for x in os.environ.get('NEXUS_ALLOWED_HOSTS', '').split(',') if x.strip())
+                origin = self.headers.get('Origin')
+                return hostname in allowed and (origin is None or origin in {'http://' + host, 'https://' + host})
+            except ValueError:
+                return False
+
         def _authorized(self) -> bool:
             if not state.token:
                 return True
-            provided = self.headers.get("X-Nexus-Token", "")
-            if not provided:
-                query = parse_qs(urlparse(self.path).query)
-                provided = (query.get("token") or [""])[0]
-            return provided == state.token
+            from .gui_session import valid
+            provided = self.headers.get('X-Nexus-Token', '')
+            if provided:
+                import hmac
+                return hmac.compare_digest(provided.encode(), state.token.encode())
+            query = parse_qs(urlparse(self.path).query)
+            provided = (query.get('token') or [''])[0]  # Compatibility for existing API clients.
+            if provided:
+                import hmac
+                return hmac.compare_digest(provided.encode(), state.token.encode())
+            return valid(state, self.headers.get('Host', ''), self.headers.get('Cookie', ''))
 
         def _send_json(self, payload: Any, status: int = 200) -> None:
             body = json.dumps(payload, ensure_ascii=False, default=str).encode("utf-8")
             self.send_response(status)
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.send_header("Content-Length", str(len(body)))
-            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Referrer-Policy", "no-referrer")
+            from .gui_session import renew, valid
+            if (self.command == 'GET' and urlparse(self.path).path == '/api/session'
+                    and not getattr(self, '_session_cookie', None) and status == 200
+                    and valid(state, self.headers.get('Host', ''), self.headers.get('Cookie', ''))):
+                self._session_cookie = renew(state, self.headers.get('Host', ''), self.headers.get('Cookie', ''))
+            if getattr(self, '_session_cookie', None):
+                secure = '; Secure' if os.environ.get('NEXUS_GUI_HTTPS_PROXY') == '1' else ''
+                self.send_header('Set-Cookie', self._session_cookie + secure)
+                self._session_cookie = None
+            self.send_header('X-Content-Type-Options', 'nosniff')
+            self.send_header('Cache-Control', 'no-store')
             self.end_headers()
             self.wfile.write(body)
 
@@ -535,7 +574,13 @@ def make_handler(state: ServerState):
             self.send_header("Content-Type", content_type)
             self.send_header("Content-Length", str(len(body)))
             self.send_header("Cache-Control", "no-store")
-            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Referrer-Policy", "no-referrer")
+            if getattr(self, '_session_cookie', None):
+                secure = '; Secure' if os.environ.get('NEXUS_GUI_HTTPS_PROXY') == '1' else ''
+                self.send_header('Set-Cookie', self._session_cookie + secure)
+                self._session_cookie = None
+            self.send_header('X-Content-Type-Options', 'nosniff')
+            self.send_header('Cache-Control', 'no-store')
             self.end_headers()
             self.wfile.write(body)
 
@@ -552,7 +597,7 @@ def make_handler(state: ServerState):
 
         def do_OPTIONS(self) -> None:  # noqa: N802
             self.send_response(204)
-            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Referrer-Policy", "no-referrer")
             self.send_header("Access-Control-Allow-Headers", "Content-Type, X-Nexus-Token")
             self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
             self.send_header("Content-Length", "0")
@@ -564,20 +609,38 @@ def make_handler(state: ServerState):
             """UI files carry no data - the browser must be able to load them
             before it knows the token (the token lives in the page's query string)."""
             return (
-                path == "/"
-                or path in {"/dashboard", "/gui", "/panel", "/console"}
+                path == "/" or path.startswith("/world/")
+                or path in {"/dashboard", "/gui", "/panel", "/console", "/hud"}
                 or path.startswith(("/dashboard/", "/gui/", "/panel/", "/console/"))
             )
 
         def do_GET(self) -> None:  # noqa: N802
             parsed = urlparse(self.path)
             path = parsed.path.rstrip("/") or "/"
+            if not self._origin_ok():
+                return self._send_json({'error': 'Host/origin refused'}, 403)
             if not self._authorized() and not self._public_asset(path):
                 return self._send_json({"error": "invalid or missing token"}, 401)
 
             if path == "/":
                 return self._redirect("/dashboard" + ("?" + parsed.query if parsed.query else ""))
 
+            if path == '/api/session':
+                return self._send_json({'authenticated': True, 'required': bool(state.token)})
+            from .gui_modules import module_path
+            if module_path(path):
+                status, data = state.gui.call('GET', path, parse_qs(parsed.query))
+                return self._send_json(data, status)
+            if path.startswith('/world/'):
+                from .hud.world.core import ASSETS
+                name = path.removeprefix('/world/')
+                permitted = {'world.js', 'world.js.LEGAL.txt', 'world.css', 'world.vendor.css', 'THIRD-PARTY.txt',
+                             'NotoSansBengali-Regular.ttf', 'OFL-Bengali.txt', 'countries-detail.geojson',
+                             'countries-low.geojson', 'earth-night.jpg', 'provenance.json'}
+                if name not in permitted:
+                    return self._send_json({'error': 'Unknown asset'}, 404)
+                types = {'.ttf': 'font/ttf', '.geojson': 'application/geo+json', '.txt': 'text/plain; charset=utf-8'}
+                return self._send_bytes((ASSETS / name).read_bytes(), types.get(Path(name).suffix, STATIC_TYPES.get(Path(name).suffix, 'application/octet-stream')))
             if path in {"/health", "/api/health"}:
                 cfg = state.config
                 return self._send_json({
@@ -675,24 +738,45 @@ def make_handler(state: ServerState):
             if path.startswith("/gui/"):
                 return self._static_asset(path[len("/gui/") :])
 
-            # -- the cinematic simulation console (single self-contained file) -- #
-            if path in {"/console", "/console/"}:
-                return self._static("index.html", STATIC_TYPES[".html"])
-            if path.startswith("/console/"):
-                return self._static_asset(path[len("/console/") :])
-
-            # -- the compact panel (VS Code webview) --------------------- #
-            if path in {"/panel", "/panel/"}:
-                return self._static("panel.html", "text/html; charset=utf-8")
-            if path.startswith("/panel/"):
-                return self._static_asset(path[len("/panel/") :])
+            # Old UI URLs are aliases, not additional dashboards.
+            if path in {'/panel', '/console', '/hud', '/console/index.html', '/panel/index.html', '/panel/panel.html'}:
+                return self._redirect('/dashboard')
+            if path.startswith(('/panel/', '/console/')):
+                return self._static_asset(path.split('/', 2)[-1])
             return self._send_json({"error": f"no route for {path}"}, 404)
 
         def do_POST(self) -> None:  # noqa: N802
             parsed = urlparse(self.path)
             path = parsed.path.rstrip("/") or "/"
+            if not self._origin_ok():
+                return self._send_json({'error': 'Host/origin refused'}, 403)
             if not self._authorized():
                 return self._send_json({"error": "invalid or missing token"}, 401)
+            if path == '/api/session':
+                from .gui_session import forget, issue
+                payload = self._read_json()
+                if payload.get('forget'):
+                    self._session_cookie = forget()
+                elif state.token:
+                    host = self.headers.get('Host', '')
+                    if urlparse('http://' + host).hostname not in {'localhost', '127.0.0.1', '::1'} and os.environ.get('NEXUS_GUI_HTTPS_PROXY') != '1':
+                        return self._send_json({'error': 'Remember login requires loopback; use an authenticated private proxy remotely'}, 403)
+                    remember = payload.get('remember', True)
+                    if type(remember) is not bool:
+                        return self._send_json({'error': 'remember must be boolean'}, 400)
+                    self._session_cookie = issue(state, host, remember=remember)
+                return self._send_json({'authenticated': not payload.get('forget')})
+            from .gui_modules import module_path
+            if module_path(path):
+                try:
+                    length = int(self.headers.get('Content-Length', '0'))
+                    if not 0 < length <= 16000 or self.headers.get('Transfer-Encoding'):
+                        return self._send_json({'error': 'Bounded JSON body required'}, 413)
+                    payload = json.loads(self.rfile.read(length))
+                except (ValueError, json.JSONDecodeError):
+                    return self._send_json({'error': 'Invalid JSON'}, 400)
+                status, data = state.gui.call('POST', path, parse_qs(parsed.query), payload)
+                return self._send_json(data, status)
             payload = self._read_json()
 
             if path.startswith("/api/workbench/"):
@@ -806,11 +890,13 @@ def make_handler(state: ServerState):
             self.send_response(302)
             self.send_header("Location", location)
             self.send_header("Content-Length", "0")
-            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Referrer-Policy", "no-referrer")
             self.end_headers()
 
         def _static_asset(self, name: str) -> None:
             """Serve an asset from nexus/panel/ with the right content type."""
+            if name == 'operations.js':
+                return self._send_bytes((Path(__file__).parent / 'hud/assets/hud.js').read_bytes(), 'text/javascript')
             clean = name.split("?", 1)[0].lstrip("/")
             suffix = Path(clean).suffix.lower()
             ctype = STATIC_TYPES.get(suffix, "application/octet-stream")
@@ -822,6 +908,8 @@ def make_handler(state: ServerState):
                 target.relative_to(PANEL_DIR.resolve())
             except ValueError:
                 return self._send_json({"error": "forbidden"}, 403)
+            if target.suffix.lower() == '.html' and target.name != 'dashboard.html':
+                return self._redirect('/dashboard')
             if not target.is_file():
                 return self._send_json({"error": f"missing panel asset {name}"}, 404)
             self._send_bytes(target.read_bytes(), content_type)
@@ -835,7 +923,7 @@ def make_handler(state: ServerState):
             self.send_header("Cache-Control", "no-cache, no-transform")
             self.close_connection = True
             self.send_header("Connection", "close")
-            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Referrer-Policy", "no-referrer")
             self.send_header("X-Accel-Buffering", "no")
             self.end_headers()
 
@@ -880,6 +968,8 @@ def serve(*, host: str = "127.0.0.1", port: int = 8787, workspace: Path | None =
           open_panel: bool = False) -> int:
     ws = Path(workspace or Path.cwd()).resolve()
     state = ServerState(ws, token=token, auto_yes=auto_yes, quiet=quiet, demo=demo)
+    if host in {"0.0.0.0", "::"} and not state.token:
+        raise ValueError("Exposing the GUI requires NEXUS_SERVE_TOKEN; configure exact NEXUS_ALLOWED_HOSTS too")
     httpd = ThreadingHTTPServer((host, port), make_handler(state))
     httpd.daemon_threads = True
     bound_host = "0.0.0.0" if host in {"0.0.0.0", "::"} else host
@@ -890,8 +980,7 @@ def serve(*, host: str = "127.0.0.1", port: int = 8787, workspace: Path | None =
         )
     print(f"nexus server {__version__} on http://{host}:{port}  (workspace {ws})")
     print(f"  dashboard  http://{host}:{port}/dashboard   <- the GUI")
-    print(f"  console    http://{host}:{port}/console     <- read-only registry view")
-    print(f"  panel      http://{host}:{port}/panel       (compact / VS Code)")
+    print("  operations, approvals, models, repositories and world/weather share this GUI")
     print(f"  health     http://{host}:{port}/health")
     print(f"  roles      {len(state.config.roles)} | agents {sorted(state.config.agents)}")
     if state.demo:
@@ -902,8 +991,7 @@ def serve(*, host: str = "127.0.0.1", port: int = 8787, workspace: Path | None =
         try:
             import webbrowser
 
-            query = "?" + urlencode({"token": state.token}) if state.token else ""
-            webbrowser.open(f"http://{'127.0.0.1' if host == '0.0.0.0' else host}:{port}/dashboard{query}")
+            webbrowser.open(f"http://{'127.0.0.1' if host == '0.0.0.0' else host}:{port}/dashboard")
         except Exception:  # noqa: BLE001
             pass
     import signal
@@ -917,6 +1005,8 @@ def serve(*, host: str = "127.0.0.1", port: int = 8787, workspace: Path | None =
     except KeyboardInterrupt:
         print("\nshutting down")
     finally:
+        if getattr(state, "telegram_runtime", None):
+            state.telegram_runtime.stop(timeout=2)
         with state.lock:
             sessions = list(state.sessions.values())
         for session in sessions:

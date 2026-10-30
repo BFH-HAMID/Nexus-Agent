@@ -513,7 +513,27 @@ class Workbench:
             raise ValueError("Unknown run mode")
         return options
 
+    def configuration(self, payload=None):
+        import yaml
+
+        from .config import ConfigError
+        from .gui_config import Configuration
+        try:
+            service = Configuration(self)
+            return observation(service.snapshot() if payload is None else service.save(payload),
+                               "existing workspace YAML configuration")
+        except (yaml.YAMLError, ConfigError):
+            raise ValueError("Configuration YAML is invalid; inspect it locally. File contents and keys are not exposed.") from None
+
     def get(self, path: str, query: dict) -> Any:
+        if path == "desktop":
+            from .gui_desktop import dispatch
+            return observation(dispatch(self.state), "reviewed desktop setup; no collection or external activation")
+        if path == "world-settings":
+            from .gui_world_settings import view
+            return observation(view(self.state), "workspace World settings; no secret values")
+        if path == "configuration":
+            return self.configuration()
         if path.startswith("repository/"):
             return self.repositories.get(path[11:], query)
         if path.startswith("studio/"):
@@ -566,6 +586,14 @@ class Workbench:
         raise ValueError("Unknown workbench endpoint")
 
     def post(self, path: str, payload: dict) -> Any:
+        if path == "desktop":
+            from .gui_desktop import dispatch
+            return observation(dispatch(self.state, payload), "explicit desktop setup action")
+        if path == "world-settings":
+            from .gui_world_settings import save
+            return observation(save(self.state, payload), "reviewed World settings")
+        if path == "configuration":
+            return self.configuration(payload)
         if path.startswith("repository/"):
             return self.repositories.post(path[11:], payload)
         if path.startswith("studio/"):

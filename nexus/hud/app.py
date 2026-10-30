@@ -1,10 +1,12 @@
-"""Optional FastAPI/WebSocket transport: mandatory bearer auth, same-origin controls."""
+"""Optional FastAPI/WebSocket transport: mandatory authentication, same-origin controls."""
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import hmac
 import json
 import re
+import secrets
 import time
 from collections import deque
 from pathlib import Path
@@ -33,7 +35,7 @@ def create_app(studio, token, *, allowed_hosts=None):
     slots = asyncio.Semaphore(2)
     public_slots = asyncio.Semaphore(3)
     connections = set()
-    requests = deque(maxlen=120)
+    requests = {'public': deque(maxlen=120), 'private': deque(maxlen=120)}
     assets = Path(__file__).parent / 'assets'
 
     def origin_ok(scope, require=False):
@@ -50,6 +52,36 @@ def create_app(studio, token, *, allowed_hosts=None):
     def token_ok(value):
         return isinstance(value, str) and len(value) <= 512 and hmac.compare_digest(value.encode(), token.encode())
 
+    # Browser caps persistent cookies at ~400 days. Active sessions renew on API use.
+    cookie_name = 'nexus_hud_session'
+    lifetime = 400 * 86400
+    scope = str(studio.root.resolve())
+
+    def cookie_allowed(request):
+        return request.url.scheme in {'https', 'wss'} or request.url.hostname in {'localhost', '127.0.0.1', '::1'}
+
+    def signature(request, value):
+        message = (scope + '|' + request.headers.get('host', '') + '|' + value).encode()
+        return hmac.new(token.encode(), message, hashlib.sha256).hexdigest()
+
+    def cookie_ok(request):
+        if not cookie_allowed(request):
+            return False
+        value = request.cookies.get(cookie_name, '')
+        if len(value) > 256:
+            return False
+        try:
+            expires, nonce, signed = value.split('.')
+            return (time.time() < int(expires) <= time.time() + lifetime + 60
+                    and len(nonce) == 32 and hmac.compare_digest(signed, signature(request, expires + '.' + nonce)))
+        except (ValueError, TypeError):
+            return False
+
+    def remember(response, request):
+        value = str(int(time.time()) + lifetime) + '.' + secrets.token_hex(16)
+        response.set_cookie(cookie_name, value + '.' + signature(request, value), max_age=lifetime,
+                            httponly=True, secure=request.url.scheme == 'https', samesite='strict', path='/')
+
     async def snapshot():
         async with slots:
             value = await run_in_threadpool(service.snapshot)
@@ -62,19 +94,46 @@ def create_app(studio, token, *, allowed_hosts=None):
             return JSONResponse({'error': 'Host/origin refused'}, status_code=403)
         if request.url.path.startswith('/api/'):
             authorization = request.headers.get('authorization', '')
-            if not authorization.startswith('Bearer ') or not token_ok(authorization[7:]):
+            bearer = authorization.startswith('Bearer ') and token_ok(authorization[7:])
+            remembered = cookie_ok(request)
+            if (authorization and not bearer) or (not bearer and not remembered):
                 return JSONResponse({'error': 'Authentication required'}, status_code=401)
+            if remembered and not bearer and request.method not in {'GET', 'HEAD'} and not origin_ok(request, require=True):
+                return JSONResponse({'error': 'Same-origin request required'}, status_code=403)
+            # Public-feed refreshes must never consume the operational control budget.
+            public_path = request.url.path in {'/api/countries', '/api/news', '/api/crypto', '/api/weather', '/api/quakes', '/api/cities'}
+            bucket = requests['public' if public_path else 'private']
             now = time.monotonic()
-            while requests and now - requests[0] > 60:
-                requests.popleft()
-            if len(requests) >= 120:
+            while bucket and now - bucket[0] > 60:
+                bucket.popleft()
+            if len(bucket) >= 120:
                 return JSONResponse({'error': 'Rate limit; retry later'}, status_code=429)
-            requests.append(now)
+            bucket.append(now)
         response = await call_next(request)
+        if request.url.path.startswith('/api/') and cookie_ok(request) and request.method != 'DELETE':
+            remember(response, request)
         response.headers['Cache-Control'] = 'no-store'
         response.headers['Referrer-Policy'] = 'no-referrer'
         response.headers['X-Content-Type-Options'] = 'nosniff'
         response.headers['Content-Security-Policy'] = "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'none'"
+        return response
+
+    @app.get('/api/session')
+    async def session():
+        return {'authenticated': True}
+
+    @app.post('/api/session')
+    async def save_session(request: Request):
+        if not origin_ok(request, require=True) or not cookie_allowed(request):
+            raise HTTPException(403, 'Remember requires same-origin localhost or HTTPS')
+        response = JSONResponse({'authenticated': True})
+        remember(response, request)
+        return response
+
+    @app.delete('/api/session')
+    async def forget_session():
+        response = JSONResponse({'authenticated': False})
+        response.delete_cookie(cookie_name, path='/', httponly=True, samesite='strict')
         return response
 
     @app.get('/')
@@ -188,9 +247,9 @@ def create_app(studio, token, *, allowed_hosts=None):
         connections.add(socket)
         try:
             await socket.accept()
-            # Authentication is never placed in URL/query, cookies or logs.
+            # First frame supports bearer clients; browser sessions use the HttpOnly cookie.
             message = await asyncio.wait_for(socket.receive_text(), timeout=5)
-            if len(message) > 1024 or not token_ok(json.loads(message).get('token')):
+            if len(message) > 1024 or not (cookie_ok(socket) or token_ok(json.loads(message).get('token'))):
                 await socket.close(code=1008)
                 return
             while True:

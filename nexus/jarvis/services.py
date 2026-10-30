@@ -56,7 +56,7 @@ def manifest(workspace, platform, user=''):
 
 
 def install(workspace, platform, user='', *, confirmation=''):
-    """Explicit CLI-only user install; exact reviewed manifest, never model authority."""
+    """Explicit reviewed user install; exact manifest confirmation, never model authority."""
     import os
     from pathlib import Path
 

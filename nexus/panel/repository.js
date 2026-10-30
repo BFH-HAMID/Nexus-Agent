@@ -1,11 +1,11 @@
 /* Real repository controls; no mutation on load, selection, refresh, or preview. */
 (() => {
   'use strict';
-  const token = new URLSearchParams(location.search).get('token');
+  const token = ''; // Shared HttpOnly GUI session; no URL credentials.
   const bar = document.createElement('section'); bar.id = 'repoBar'; bar.setAttribute('aria-label','Repository controls');
   const branchIcon = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><circle cx="6" cy="5" r="3"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="19" r="3"/><path d="M6 8v8m12-7a9 9 0 0 1-9 9"/></svg>';
   const repositoryIcon = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 19c-4.3 1.3-4.3-2.2-6-2.7m12 5v-3.8c.1-1-.3-1.8-.8-2.3 2.7-.3 5.5-1.3 5.5-6A4.7 4.7 0 0 0 18.4 6c.1-.3.6-1.6-.1-3.3 0 0-1-.3-3.3 1.2a11.5 11.5 0 0 0-6 0C6.7 2.4 5.7 2.7 5.7 2.7 5 4.4 5.5 5.7 5.6 6A4.7 4.7 0 0 0 4.3 9c0 4.7 2.8 5.7 5.5 6-.4.4-.8 1.1-.8 2.2V21"/></svg>';
-  bar.innerHTML = `<div class="repo-identity">${repositoryIcon}<div class="repo-picker"><input id="repoSearch" type="search" aria-label="Search GitHub repositories" placeholder="Search GitHub repos…" autocomplete="off"><select id="repoSelect" aria-label="GitHub repository"><option value="">Loading GitHub repositories…</option></select></div><span class="repo-divider" aria-hidden="true"></span><span class="repo-branch-wrap">${branchIcon}<span id="repoBranch" title="Current branch (read-only)">Branch unavailable</span></span></div><div class="repo-controls"><button id="repoCounts" type="button" aria-label="Review changed files" title="Review changed files before committing"><span id="repoAdded">Diff unavailable</span> <span id="repoDeleted"></span><span id="repoBinary"></span><span aria-hidden="true"> ›</span></button><button data-repo-action="create-pr" type="button">${branchIcon} Create PR</button><button id="repoMore" type="button" aria-label="Repository actions" aria-controls="repoActions" aria-expanded="false">⋯</button></div><span id="repoScope" hidden>Git controls only · task workspace unchanged</span><span id="repoBarError" role="status"></span>`;
+  bar.innerHTML = `<div class="repo-identity">${repositoryIcon}<div class="repo-picker"><input id="repoSearch" type="search" aria-label="Search GitHub repositories" placeholder="Search GitHub repos…" autocomplete="off"><select id="repoSelect" aria-label="GitHub repository"><option value="">Loading GitHub repositories…</option></select></div><span class="repo-divider" aria-hidden="true"></span><span class="repo-branch-wrap">${branchIcon}<span id="repoBranch" title="Current branch (read-only)">Branch unavailable</span></span></div><div class="repo-controls"><button id="repoConnection" type="button" title="Detach GitHub from new tasks; keep credentials and existing runs">GitHub off</button><button id="repoCounts" type="button" aria-label="Review changed files" title="Review changed files before committing"><span id="repoAdded">Diff unavailable</span> <span id="repoDeleted"></span><span id="repoBinary"></span><span aria-hidden="true"> ›</span></button><button data-repo-action="create-pr" type="button">${branchIcon} Create PR</button><button id="repoMore" type="button" aria-label="Repository actions" aria-controls="repoActions" aria-expanded="false">⋯</button></div><span id="repoScope" hidden>Git controls only · task workspace unchanged</span><span id="repoBarError" role="status"></span>`;
   document.querySelector('.composer .main-row').after(bar);
   const menu = document.createElement('div'); menu.id='repoActions';menu.setAttribute('popover','auto');menu.setAttribute('aria-label','Repository actions');
   menu.innerHTML=`<button id="repoRefresh" type="button">↻ Refresh GitHub repositories</button><button data-repo-action="commit" type="button">Commit selected files…</button><button data-repo-action="push" type="button">↑ Push branch…</button><button id="repoPRs" type="button">View pull requests…</button><button data-repo-action="merge" type="button">Merge PR…</button>`;
@@ -14,6 +14,10 @@
   dialog.innerHTML = `<header><h2>Repository review</h2><button id="repoClose" type="button">Close</button></header><p id="repoContext"></p><p class="repo-warning">Selected GitHub repositories use direct task branches; the local checkout never changes. Review secrets and hook behavior before confirming. Stop active tasks/workflows/dev apps before mutations.</p><div id="repoForm"></div><div class="repo-actions"><button id="repoPreview" type="button">Preview action</button></div><pre id="repoOutput">No action previewed. Nothing executed.</pre><label>Type the exact confirmation displayed in the preview<input id="repoConfirmation" autocomplete="off"></label><button id="repoExecute" type="button" disabled>Execute reviewed action</button><p id="repoError" role="alert"></p>`;
   document.body.append(dialog);
   const $ = id => document.getElementById(id);
+  const connectionKey='nexus.githubAttachment';
+  let detached=false,explicitSelection=false,preferredRepo='';
+  try{const saved=localStorage.getItem(connectionKey);detached=saved==='off';explicitSelection=saved!==null;preferredRepo=saved?.startsWith('repo:')?saved.slice(5):'';}catch{detached=true;explicitSelection=true;}
+  function rememberConnection(){preferredRepo=detached?'':$('repoSelect').value;try{localStorage.setItem(connectionKey,detached?'off':preferredRepo?'repo:'+preferredRepo:'on');}catch{ $('repoBarError').textContent='Browser storage unavailable; GitHub choice applies to this tab only.';}}
   let status = null, preview = null, action = null, pending = false, generation = 0, automatic = false;
   const tasks = new Map();
   try{for(const task of JSON.parse(sessionStorage.getItem('nexus.githubTaskBranches')||'[]'))if(task?.repository&&/^[a-f0-9]{12}$/.test(task.task_id))tasks.set(task.repository,task);}catch(_){}
@@ -21,10 +25,10 @@
     tasks.set(task.repository,task);
     try{sessionStorage.setItem('nexus.githubTaskBranches',JSON.stringify([...tasks.values()].slice(-20).map(({task_id,repository,branch,files})=>({task_id,repository,branch,files}))));}catch(_){}
   }
-  window.nexusGitHubRepository = () => $('repoSelect').value || null;
+  window.nexusGitHubRepository = () => detached?null:($('repoSelect').value || null);
   let repositories = [], loadGeneration = 0, statusGeneration = 0;
   async function api(path, body) {
-    const response = await fetch('/api/workbench/repository/' + path, {method:body===undefined?'GET':'POST',headers:{'Content-Type':'application/json',...(token?{'X-Nexus-Token':token}:{})},...(body===undefined?{}:{body:JSON.stringify(body)})});
+    const response = await (window.nexusGui?.fetch || fetch)('/api/workbench/repository/' + path, {method:body===undefined?'GET':'POST',headers:{'Content-Type':'application/json',...(token?{'X-Nexus-Token':token}:{})},...(body===undefined?{}:{body:JSON.stringify(body)})});
     const result = await response.json(); if(!response.ok) throw new Error(result.error || 'Repository operation failed'); return result.data;
   }
   function error(id, e) { $(id).textContent = e.message || String(e); }
@@ -40,9 +44,12 @@
       button.disabled = pending || !status || !writable || (localAction && !local);
     }
     $('repoPRs').disabled = pending || !status;
-    $('repoSelect').disabled = pending;
-    $('repoSearch').disabled = pending;
-    $('repoRefresh').disabled = pending;
+    $('repoConnection').disabled=pending;
+    $('repoConnection').textContent=detached?'Connect GitHub':'GitHub off';
+    $('repoConnection').setAttribute('aria-pressed',String(!detached));
+    $('repoSelect').disabled = pending||detached;
+    $('repoSearch').disabled = pending||detached;
+    $('repoRefresh').disabled = pending||detached;
   }
   function renderOptions(selected) {
     const query = $('repoSearch').value.trim().toLowerCase();
@@ -50,13 +57,13 @@
     const current = repositories.find(repo => repo.id === selected);
     if(current && !matches.includes(current)) matches.unshift(current);
     $('repoSelect').replaceChildren();
-    const placeholder = document.createElement('option');placeholder.value='';placeholder.textContent=repositories.length?'Local workspace (no remote task branch)':'No accessible GitHub repositories';$('repoSelect').append(placeholder);
+    const placeholder = document.createElement('option');placeholder.value='';placeholder.textContent='No repository · GitHub off / local workspace';$('repoSelect').append(placeholder);
     for(const repo of matches){const option=document.createElement('option');option.value=repo.id;option.textContent=repo.name+(repo.private?' · private':'')+(repo.archived?' · archived':'');option.dataset.agentWorkspace=String(Boolean(repo.agent_workspace));option.title='GitHub: '+repo.name;$('repoSelect').append(option);}
     if(!matches.length && repositories.length){const option=document.createElement('option');option.disabled=true;option.textContent='No matching repositories';$('repoSelect').append(option);}
     $('repoSelect').value=current?current.id:'';
   }
   async function refresh() {
-    const id=$('repoSelect').value; if(!id){const workspace=document.getElementById('taskWorkspace');if(workspace){workspace.textContent='Task workspace: '+document.getElementById('metaWs').title+' · select a GitHub repo for direct remote tasks.';workspace.title=workspace.textContent;}status=null;$('repoBranch').textContent='Select a GitHub repository';$('repoAdded').textContent='Local diff unavailable';$('repoDeleted').textContent='';$('repoBinary').textContent='';$('repoScope').hidden=true;controls();return;}
+    const id=$('repoSelect').value; if(!id){const workspace=document.getElementById('taskWorkspace');if(workspace){workspace.textContent='Task workspace: '+document.getElementById('metaWs').title+' · no GitHub repository attached. Existing runs keep their original target.';workspace.title=workspace.textContent;}status=null;$('repoBranch').textContent=detached?'GitHub off · new tasks local':'No repository attached';$('repoAdded').textContent='Local diff unavailable';$('repoDeleted').textContent='';$('repoBinary').textContent='';$('repoScope').hidden=true;controls();return;}
     const epoch=++statusGeneration;
     const measured=await api('status?repo='+encodeURIComponent(id));
     if(id!==$('repoSelect').value||epoch!==statusGeneration)return;status=measured;
@@ -74,11 +81,12 @@
     $('repoBarError').textContent='';controls();
   }
   async function load(force=false) {
+    if(detached)return;
     const epoch=++loadGeneration;
-    const records=await api('list'+(force?'?refresh=1':''));if(epoch!==loadGeneration)return;
-    const selected=$('repoSelect').value;
+    const records=await api('list'+(force?'?refresh=1':''));if(epoch!==loadGeneration||detached)return;
+    const selected=$('repoSelect').value||preferredRepo;
     repositories=records;
-    renderOptions(records.some(repo=>repo.id===selected)?selected:(records.find(repo=>repo.agent_workspace)?.id||''));
+    renderOptions(records.some(repo=>repo.id===selected)?selected:(explicitSelection?'':(records.find(repo=>repo.agent_workspace)?.id||'')));
     await refresh();
   }
   function branchSelect(label,id,branches,value) {
@@ -126,7 +134,13 @@
     }
   }
   $('repoSearch').oninput=()=>renderOptions($('repoSelect').value);
-  $('repoSelect').onchange=()=>{invalidate();status=null;controls();$('repoBranch').textContent='Reading Git status…';$('repoAdded').textContent='…';$('repoDeleted').textContent='';$('repoBinary').textContent='';if(dialog.open)dialog.close();refresh().catch(e=>error('repoBarError',e));};
+  function detach(){
+    detached=true;explicitSelection=true;rememberConnection();loadGeneration++;statusGeneration++;invalidate();status=null;
+    $('repoSelect').replaceChildren(new Option('No repository · GitHub off / local workspace',''));$('repoSearch').value='';$('repoBarError').textContent='';
+    if(dialog.open)dialog.close();menu.hidePopover();refresh().catch(e=>error('repoBarError',e));
+  }
+  $('repoConnection').onclick=()=>{if(pending)return;if(!detached){detach();return;}detached=false;explicitSelection=true;rememberConnection();controls();load(true).catch(e=>error('repoBarError',e));};
+  $('repoSelect').onchange=()=>{if(!$('repoSelect').value){detach();return;}explicitSelection=true;detached=false;rememberConnection();invalidate();status=null;controls();$('repoBranch').textContent='Reading Git status…';$('repoAdded').textContent='…';$('repoDeleted').textContent='';$('repoBinary').textContent='';if(dialog.open)dialog.close();refresh().catch(e=>error('repoBarError',e));};
   $('repoMore').onclick=()=>menu.togglePopover();
   menu.addEventListener('beforetoggle',event=>{if(event.newState==='open'){const rect=$('repoMore').getBoundingClientRect();menu.style.bottom=Math.max(8,innerHeight-rect.top+6)+'px';menu.style.left=Math.max(8,Math.min(rect.right-224,innerWidth-232))+'px';}});
   menu.addEventListener('toggle',()=>{$('repoMore').setAttribute('aria-expanded',String(menu.matches(':popover-open')));});
@@ -141,5 +155,6 @@
   window.addEventListener('resize',()=>menu.hidePopover());
   window.addEventListener('nexus:event',({detail:e})=>{const task=e.type==='github_task'?e.task:e.result?.github_task;if(task){rememberTask(task);if(task.repository===$('repoSelect').value){$('repoBranch').textContent=task.branch+' · GitHub task';$('repoScope').textContent='Direct GitHub task · '+task.branch+' · commits on GitHub; no local tests';}}if(e.type==='approval_request'&&dialog.open&&!pending)dialog.close();if(e.type==='done'){invalidate();refresh().catch(err=>error('repoBarError',err));}});
   controls();
-  load().catch(e=>{status=null;controls();$('repoSelect').replaceChildren(new Option('GitHub repositories unavailable',''));error('repoBarError',e);});
+  if(detached){$('repoSelect').replaceChildren(new Option('No repository · GitHub off / local workspace',''));refresh().catch(e=>error('repoBarError',e));}
+  else load().catch(e=>{status=null;controls();$('repoSelect').replaceChildren(new Option('GitHub repositories unavailable',''));error('repoBarError',e);});
 })();

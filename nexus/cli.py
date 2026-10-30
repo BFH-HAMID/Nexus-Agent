@@ -1472,7 +1472,9 @@ def cmd_serve(args: argparse.Namespace) -> int:
     from .server import serve
 
     workspace = Path(args.workspace).resolve() if args.workspace else Path.cwd().resolve()
-    return serve(host=args.host, port=args.port, workspace=workspace, token=args.token,
+    from .gui_session import launch_credential
+    shared_token = launch_credential(workspace, args.token)
+    return serve(host=args.host, port=args.port, workspace=workspace, token=shared_token,
                  auto_yes=args.yes, quiet=args.quiet, demo=getattr(args, "demo", False))
 
 
@@ -1481,6 +1483,8 @@ def cmd_panel(args: argparse.Namespace) -> int:
     from .server import serve
 
     workspace = Path(args.workspace).resolve() if args.workspace else Path.cwd().resolve()
+    from .gui_session import launch_credential
+    shared_token = launch_credential(workspace, args.token, getattr(args, "remember_token", False))
     host = "127.0.0.1" if args.host == "0.0.0.0" else args.host
     url = f"http://{host}:{args.port}/dashboard"
     print()
@@ -1492,7 +1496,7 @@ def cmd_panel(args: argparse.Namespace) -> int:
         print(COLORS.dim("  bound to 0.0.0.0 so a remote browser can reach it - "
                          "set --token/NEXUS_SERVE_TOKEN before exposing the port"))
     print()
-    return serve(host=args.host, port=args.port, workspace=workspace, token=args.token,
+    return serve(host=args.host, port=args.port, workspace=workspace, token=shared_token,
                  auto_yes=args.yes, quiet=args.quiet, demo=getattr(args, "demo", False),
                  open_panel=getattr(args, "open", True))
 
@@ -1997,6 +2001,7 @@ def build_parser() -> argparse.ArgumentParser:
         p.add_argument("--yes", "-y", action="store_true")
         p.add_argument("--quiet", action="store_true")
         p.add_argument("--demo", action="store_true", help="scripted runs (no API key needed)")
+        p.add_argument("--remember-token", action="store_true", help="remember the existing GUI token in the native OS vault")
         p.add_argument("--no-open", dest="open", action="store_false",
                        help="serve only - do not launch a browser")
         p.set_defaults(func=cmd_panel, open=True)

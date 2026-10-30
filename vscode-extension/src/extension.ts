@@ -204,7 +204,13 @@ class NexusViewProvider implements vscode.WebviewViewProvider {
       if (!msg || msg.source !== "nexus-panel") {
         return;
       }
+      if (msg.type === "probe") {
+        const health = await getJSON(`${baseUrl()}/health`);
+        this.post({type:"connection", alive:!!health});
+        return;
+      }
       if (msg.type === "ready") {
+        this.post({type:"host-ready"});
         if (this.pendingTask) {
           const task = this.pendingTask;
           this.pendingTask = undefined;
@@ -303,7 +309,7 @@ class NexusViewProvider implements vscode.WebviewViewProvider {
 </style>
 </head>
 <body>
-<iframe id="nexus" src="${url}/panel" title="Nexus Agent"></iframe>
+<iframe id="nexus" src="${url}/dashboard" title="Nexus Agent"></iframe>
 <div id="offline" style="display:none">
   The Nexus server is not reachable at <a href="${url}/health">${url}</a>.<br /><br />
   Run <b>Nexus: Start local server</b> from the command palette, or start it yourself:
@@ -315,14 +321,9 @@ class NexusViewProvider implements vscode.WebviewViewProvider {
   const offline = document.getElementById('offline');
   let alive = false;
 
-  async function probe() {
-    try {
-      const res = await fetch('${url}/health', { method: 'GET' });
-      alive = res.ok;
-    } catch (e) { alive = false; }
-    frame.style.display = alive ? 'block' : 'none';
-    offline.style.display = alive ? 'none' : 'block';
-    if (alive) { vscodeApi.postMessage({ source: 'nexus-panel', type: 'ready' }); }
+  function probe() {
+    // Probe in the extension host, not a cross-origin webview fetch.
+    vscodeApi.postMessage({source:'nexus-panel',type:'probe'});
   }
 
   window.addEventListener('message', (event) => {
@@ -331,6 +332,9 @@ class NexusViewProvider implements vscode.WebviewViewProvider {
       // panel -> extension host (approvals, role changes, run finished)
       vscodeApi.postMessage(data);
       return;
+    }
+    if (data.source === 'nexus-host' && data.type === 'connection') {
+      alive=!!data.alive;frame.style.display=alive?'block':'none';offline.style.display=alive?'none':'block';return;
     }
     if (data.source === 'nexus-host') {
       // extension host -> panel (inject a task, pin a role)

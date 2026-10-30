@@ -43,6 +43,11 @@ test('actual WebGL, locally bundled assets, safe RSS rendering, prices and seven
  await page.waitForFunction(()=>document.querySelectorAll('#world-forecast>div').length===7);
  assert.match(await page.locator('#world-weather-alert').innerText(),/NOT an official warning/);
  assert.match(await page.locator('#world-crypto').innerText(),/SCRIPTED TEST QUOTES/);
+ await page.locator('.world-stage').scrollIntoViewIfNeeded();
+ const stage=await page.locator('.world-stage').boundingBox();await page.mouse.move(stage.x+stage.width/2,stage.y+Math.min(100,stage.height/2));
+ const offset=await page.evaluate(()=>scrollY);await page.mouse.wheel(0,450);await page.waitForFunction(y=>scrollY>y+100,offset);
+ await page.locator('#world-interact').click();assert.equal(await page.locator('#world-interact').getAttribute('aria-pressed'),'true');
+ await page.locator('#world-interact').click();assert.equal(await page.locator('#world-interact').getAttribute('aria-pressed'),'false');
  assert.deepEqual(errors,[]);assert.deepEqual(violations,[]);assert.deepEqual(external,[]);
  await context.close();
 });

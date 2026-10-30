@@ -253,3 +253,120 @@ def test_snapshot_socket_rejects_post_auth_commands_and_releases_slot(studio):
         with client.websocket_connect('/ws', headers=ORIGIN) as fresh:
             fresh.send_json({'token': TOKEN})
             assert 'jobs' in fresh.receive_json()
+
+
+def test_remember_browser_survives_restart_and_logout(studio):
+    def app(token=TOKEN):
+        return create_app(studio, token, allowed_hosts=['localhost'])
+    origin = {'Origin': 'http://localhost'}
+    with TestClient(app(), base_url='http://localhost') as c:
+        assert c.get('/api/session').status_code == 401
+        assert c.post('/api/session', headers=AUTH).status_code == 403
+        response = c.post('/api/session', headers={**AUTH, **origin})
+        assert response.status_code == 200
+        cookie = response.headers['set-cookie']
+        assert 'HttpOnly' in cookie and 'SameSite=strict' in cookie
+        assert TOKEN not in cookie and 'Max-Age=34560000' in cookie
+        saved = c.cookies.get('nexus_hud_session')
+        assert c.get('/api/state').status_code == 200
+        assert c.get('/api/state', headers={'Authorization': 'Bearer wrong'}).status_code == 401
+        assert c.post('/api/action/control', json={'action': 'kill'}).status_code == 403
+        assert c.get('/api/state', headers={'Origin': 'http://evil.invalid'}).status_code == 403
+        with c.websocket_connect('ws://localhost/ws', headers=origin) as ws:
+            ws.send_json({'token': ''})
+            assert 'daemon' in ws.receive_json()
+    with TestClient(app(), base_url='http://localhost') as c:
+        c.cookies.set('nexus_hud_session', saved, domain='localhost.local', path='/')
+        assert c.get('/api/session').status_code == 200
+        assert c.delete('/api/session', headers=origin).status_code == 200
+        assert c.get('/api/session').status_code == 401
+    with TestClient(app('rotated-token-' + 'z' * 32), base_url='http://localhost') as c:
+        c.cookies.set('nexus_hud_session', saved)
+        assert c.get('/api/session').status_code == 401
+    with TestClient(app(), base_url='http://localhost:9000') as c:
+        c.cookies.set('nexus_hud_session', saved)
+        assert c.get('/api/session').status_code == 401
+    with TestClient(app(), base_url='http://localhost') as c:
+        c.cookies.set('nexus_hud_session', saved[:-1] + ('a' if saved[-1] != 'a' else 'b'))
+        assert c.get('/api/session').status_code == 401
+
+
+def test_remember_requires_https_outside_loopback(studio):
+    with TestClient(create_app(studio, TOKEN, allowed_hosts=['trusted.example']), base_url='http://trusted.example') as c:
+        assert c.post('/api/session', headers={**AUTH, 'Origin': 'http://trusted.example'}).status_code == 403
+    with TestClient(create_app(studio, TOKEN, allowed_hosts=['trusted.example']), base_url='https://trusted.example') as c:
+        response = c.post('/api/session', headers={**AUTH, 'Origin': 'https://trusted.example'})
+        assert response.status_code == 200 and 'Secure' in response.headers['set-cookie']
+
+
+def test_os_vault_remembers_only_explicitly_and_scopes_workspace(repo, monkeypatch):
+    import sys
+    from types import SimpleNamespace
+
+    from nexus.hud.auth import launch_token
+    entries = {}
+    backend = type('Native', (), {'__module__': 'keyring.backends.Windows'})()
+    fake = SimpleNamespace(get_keyring=lambda: backend,
+                           get_password=lambda service, account: entries.get((service, account)),
+                           set_password=lambda service, account, value: entries.__setitem__((service, account), value))
+    monkeypatch.setitem(sys.modules, 'keyring', fake)
+    monkeypatch.setenv('NEXUS_HUD_TOKEN', TOKEN)
+    assert launch_token(repo) == TOKEN and not entries
+    assert launch_token(repo, True) == TOKEN and len(entries) == 1
+    monkeypatch.delenv('NEXUS_HUD_TOKEN')
+    assert launch_token(repo) == TOKEN
+    assert launch_token(repo / 'other') == ''
+    backend = type('Plaintext', (), {'__module__': 'keyrings.alt.file'})()
+    with pytest.raises(ValueError, match='native OS'):
+        launch_token(repo)
+
+
+def test_country_data_is_read_explicitly_as_utf8(repo, monkeypatch):
+    from pathlib import Path
+
+    from nexus.hud.world.core import ASSETS, World
+    original = Path.read_text
+    def windows_default(path, *args, **kwargs):
+        if path == ASSETS / 'countries.json':
+            assert kwargs.get('encoding') == 'utf-8'
+        return original(path, *args, **kwargs)
+    monkeypatch.setattr(Path, 'read_text', windows_default)
+    assert len(World(repo).countries) == 242
+
+
+def test_local_runtime_setup_requires_exact_review_and_keeps_gates(client, studio):
+    payload = {'enabled': True, 'local_model': 'installed-model:latest', 'confirmation': 'wrong'}
+    assert client.post('/api/action/runtime', headers=AUTH, json=payload).status_code == 409
+    assert HUD(studio).queue.policy()['runtime']['enabled'] is False
+    payload['confirmation'] = 'ENABLE LOCAL RUNTIME'
+    payload['local_model'] = 'remote:cloud'
+    assert client.post('/api/action/runtime', headers=AUTH, json=payload).status_code == 409
+    assert HUD(studio).queue.policy()['runtime']['enabled'] is False
+    payload['local_model'] = 'installed-model:latest'
+    assert client.post('/api/action/runtime', headers=AUTH, json=payload).status_code == 200
+    policy = HUD(studio).queue.policy()
+    assert policy['runtime']['enabled'] is True
+    assert policy['runtime']['mode'] == 'read_only' and policy['level'] == 'L1'
+    job = client.post('/api/action/create', headers=AUTH, json={'task': 'Still requires approval'}).json()
+    assert job['status'] == 'awaiting_approval'
+    state = client.get('/api/state', headers=AUTH).json()
+    assert state['policy']['local_model'] == 'installed-model:latest'
+    assert client.post('/api/action/runtime', headers=AUTH, json={**payload, 'enabled': False, 'confirmation': 'DISABLE LOCAL RUNTIME'}).status_code == 200
+    assert HUD(studio).queue.policy()['runtime']['enabled'] is False
+
+
+def test_dashboard_is_one_page_operations_first_and_reports_collapsed(client):
+    html = client.get('/').text
+    assert html.index('id="execution"') < html.index('id="world-widget"')
+    assert 'aria-label="Dashboard sections"' in html
+    assert '<section id="diagnostics"><details><summary>' in html
+    assert 'id="world-interact"' in html
+    assert '<iframe' not in html
+
+
+def test_public_information_rate_budget_never_starves_controls(client):
+    for _ in range(120):
+        assert client.get('/api/countries', headers=AUTH).status_code == 200
+    assert client.get('/api/countries', headers=AUTH).status_code == 429
+    assert client.get('/api/state', headers=AUTH).status_code == 200
+    assert client.post('/api/action/delivery', headers=AUTH, json={'quiet': True}).status_code == 200
