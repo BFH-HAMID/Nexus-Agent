@@ -233,6 +233,13 @@
     window.dispatchEvent(new CustomEvent('nexus:pending', {detail: lastState}));
   }
 
+  /* The Mission Control feed pushes approvals; paint the badge at once
+     instead of waiting for the next poll. */
+  window.addEventListener('nexus:pending', (event) => {
+    const pending = Number(event.detail?.pending_actions_total);
+    if (Number.isFinite(pending)) paintBadge(pending);
+  });
+
   gui.ready.then(() => {
     pollState();
     setInterval(pollState, 20000);
@@ -258,7 +265,18 @@
     sse.dataset.state = live ? 'live' : 'idle';
   };
   setSse('idle');
-  window.addEventListener('nexus:sse', (event) => setSse(event.detail));
+  /* Two independent streams can be open: the run's own event log and the
+     global Mission Control feed. The footer is live while either one is. */
+  const sources = new Map();
+  const refreshSse = () => setSse([...sources.values()].some((value) => value === 'streaming') ? 'streaming' : 'idle');
+  window.addEventListener('nexus:sse', (event) => {
+    sources.set('run', event.detail);
+    refreshSse();
+  });
+  window.addEventListener('nexus:feed', (event) => {
+    sources.set('mission', event.detail);
+    refreshSse();
+  });
 
   /* ── language switching ────────────────────────────────────────────── */
   i18n.onChange(() => { paintLabels(); paintActive(); });

@@ -243,6 +243,28 @@ dialog.palette::backdrop { background: var(--scrim); backdrop-filter: blur(3px);
 .mission-quick { display: flex; gap: 8px; flex-wrap: wrap; }
 .mission-quick .btn { height: 34px; font-size: 12.5px; }
 .mission-quick .btn.armed { background: var(--warn-soft); color: var(--warn); border-color: color-mix(in srgb, var(--warn) 40%, transparent); }
+.mission-stream {
+  display: inline-flex; align-items: center; gap: 7px; align-self: center;
+  height: 28px; padding: 0 10px; border-radius: 999px; white-space: nowrap;
+  border: 1px solid var(--border); background: var(--surface-2);
+  font-size: 11px; font-weight: 600; color: var(--muted);
+  letter-spacing: .04em; text-transform: uppercase;
+}
+.mission-stream .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); flex: 0 0 auto; }
+.mission-stream[data-state="live"] { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 34%, transparent); }
+.mission-stream[data-state="live"] .dot { background: var(--ok); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 18%, transparent); }
+.mission-stream[data-state="reconnecting"],
+.mission-stream[data-state="polling"] { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 34%, transparent); }
+.mission-stream[data-state="reconnecting"] .dot,
+.mission-stream[data-state="polling"] .dot { background: var(--warn); }
+.mission-stream[data-state="offline"] { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 34%, transparent); }
+.mission-stream[data-state="offline"] .dot { background: var(--danger); }
+/* An alert shares the activity list but never looks like a queued run. */
+.mission-feed li[data-kind="alert"] { background: color-mix(in srgb, var(--warn) 7%, transparent); }
+.mission-feed li[data-kind="alert"] .dot { background: var(--warn); }
+.mission-feed li[data-kind="alert"][data-severity="high"] { background: color-mix(in srgb, var(--danger) 9%, transparent); }
+.mission-feed li[data-kind="alert"][data-severity="high"] .dot { background: var(--danger); }
+.mission-feed li[data-kind="alert"] b { color: var(--text); }
 
 .mission-tiles { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px; }
 /* `.gui-modules button` (modules.css) also matches these tiles and centres its

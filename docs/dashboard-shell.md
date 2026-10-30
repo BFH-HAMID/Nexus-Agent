@@ -65,7 +65,9 @@ falls back to the five built-in pages instead of disappearing.
 `#view-mission` is the default view. Every tile states where its number came
 from and when it was read: `state read 3s ago · lock held: no`, `GPU:
 Unavailable`, `Reachability not checked`, `Read from the server at 10:31:02`.
-Nothing is invented: when a source is missing the tile says so.
+Nothing is invented: when a source is missing the tile says so. Prompt 2
+replaced the polling loop with one summary call plus the global feed — see
+`docs/dashboard-mission.md`.
 
 Tiles: `#msDaemonState #msDaemonAge #msDaemonHint #msTasksActive #msTasksQueued
 #msTasksFailed #msApprovals #msApprovalTone #msCpu #msRam #msDisk #msGpu
@@ -90,7 +92,7 @@ anything; cancelling leaves the daemon untouched.
 ```js
 window.nexusNav     = {sections, go(id), active, setActive(id), detail};
 window.nexusPalette = {open, close, search(text), lastMs, count, data, loadIndex};
-window.nexusMission = {load, root};
+window.nexusMission = {load, root, state(), streamUrl()};   // Prompt 2: see docs/dashboard-mission.md
 window.nexusShell   = {setNav(open), closeNav};
 window.nexusToast   = (message, {tone, title, timeout}) => void;
 window.nexusI18n    = {t(key, vars), setLang(lang), missing()};

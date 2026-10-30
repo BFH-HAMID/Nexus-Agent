@@ -45,6 +45,7 @@ from urllib.parse import parse_qs, unquote, urlparse
 from . import __version__
 from .agent import NexusAgent
 from .config import load_config
+from .mission import Mission
 from .tools import ApprovalDecision
 from .types import Event, EventType
 from .webapi import Limiter
@@ -121,6 +122,8 @@ class ServerState:
         self.lock = threading.RLock()
         # New dashboard APIs share one process-wide limiter (see nexus/webapi.py).
         self.api_limiter = Limiter(limit=120, window=60.0)
+        # Mission Control: one summary projection plus the global live feed.
+        self.mission = Mission(self)
         self.config = load_config(self.workspace)
         self.started = time.time()
         from .gui_modules import GuiModules
@@ -673,6 +676,10 @@ def make_handler(state: ServerState):
                 return self._send_json(github_status(state.workspace))
             if path == "/api/palette":
                 return self._palette_index()
+            if path == "/api/mission/summary":
+                return self._mission_summary()
+            if path == "/api/mission/stream":
+                return self._mission_stream()
             if path == "/api/roles":
                 return self._send_json([r.to_dict() for r in state.config.roles.roles.values()])
             if path == "/api/agents":
@@ -937,6 +944,76 @@ def make_handler(state: ServerState):
                 return self._send_json(webapi.failed("audit_unavailable",
                                                      "Palette index withheld: the audit trail is unavailable."), 503)
             return self._send_json(webapi.ok(index))
+
+        def _mission_client(self) -> str:
+            return str((getattr(self, "client_address", ("", 0)) or ("", 0))[0] or "local")
+
+        def _mission_summary(self) -> None:
+            """Read-only projection of the local records; audited (sampled)."""
+            from . import webapi
+
+            client = self._mission_client()
+            bucket = "mission:" + client
+            if not state.api_limiter.allow(bucket):
+                wait = state.api_limiter.retry_after(bucket)
+                return self._send_json(webapi.failed("rate_limited",
+                                                     f"Too many mission reads; retry in {wait}s."), 429)
+            try:
+                state.mission.ensure_health()
+                summary = state.mission.summary()
+                state.mission.audit(client)
+            except (OSError, ValueError):
+                return self._send_json(webapi.failed(
+                    "audit_unavailable", "Mission summary withheld: the audit trail is unavailable."), 503)
+            return self._send_json(webapi.ok(summary))
+
+        def _mission_stream(self) -> None:
+            """Global SSE feed: heartbeat, task.update, approval.new, metrics.tick, alert.new."""
+            from . import mission as mission_module
+            from . import webapi
+
+            client = self._mission_client()
+            bucket = "mission-stream:" + client
+            if not state.api_limiter.allow(bucket):
+                wait = state.api_limiter.retry_after(bucket)
+                return self._send_json(webapi.failed("rate_limited",
+                                                     f"Too many stream reconnects; retry in {wait}s."), 429)
+            subscriber = state.mission.subscribe()
+            if subscriber is None:
+                return self._send_json(webapi.failed(
+                    "too_many_streams", "Too many dashboard streams are already open."), 503)
+            try:
+                state.mission.audit(client, action="mission.stream")
+                self.send_response(200)
+                self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+                self.send_header("Cache-Control", "no-cache, no-transform")
+                self.send_header("Connection", "close")
+                self.close_connection = True
+                self.send_header("Referrer-Policy", "no-referrer")
+                self.send_header("X-Content-Type-Options", "nosniff")
+                self.send_header("X-Accel-Buffering", "no")
+                self.end_headers()
+                try:
+                    self.wfile.write(b"retry: 5000\n\n")
+                    self.wfile.flush()
+                except (BrokenPipeError, ConnectionResetError, OSError):
+                    return
+                while not state.mission.stopped:
+                    item = subscriber.next(timeout=5.0)
+                    if item is None:
+                        frame = mission_module.keepalive()
+                    else:
+                        name, payload = item
+                        if payload.get("shutdown"):
+                            return
+                        frame = mission_module.encode(name, payload, payload.get("seq"))
+                    try:
+                        self.wfile.write(frame)
+                        self.wfile.flush()
+                    except (BrokenPipeError, ConnectionResetError, OSError):
+                        return
+            finally:
+                state.mission.unsubscribe(subscriber)
 
         def _sse(self, task_id: str) -> None:
             session = state.get(task_id)

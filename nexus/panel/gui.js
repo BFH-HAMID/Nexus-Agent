@@ -43,7 +43,13 @@
       if(!r.ok) throw Error(value?.error?.message || value?.error || value?.error_message || value?.detail || 'Request refused');
       return value;
     },
-    view: 'run'
+    view: 'run',
+    /* EventSource cannot send headers: use the remembered cookie normally, and
+       fall back to the query token only for a session that chose not to be
+       remembered. Referrer-Policy keeps it out of Referer headers. */
+    streamUrl(path) {
+      return credential ? path + (path.includes('?') ? '&' : '?') + 'token=' + encodeURIComponent(credential) : path;
+    }
   };
   let worldLoaded = false;
   async function show(view) {
