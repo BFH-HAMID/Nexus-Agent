@@ -220,3 +220,7 @@ support libraries/Chromium may need installation on minimal Linux hosts.
   testing; its module and the full sequential suite passed on rerun.
 - No physical Windows desktop/vault or live external-provider availability test
   was available. Screenshots document real offline state, not simulated feeds.
+
+### Modern desktop appearance and discovery
+
+Every original section shares updated cards, typography, navigation, settings surfaces and reduced-motion support. Category chips, favourites and search combine in the control center; quick actions only navigate and retain all approval gates. See [desktop appearance](dashboard-appearance.md) for browser-local preferences, behaviour and actual GUI screenshots.
