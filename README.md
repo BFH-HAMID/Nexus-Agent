@@ -362,7 +362,7 @@ export GEMINI_MODEL=gemini-3.6-flash
 | `nexus recall [query]` | full-text search over your own past runs |
 | `nexus memory [add\|remove\|import]` | long-term `MEMORY.md` + `USER.md` |
 | `nexus hermes [status\|install\|sync\|run]` | bridge to `NousResearch/hermes-agent` |
-| `nexus update` | update Nexus itself (`git pull` + reinstall) |
+| `nexus update` | safely update from trusted GitHub main and install dependencies in the current Python environment |
 | `nexus init` | drop `.nexus/roles.yaml` + `.vscode/` into any project (no `.env`) |
 | `nexus task ... --json` | machine-readable result (CI friendly) |
 
@@ -932,3 +932,7 @@ not elevate, overwrite, force-repair or claim all independent workers are stoppe
 #### Modern desktop discovery
 
 The original `nexus gui` includes category filters, searchable/favourite controls, navigation-only **Compose a task** / **Review approvals** shortcuts, and browser-local **Compact layout** / **Reduce effects** preferences. The same visual system covers Run, Operations, World and native settings dialogs; existing approvals remain unchanged. See the [desktop appearance guide](docs/dashboard-appearance.md) for details and real screenshots.
+
+### One-command updates
+
+Run `nexus update` in your existing environment after stopping Nexus processes. Clean official `main` checkouts fast-forward safely; package installations use a pinned official GitHub archive. `nexus update --check` checks without installing; `--extras hud,mcp,context` updates selected optional dependencies. On Windows a worker waits for the launcher to exit and reports actual completion separately. Local code changes are never force-cleaned. See [updating and recovery](docs/updating.md) for safety limits, Windows receipts and first-install requirements.

@@ -1857,15 +1857,30 @@ def cmd_update(args: argparse.Namespace) -> int:
     from . import __version__, hermes
 
     print(COLORS.dim(f"nexus {__version__} @ {hermes.repo_root()}"))
+    if os.name == 'nt' and not getattr(args, 'check', False):
+        from .updater import windows_handoff
+
+        try:
+            receipt = windows_handoff(hermes.repo_root(), pull=not getattr(args, 'no_pull', False),
+                                      reinstall=not getattr(args, 'no_install', False), extras=getattr(args, 'extras', ''))
+        except OSError:
+            print(COLORS.red('Could not start Windows updater worker. No update completion is claimed.'))
+            return 1
+        print('Update scheduled, NOT completed. This launcher must exit before Windows can replace nexus.exe.')
+        print(f'The worker will print the outcome and save a receipt: {receipt}')
+        print('If updating from the REPL, exit it now. Keep other Nexus processes stopped.')
+        return 0
     ok, messages = hermes.self_update(
         pull=not getattr(args, "no_pull", False),
         reinstall=not getattr(args, "no_install", False),
+        check=getattr(args, "check", False),
+        extras=getattr(args, "extras", ""),
         log=lambda msg: print(COLORS.dim(f"· {msg}")),
     )
     for message in messages:
         print(message)
     if ok:
-        print(COLORS.green("✓ up to date"))
+        print(COLORS.green("✓ update checks completed"))
         return 0
     print(COLORS.red("update failed"))
     return 1
@@ -2081,7 +2096,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--json", action="store_true")
     p.set_defaults(func=cmd_hermes)
 
-    p = sub.add_parser("update", help="update Nexus itself (git pull + reinstall)")
+    p = sub.add_parser("update", help="update from trusted GitHub main and install dependencies")
+    p.add_argument("--check", action="store_true", help="check trusted source without installing")
+    p.add_argument("--extras", default="", help="optional dependency groups, e.g. hud,mcp,context")
     p.add_argument("--no-pull", action="store_true")
     p.add_argument("--no-install", action="store_true")
     p.set_defaults(func=cmd_update)

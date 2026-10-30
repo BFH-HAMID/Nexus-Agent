@@ -198,35 +198,25 @@ def test_hermes_sync_imports_skills_and_memories(monkeypatch, tmp_path):
     assert "synced 1 skills and 1 memory entries" in out
 
 
-def test_self_update_refuses_a_non_git_directory(monkeypatch, tmp_path):
-    monkeypatch.setattr(hermes, "repo_root", lambda: tmp_path)
-    code, out = run(["update"])
-    assert code == 1
-    assert "not a git checkout" in out
+def test_update_cli_routes_safe_options(monkeypatch, tmp_path):
+    from nexus import updater
+
+    seen = {}
+    def update(root, **kwargs):
+        seen.update(kwargs)
+        return True, ['Check only: no installation.']
+    monkeypatch.setattr(updater, 'update', update)
+    code, out = run(['update', '--check', '--extras', 'hud,mcp'])
+    assert code == 0 and 'no installation' in out
+    assert seen['check'] is True and seen['extras'] == 'hud,mcp'
 
 
-def test_self_update_reports_git_failure(monkeypatch, tmp_path):
-    (tmp_path / ".git").mkdir()
-    monkeypatch.setattr(hermes, "repo_root", lambda: tmp_path)
-    monkeypatch.setattr(hermes, "_run", lambda *a, **k: (1, "error: local changes"))
-    code, out = run(["update"])
-    assert code == 1 and "local changes" in out
+def test_update_cli_reports_failure(monkeypatch):
+    from nexus import updater
 
-
-def test_self_update_success(monkeypatch, tmp_path):
-    (tmp_path / ".git").mkdir()
-    monkeypatch.setattr(hermes, "repo_root", lambda: tmp_path)
-    calls: list[list[str]] = []
-
-    def fake_run(cmd, cwd=None, timeout=300):
-        calls.append(cmd)
-        return 0, "Fast-forward"
-
-    monkeypatch.setattr(hermes, "_run", fake_run)
-    code, out = run(["update"])
-    assert code == 0
-    assert any("pull" in " ".join(cmd) for cmd in calls)
-    assert "up to date" in out
+    monkeypatch.setattr(updater, 'update', lambda *a, **k: (False, ['Local changes found.']))
+    code, out = run(['update', '--check'])
+    assert code == 1 and 'Local changes' in out
 
 
 # --------------------------------------------------------------------------- #
