@@ -250,5 +250,9 @@ class Configuration:
                     raise ValueError('Configuration refused; previous file restored') from None
             finally:
                 Path(temporary).unlink(missing_ok=True)
+            if kind == 'role':
+                # The Role Hub shows what changed; keep the content this edit replaced.
+                from .rolehub import record
+                record(self.root, before=before, reason=f'{action} {name}')
             return {'saved': name, 'kind': kind, 'action': action, 'revision': self.revision(),
                     'applies_to': 'New runs; existing approvals, permissions and local-only policy remain enforced'}

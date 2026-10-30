@@ -57,3 +57,6 @@ projects/
 
 # Permission audit is runtime state, never training data or source
 .nexus/permissions/
+
+# Role Hub version snapshots are runtime state, never source
+.nexus/rolehub/

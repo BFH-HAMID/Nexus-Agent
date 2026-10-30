@@ -680,6 +680,24 @@ def make_handler(state: ServerState):
                 return self._mission_summary()
             if path == "/api/mission/stream":
                 return self._mission_stream()
+            if path.startswith("/api/roles/") and path not in {"/api/roles/index", "/api/roles/detail",
+                                                               "/api/roles/history", "/api/roles/diff",
+                                                               "/api/roles/quality"}:
+                return self._send_json({"error": f"no route for {path}"}, 404)
+            if path == "/api/roles/quality":
+                return self._rolehub_read("rolehub.quality", lambda hub: hub.quality(state))
+            if path == "/api/roles/index":
+                return self._rolehub_read("rolehub.index", lambda hub: hub.index(state, parse_qs(parsed.query)))
+            if path == "/api/roles/detail":
+                name = (parse_qs(parsed.query).get("name") or [""])[0]
+                return self._rolehub_read("rolehub.detail", lambda hub: hub.detail(state, name))
+            if path == "/api/roles/history":
+                return self._rolehub_read("rolehub.history", lambda hub: {
+                    "schema": hub.SCHEMA, "observed_at": __import__("time").time(),
+                    "versions": hub.versions(state.workspace),
+                    "store": "workspace .nexus/rolehub (runtime state, never committed)"})
+            if path == "/api/roles/diff":
+                return self._rolehub_read("rolehub.diff", lambda hub: hub.diff(state, parse_qs(parsed.query)))
             if path == "/api/roles":
                 return self._send_json([r.to_dict() for r in state.config.roles.roles.values()])
             if path == "/api/agents":
@@ -790,6 +808,9 @@ def make_handler(state: ServerState):
                 status, data = state.gui.call('POST', path, parse_qs(parsed.query), payload)
                 return self._send_json(data, status)
             payload = self._read_json()
+
+            if path in {"/api/roles/route", "/api/roles/export", "/api/roles/restore"}:
+                return self._rolehub_action(path.rsplit("/", 1)[-1], payload)
 
             if path.startswith("/api/workbench/"):
                 try:
@@ -944,6 +965,52 @@ def make_handler(state: ServerState):
                 return self._send_json(webapi.failed("audit_unavailable",
                                                      "Palette index withheld: the audit trail is unavailable."), 503)
             return self._send_json(webapi.ok(index))
+
+        def _rolehub_client(self) -> str:
+            return str((getattr(self, "client_address", ("", 0)) or ("", 0))[0] or "local")
+
+        def _rolehub_read(self, action: str, build) -> None:
+            """Read-only Role Hub surface: limited, audited (sampled), redacted."""
+            from . import rolehub, webapi
+
+            client = self._rolehub_client()
+            bucket = "roles:" + client
+            if not state.api_limiter.allow(bucket):
+                wait = state.api_limiter.retry_after(bucket)
+                return self._send_json(webapi.failed("rate_limited", f"Too many role reads; retry in {wait}s."), 429)
+            try:
+                data = build(rolehub)
+                rolehub.audit(state, client, action)
+            except ValueError as exc:
+                return self._send_json(webapi.failed("invalid_request", str(exc)), 400)
+            except (OSError, KeyError):
+                return self._send_json(webapi.failed(
+                    "audit_unavailable", "Role data withheld: the local store or audit trail is unavailable."), 503)
+            return self._send_json(webapi.ok(data))
+
+        def _rolehub_action(self, action: str, payload: dict) -> None:
+            """route/export/restore: validated, limited, always audited."""
+            from . import rolehub, webapi
+
+            client = self._rolehub_client()
+            bucket = ("roles-write:" if action == "restore" else "roles:") + client
+            limit_ok = state.api_limiter.allow(bucket)
+            if not limit_ok:
+                wait = state.api_limiter.retry_after(bucket)
+                return self._send_json(webapi.failed("rate_limited", f"Too many role actions; retry in {wait}s."), 429)
+            try:
+                if action == "route":
+                    data = rolehub.route(state, payload)
+                elif action == "export":
+                    data = rolehub.export(state, payload)
+                elif action == "restore":
+                    data = rolehub.restore(state, payload)
+                else:  # pragma: no cover - the route table above decides this
+                    return self._send_json(webapi.failed("unknown_action", "Unknown role action"), 404)
+                rolehub.audit(state, client, f"rolehub.{action}", every=0)
+            except (ValueError, OSError) as exc:
+                return self._send_json(webapi.failed("invalid_request", str(exc)[:400]), 400)
+            return self._send_json(webapi.ok(data))
 
         def _mission_client(self) -> str:
             return str((getattr(self, "client_address", ("", 0)) or ("", 0))[0] or "local")

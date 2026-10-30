@@ -29,8 +29,8 @@
   const SECTIONS = [
     {id: 'mission', group: 'operate', icon: 'i-radar', label: 'nav.mission', aria: 'nav.missionAria', view: 'mission', hint: '1'},
     {id: 'run', group: 'operate', icon: 'i-chat', label: 'nav.run', aria: 'nav.runAria', view: 'run', hint: '2'},
-    {id: 'roles', group: 'operate', icon: 'i-route', label: 'nav.roles', run: () => openWorkbench('manage'),
-      detail: 'roles, agents & teams'},
+    {id: 'roles', group: 'operate', icon: 'i-route', label: 'nav.roles', view: 'roles',
+      detail: '1000 roles, prompts, history'},
     {id: 'computer', group: 'operate', icon: 'i-monitor', label: 'nav.computer', run: () => openWorkbench('desktopSetup'),
       detail: 'permissions, browser, editor, service'},
     {id: 'workflows', group: 'operate', icon: 'i-workflow', label: 'nav.workflows', run: () => openStudio('Workflows'),
@@ -53,7 +53,8 @@
   ];
 
   const byId = new Map(SECTIONS.map((section) => [section.id, section]));
-  const viewTitles = {mission: 'nav.mission', run: 'nav.run', operations: 'nav.approvals', world: 'nav.world', control: 'nav.controls'};
+  const viewTitles = {mission: 'nav.mission', roles: 'nav.roles', run: 'nav.run', operations: 'nav.approvals',
+    world: 'nav.world', control: 'nav.controls'};
   let activeId = null;
   let pendingAnchor = null;
 

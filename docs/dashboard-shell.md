@@ -14,7 +14,7 @@ the Workbench/Studio drawers, or opens a dialog:
 | --- | --- | --- |
 | `mission` | Mission Control / মিশন কন্ট্রোল | `view-mission` |
 | `run` | Run & chat | `view-run` |
-| `roles` | Roles & router | Workbench → *manage* |
+| `roles` | Roles & router | `view-roles` (Role Hub, Prompt 3) |
 | `computer` | Computer Control | Workbench → *desktopSetup* |
 | `workflows` | Workflows | Studio → *Workflows* |
 | `approvals` | Approvals | `view-operations`, anchor `#reviews`, badge |
