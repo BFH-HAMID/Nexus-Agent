@@ -710,6 +710,10 @@ def make_handler(state: ServerState):
 
             if path == '/api/session':
                 return self._send_json({'authenticated': True, 'required': bool(state.token)})
+            if path == "/api/world/overview":
+                return self._world_read("world.overview", lambda desk: desk.overview(state))
+            if path.startswith("/api/world/"):
+                return self._send_json({"error": f"no route for {path}"}, 404)
             from .gui_modules import module_path
             if module_path(path):
                 status, data = state.gui.call('GET', path, parse_qs(parsed.query))
@@ -1113,6 +1117,10 @@ def make_handler(state: ServerState):
                         return self._send_json({'error': 'remember must be boolean'}, 400)
                     self._session_cookie = issue(state, host, remember=remember)
                 return self._send_json({'authenticated': not payload.get('forget')})
+            if path.startswith("/api/world/"):
+                if path != "/api/world/refresh":
+                    return self._send_json({"error": f"no route for {path}"}, 404)
+                return self._world_action("refresh", self._read_json())
             from .gui_modules import module_path
             if module_path(path):
                 try:
@@ -1312,6 +1320,47 @@ def make_handler(state: ServerState):
                 return self._send_json(webapi.failed("audit_unavailable",
                                                      "Palette index withheld: the audit trail is unavailable."), 503)
             return self._send_json(webapi.ok(index))
+
+        def _world_read(self, action: str, build) -> None:
+            """Public-source reads: cached only, limited per client, sampled."""
+            from . import webapi, worlddesk
+
+            client = self._rolehub_client()
+            bucket = "world:" + client
+            if not state.api_limiter.allow(bucket):
+                wait = state.api_limiter.retry_after(bucket)
+                return self._send_json(webapi.failed("rate_limited",
+                                                     f"Too many World reads; retry in {wait}s."), 429)
+            try:
+                data = build(worlddesk)
+                worlddesk.audit_read(state, action.removeprefix("world."), client)
+            except ValueError as exc:
+                return self._send_json(webapi.failed("invalid_request", str(exc)[:400]), 400)
+            except (OSError, KeyError):
+                return self._send_json(webapi.failed(
+                    "store_unavailable", "World data withheld: the local cache is unavailable."), 503)
+            return self._send_json(webapi.ok(data))
+
+        def _world_action(self, action: str, payload) -> None:
+            """Contacting a publisher is an explicit, typed, audited act."""
+            from . import webapi, worlddesk
+
+            client = self._rolehub_client()
+            bucket = "world-write:" + client
+            if not state.api_limiter.allow(bucket):
+                wait = state.api_limiter.retry_after(bucket)
+                return self._send_json(webapi.failed("rate_limited",
+                                                     f"Too many World actions; retry in {wait}s."), 429)
+            if not isinstance(payload, dict):
+                return self._send_json(webapi.failed("invalid_request", "A JSON object is required"), 400)
+            try:
+                data = worlddesk.refresh(state, payload)
+            except ValueError as exc:
+                return self._send_json(webapi.failed("invalid_request", str(exc)[:400]), 400)
+            except (OSError, KeyError):
+                return self._send_json(webapi.failed(
+                    "store_unavailable", "Public sources unavailable; the cache was not changed."), 503)
+            return self._send_json(webapi.ok(data))
 
         def _channels_read(self, action: str, build) -> None:
             """Alert, channel and preference reads: limited, sampled, redacted."""

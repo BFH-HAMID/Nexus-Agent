@@ -1623,3 +1623,47 @@ body.mobile-lite-cards table tbody td[data-label]::before {
 /* A switch is a control, not a banner: keep it the width of its label. */
 .channels-page .security-switch { align-self: flex-start; }
 .channels-page .security-switch:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* ── World desk ───────────────────────────────────────────────────────
+   The header and the source table sit above the globe widget, which keeps
+   its own styles. Only the desk's own pieces live here. */
+.worlddesk { margin: 0 0 20px; }
+.worlddesk .security-tablewrap { max-height: 420px; overflow: auto; }
+.worlddesk .security-table td:first-child { min-width: 180px; }
+.worlddesk-age { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.worlddesk-terms { color: var(--muted); font-size: 11px; text-decoration: underline dotted; }
+.worlddesk-banner { margin: 0; }
+.worlddesk-groups { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0 10px; }
+.worlddesk-groupcheck {
+  display: inline-flex; align-items: center; gap: 7px; padding: 7px 11px;
+  border: 1px solid var(--line); border-radius: 10px; font-size: 12.5px; cursor: pointer;
+}
+.worlddesk-groupcheck:has(input:checked) {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+.worlddesk-groupcheck input { margin: 0; }
+.worlddesk-groupcheck:has(input:disabled) { opacity: .5; cursor: not-allowed; }
+
+@media (max-width: 720px) {
+  .worlddesk .security-tablewrap { max-height: none; }
+  /* On a phone the table is not scrolled sideways and no column is dropped:
+     each row becomes a small card, and every cell keeps its column name.
+     The cadence column is omitted because the same values are printed in
+     full, and correctly, in the Weather and cadence card below. */
+  .worlddesk .security-table { min-width: 0; display: block; }
+  .worlddesk .security-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .worlddesk .security-table tbody { display: block; }
+  .worlddesk .security-table tbody tr {
+    display: block; padding: 8px 10px; border-bottom: 1px solid var(--line);
+  }
+  .worlddesk .security-table tbody tr:last-child { border-bottom: 0; }
+  .worlddesk .security-table tbody td {
+    display: grid; grid-template-columns: minmax(0, 34%) minmax(0, 1fr);
+    gap: 8px; padding: 3px 0; border: 0;
+  }
+  .worlddesk .security-table tbody td::before {
+    content: attr(data-label); font: 600 11px/1.5 var(--sans); color: var(--muted);
+  }
+  .worlddesk .security-table tbody td:nth-child(5) { display: none; }
+}
