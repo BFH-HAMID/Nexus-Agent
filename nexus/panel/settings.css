@@ -1,0 +1,139 @@
+/* Settings: one page for the choices this browser and this workspace keep.
+
+   Same design language as the World desk and the Security pages (card grid,
+   monospace values, teal accent) so the hub does not introduce a fourth look.
+   Everything collapses to a single column on a phone; no table is used, so the
+   620 px minimum-width trap that clipped the security pages cannot return. */
+
+.settings-page {
+  display: flex; flex-direction: column; gap: 14px;
+  padding: 22px 24px calc(var(--bottom-nav) + 24px);
+}
+
+.settings-grid {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px; align-items: start;
+}
+.settings-grid > .security-card { gap: 12px; }
+
+.settings-status {
+  margin: 0; min-height: 17px;
+  font: 11.5px/1.4 var(--mono); color: var(--muted); letter-spacing: .01em;
+}
+.settings-status[data-tone="ok"] { color: var(--accent); }
+.settings-status[data-tone="warn"] { color: var(--warn, #f5b544); }
+
+/* ── one labelled choice per row ─────────────────────────────────────────── */
+.settings-page .settings-row {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; flex-wrap: wrap;
+  padding: 9px 0; border-top: 1px solid var(--line);
+}
+.settings-page .settings-row:first-of-type { border-top: 0; padding-top: 2px; }
+.settings-label { font-size: 12.5px; color: var(--text); }
+
+.settings-page .settings-seg {
+  display: inline-flex; gap: 4px; padding: 3px;
+  border: 1px solid var(--line); border-radius: 999px; background: var(--surface);
+}
+.settings-page .settings-seg .btn {
+  min-height: 28px; padding: 0 12px; border: 1px solid transparent;
+  border-radius: 999px; background: transparent; color: var(--muted);
+  font-size: 12px; transition: background .15s, color .15s, border-color .15s;
+}
+.settings-page .settings-seg .btn:hover { background: var(--surface-2); color: var(--text); }
+.settings-page .settings-seg .btn[aria-pressed="true"] {
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
+  color: var(--accent); font-weight: 600;
+}
+
+.settings-page .settings-switch {
+  display: inline-flex; align-items: center; justify-content: flex-start;
+  gap: 9px; min-width: 104px; min-height: 30px; padding: 0 10px;
+  border: 1px solid var(--line); border-radius: 999px;
+  background: var(--surface); color: var(--text);
+}
+.settings-page .settings-switch:hover { border-color: var(--border-strong); background: var(--surface-2); }
+.settings-page .settings-switch .settings-pill {
+  position: relative; flex: none; width: 30px; height: 16px; border-radius: 999px;
+  border: 1px solid var(--line); background: var(--surface-2);
+}
+.settings-page .settings-switch .settings-pill::after {
+  content: ""; position: absolute; top: 2px; left: 2px; width: 10px; height: 10px;
+  border-radius: 50%; background: var(--muted);
+  transition: transform .16s ease, background .16s ease;
+}
+.settings-page .settings-switch .settings-state {
+  font: 10.5px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--muted);
+}
+.settings-page .settings-switch[aria-pressed="true"] .settings-pill {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--line));
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+}
+.settings-page .settings-switch[aria-pressed="true"] .settings-pill::after {
+  transform: translateX(13px); background: var(--accent);
+}
+.settings-page .settings-switch[aria-pressed="true"] .settings-state { color: var(--accent); }
+body.ui-still .settings-page .settings-switch .settings-pill::after,
+body.ui-still .settings-page .settings-seg .btn { transition: none; }
+
+.settings-page .settings-foot {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 2px;
+}
+.settings-hint { font-size: 11.5px; color: var(--muted); }
+
+/* ── read-only facts straight from the server ───────────────────────────── */
+.settings-facts {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 12px; margin: 0;
+}
+.settings-facts > div {
+  min-width: 0; padding: 8px 10px; border: 1px solid var(--line);
+  border-radius: 10px; background: var(--surface);
+}
+.settings-facts dt {
+  margin: 0; font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted);
+}
+.settings-facts dd {
+  margin: 4px 0 0; font: 12.5px/1.4 var(--mono); color: var(--text);
+  overflow-wrap: anywhere; font-variant-numeric: tabular-nums;
+}
+.settings-facts dd[data-tone="ok"] { color: var(--accent); }
+.settings-facts dd[data-tone="warn"] { color: var(--warn, #f5b544); }
+.settings-facts dd[data-tone="off"] { color: var(--muted); }
+
+/* ── navigation tiles and shortcut reference ────────────────────────────── */
+.settings-page .settings-links { display: flex; flex-direction: column; gap: 8px; }
+.settings-page .settings-links .btn {
+  justify-content: flex-start; width: 100%; min-height: 34px;
+  padding: 0 12px; text-align: left; font-size: 12.5px;
+}
+
+.settings-keys {
+  list-style: none; margin: 0; padding: 0;
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 14px;
+}
+.settings-keys li {
+  display: flex; align-items: center; gap: 5px; min-width: 0;
+  font-size: 12px; color: var(--muted);
+}
+.settings-keys li span { margin-left: auto; text-align: right; color: var(--text); }
+.settings-page kbd {
+  font: 10.5px/1 var(--mono); padding: 3px 5px; border: 1px solid var(--line);
+  border-bottom-width: 2px; border-radius: 6px; background: var(--surface-2); color: var(--text);
+}
+.settings-footnote { margin: 0; font-size: 11.5px; color: var(--muted); text-align: center; }
+
+@media (max-width: 1180px) {
+  .settings-grid { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 720px) {
+  .settings-page { padding: 16px 14px calc(var(--bottom-nav) + 28px); }
+  .settings-facts, .settings-keys { grid-template-columns: minmax(0, 1fr); }
+  .settings-page .settings-row { align-items: flex-start; flex-direction: column; gap: 8px; }
+  .settings-page .settings-switch { width: 100%; justify-content: space-between; }
+  .settings-page .settings-seg { width: 100%; }
+  .settings-page .settings-seg .btn { flex: 1 1 0; }
+  .settings-keys li span { text-align: right; }
+}

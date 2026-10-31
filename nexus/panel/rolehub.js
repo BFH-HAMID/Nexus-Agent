@@ -741,7 +741,7 @@
   };
   $('rhWorkbench').onclick = () => {
     if (typeof window.nexusWorkbenchShow === 'function') window.nexusWorkbenchShow('manage');
-    else $('guiSettings')?.click();
+    else $('wbOpen')?.click();
   };
 
   /* ── lifecycle ───────────────────────────────────────────────────────── */

@@ -15,7 +15,7 @@
 
   const openWorkbench = (pane) => {
     if (typeof window.nexusWorkbenchShow === 'function') window.nexusWorkbenchShow(pane);
-    else $('guiSettings')?.click();
+    else $('wbOpen')?.click();
   };
 
   /* ── the fourteen sections ───────────────────────────────────────────── */
@@ -45,8 +45,8 @@
       detail: 'providers, keys, MCP & Telegram'},
     {id: 'controls', group: 'configure', icon: 'i-grid', label: 'nav.controls', aria: 'nav.controlAria', view: 'control',
       detail: 'all 18 control cards'},
-    {id: 'settings', group: 'configure', icon: 'i-sliders', label: 'nav.settings', run: () => $('guiSettings')?.click(),
-      detail: 'layout, language, policy'},
+    {id: 'settings', group: 'configure', icon: 'i-sliders', label: 'nav.settings', view: 'settings',
+      detail: 'appearance, language, layout, policy links'},
   ];
 
   const byId = new Map(SECTIONS.map((section) => [section.id, section]));
@@ -54,7 +54,7 @@
     approvals: 'nav.approvals', workflows: 'nav.workflows', security: 'nav.security', run: 'nav.run',
     memory: 'nav.memory', cost: 'nav.cost', channels: 'nav.channels',
     operations: 'nav.approvals',
-    world: 'nav.world', control: 'nav.controls'};
+    world: 'nav.world', control: 'nav.controls', settings: 'nav.settings'};
   let activeId = null;
   let pendingAnchor = null;
 
@@ -99,7 +99,7 @@
   }
 
   function sectionForView(view) {
-    return SECTIONS.find((section) => section.view === view && !section.anchor && !section.run)
+    return SECTIONS.find((section) => section.view === view && !section.anchor)
       || SECTIONS.find((section) => section.view === view)
       || null;
   }

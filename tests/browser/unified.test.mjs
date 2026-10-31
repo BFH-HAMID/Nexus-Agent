@@ -28,7 +28,7 @@ test('original Run/composer/repositories/models coexist with operations under on
  assert.match(await page.locator('#privacy-state').innerText(),/OFF/);
  await page.getByRole('tab',{name:'Run & chat',exact:true}).click();
  assert.equal(await page.locator('#taskInput').inputValue(),'Preserved main GUI draft — do not execute');
- await page.locator('#guiSettings').click();assert.equal(await page.locator('#workbench').isVisible(),true);await page.locator('#wbClose').click();
+ await page.locator('#wbOpen').click();assert.equal(await page.locator('#workbench').isVisible(),true);await page.locator('#wbClose').click();
  assert.equal(new URL(page.url()).pathname,'/dashboard');assert.deepEqual(errors,[]);
 });
 test('main GUI background queue approval and cancellation use the real shared Studio store',async()=>{

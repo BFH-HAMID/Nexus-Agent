@@ -891,7 +891,7 @@
   $('rtRoles').onclick = () => gui.show('roles');
   $('rtOpenModels').onclick = () => {
     if (typeof window.nexusWorkbenchShow === 'function') window.nexusWorkbenchShow('models');
-    else $('guiSettings')?.click();
+    else $('wbOpen')?.click();
   };
   $('rtOpenRules').onclick = () => switchTab('rules');
   for (const key of ['Cost', 'Speed', 'Quality']) {

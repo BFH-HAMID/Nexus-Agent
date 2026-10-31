@@ -714,6 +714,10 @@ def make_handler(state: ServerState):
                 return self._world_read("world.overview", lambda desk: desk.overview(state))
             if path.startswith("/api/world/"):
                 return self._send_json({"error": f"no route for {path}"}, 404)
+            if path == "/api/settings/summary":
+                return self._settings_read()
+            if path.startswith("/api/settings/"):
+                return self._send_json({"error": f"no route for {path}"}, 404)
             from .gui_modules import module_path
             if module_path(path):
                 status, data = state.gui.call('GET', path, parse_qs(parsed.query))
@@ -1320,6 +1324,24 @@ def make_handler(state: ServerState):
                 return self._send_json(webapi.failed("audit_unavailable",
                                                      "Palette index withheld: the audit trail is unavailable."), 503)
             return self._send_json(webapi.ok(index))
+
+        def _settings_read(self) -> None:
+            """Settings hub: one read-only snapshot, limited per client, sampled."""
+            from . import settingshub, webapi
+
+            client = self._rolehub_client()
+            bucket = "settings:" + client
+            if not state.api_limiter.allow(bucket):
+                wait = state.api_limiter.retry_after(bucket)
+                return self._send_json(webapi.failed("rate_limited",
+                                                     f"Too many settings reads; retry in {wait}s."), 429)
+            try:
+                data = settingshub.summary(state)
+            except (OSError, KeyError):
+                return self._send_json(webapi.failed(
+                    "store_unavailable", "Settings withheld: the local preference store is unavailable."), 503)
+            settingshub.audit_read(state, client)
+            return self._send_json(webapi.ok(data))
 
         def _world_read(self, action: str, build) -> None:
             """Public-source reads: cached only, limited per client, sampled."""

@@ -885,7 +885,7 @@
   $('costRefresh').onclick = () => guard(async () => { await loadOverview(); switchTab(state.tab); });
   $('costOpenWorkbench').onclick = () => {
     if (typeof window.nexusWorkbenchShow === 'function') window.nexusWorkbenchShow('models');
-    else $('guiSettings')?.click();
+    else $('wbOpen')?.click();
   };
   for (const id of ['costBudgetEnabled', 'costBudgetStop', 'costBudgetUnknown', 'costDaily', 'costMonthly']) {
     $(id).addEventListener('input', () => { state.budgetDirty = true; });

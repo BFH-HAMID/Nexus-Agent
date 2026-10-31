@@ -71,8 +71,8 @@
   display: flex; flex-direction: column; gap: 2px;
   margin: 6px 0 0; padding: 8px 0 0; border-top: 1px solid var(--border-subtle);
 }
-.sidebar-nav .ui-preferences::before {
-  content: "Display"; display: block; margin: 0 8px 4px;
+.sidebar-nav .ui-preferences .ui-preferences-title {
+  display: block; margin: 0 8px 4px;
   font-size: 10px; letter-spacing: .16em; text-transform: uppercase; color: var(--faint); font-weight: 600;
 }
 /* dashboard.css sets `flex: 1 1 0`, which collapses the height inside this

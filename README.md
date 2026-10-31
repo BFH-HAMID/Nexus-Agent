@@ -931,7 +931,7 @@ not elevate, overwrite, force-repair or claim all independent workers are stoppe
 
 #### Modern desktop discovery
 
-The original `nexus gui` includes category filters, searchable/favourite controls, navigation-only **Compose a task** / **Review approvals** shortcuts, and browser-local **Compact layout** / **Reduce effects** preferences. The same visual system covers Run, Operations, World and native settings dialogs; existing approvals remain unchanged. See the [desktop appearance guide](docs/dashboard-appearance.md) for details and real screenshots.
+The original `nexus gui` includes category filters, searchable/favourite controls, navigation-only **Compose a task** / **Review approvals** shortcuts, and browser-local **Compact layout** / **Reduce effects** preferences. The same visual system covers Run, Operations, World and native settings dialogs; existing approvals remain unchanged. See the [desktop appearance guide](docs/dashboard-appearance.md) for details and real screenshots, and the [Settings guide](docs/dashboard-settings.md) for where each preference is stored and how old the reported workspace values are.
 
 ### One-command updates
 

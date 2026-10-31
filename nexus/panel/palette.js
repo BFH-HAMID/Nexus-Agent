@@ -109,7 +109,7 @@
         run: () => $('studioOpen')?.click(), panel: () => $('studioOpen')?.click()},
       {key: 'page:keys', kind: 'setting', label: 'API keys', detail: 'provider credentials', icon: 'i-key',
         run: () => { nav.go('run'); window.setTimeout(() => $('keyList')?.scrollIntoView({block: 'center'}), 120); },
-        panel: () => $('guiSettings')?.click()},
+        panel: () => (window.nexusWorkbenchShow ? window.nexusWorkbenchShow('policy') : $('wbOpen')?.click())},
     );
     return pages;
   }
@@ -129,9 +129,9 @@
       {key: 'action:theme', kind: 'action', label: 'Toggle theme', detail: 'dark / light', icon: 'i-sun',
         run: () => $('themeToggle')?.click()},
       {key: 'action:compact', kind: 'action', label: 'Compact layout', detail: 'appearance', icon: 'i-sliders',
-        run: () => [...document.querySelectorAll('.ui-preferences button')].find((node) => /compact/i.test(node.textContent))?.click()},
+        run: () => document.querySelector('.ui-preferences button[data-pref="compact"]')?.click()},
       {key: 'action:still', kind: 'action', label: 'Reduce effects', detail: 'appearance', icon: 'i-sliders',
-        run: () => [...document.querySelectorAll('.ui-preferences button')].find((node) => /reduce/i.test(node.textContent))?.click()},
+        run: () => document.querySelector('.ui-preferences button[data-pref="still"]')?.click()},
       {key: 'action:wb', kind: 'action', label: 'Open Workbench', detail: 'Ctrl+K in the old layout', icon: 'i-terminal',
         run: () => $('wbOpen')?.click()},
       {key: 'action:studio', kind: 'action', label: 'Open Studio', detail: 'workflows · evidence', icon: 'i-layers',

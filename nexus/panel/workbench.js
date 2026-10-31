@@ -104,7 +104,7 @@
     $('wbPaths').value = (prefs.write_paths || []).join('\n'); $('wbLanguage').value = prefs.language;
     out('wbMappings', prefs.role_models); applyLayout(); translate(); cards();
   }
-  open.onclick = async () => { dialog.showModal(); showPane(currentPane); try { await load(); } catch(e) { out('wbHealth',e.message,true); } };
+  open.onclick = async () => { if(!dialog.open)dialog.showModal(); showPane(currentPane); try { await load(); } catch(e) { out('wbHealth',e.message,true); } };
   $('wbClose').onclick = () => dialog.close(); showPane('overview'); translate();
   // Persisted composer policy is read by the server; a tab cannot bypass it.
   window.nexusWorkbenchOptions = () => ({mode:'execute'});
@@ -186,7 +186,7 @@
     });
   }
   $('wbFocus').onchange=()=>document.body.classList.toggle('wb-focus',$('wbFocus').checked);
-  wire('wbSaveLayout','wbLayoutData',async()=>{const layout={focus:$('wbFocus').checked,cards:{},order:{}};cardNodes.forEach(c=>{layout.cards[c.dataset.wbCard]={hidden:c.classList.contains('process-card')?false:c.hidden,height:c.style.height};});document.querySelectorAll('.deck > .col').forEach(col=>{layout.order[col.className]=[...col.children].filter(c=>c.dataset.wbCard).map(c=>c.dataset.wbCard);});prefs=(await api('workbench/settings',{layout,language:$('wbLanguage').value})).data;translate();return 'Saved for this workspace';});
+  wire('wbSaveLayout','wbLayoutData',async()=>{const layout={focus:$('wbFocus').checked,cards:{},order:{}};cardNodes.forEach(c=>{layout.cards[c.dataset.wbCard]={hidden:c.classList.contains('process-card')?false:c.hidden,height:c.style.height};});document.querySelectorAll('.deck > .col').forEach(col=>{layout.order[col.className]=[...col.children].filter(c=>c.dataset.wbCard).map(c=>c.dataset.wbCard);});prefs=(await api('workbench/settings',{layout,language:$('wbLanguage').value})).data;translate();/* the dashboard speaks the same language: one request, not a second setting */window.dispatchEvent(new CustomEvent('nexus:language-request',{detail:prefs.language}));return 'Saved for this workspace';});
   wire('wbResetLayout','wbLayoutData',async()=>{prefs=(await api('workbench/settings',{layout:{}})).data;cardNodes.forEach(c=>c.parentNode.append(c));applyLayout();cards();return 'Layout reset';});
   // Palette provides keyboard access to all workbench sections and core controls.
   const palette=document.createElement('dialog');palette.id='wbPalette';palette.innerHTML='<h3>Command palette / কমান্ড</h3><input id="wbSearch" aria-label="Search commands" placeholder="Search…"><div id="wbCommands"></div>';document.body.append(palette);

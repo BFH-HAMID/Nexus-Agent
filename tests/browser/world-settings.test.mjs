@@ -11,13 +11,13 @@ test('native Bangladesh RSS settings and WeatherAPI key setup are secret-safe an
  const api=body=>page.evaluate(async body=>(await window.nexusGui.api('/api/workbench/world-settings',body)).data,body);
  try{
   await page.goto(base+'/dashboard?map=2d');await page.locator('#guiToken').fill(token);await page.locator('#guiLogin button').click();await page.waitForFunction(()=>document.getElementById('metaUplink').textContent==='online');before=await api();
-  await page.locator('#guiSettings').click();
+  await page.locator('#wbOpen').click();
   for(const [name,pane] of [['AI downloads & capabilities','models'],['Model routing & safety','policy'],['History & planning','runs'],['Waiting task queue','queue'],['File diffs','files'],['Saved error history','errors']]){
    await page.getByRole('button',{name,exact:true}).click();assert.ok(await page.locator('#wbPane-'+pane).isVisible());await page.locator('#workbench [data-pane="overview"]').click();
   }
-  await page.getByRole('button',{name:'Studio workflows',exact:true}).click();assert.ok(await page.locator('#nexusStudio').isVisible());await page.locator('#stClose').click();await page.locator('#guiSettings').click();
-  await page.getByRole('button',{name:'GitHub attachment',exact:true}).click();assert.ok(await page.locator('#repoBar').isVisible());await page.locator('#guiSettings').click();
-  await page.getByRole('button',{name:'Worker & approvals',exact:true}).click();assert.ok(await page.locator('#view-operations').isVisible());await page.locator('#guiSettings').click();
+  await page.getByRole('button',{name:'Studio workflows',exact:true}).click();assert.ok(await page.locator('#nexusStudio').isVisible());await page.locator('#stClose').click();await page.locator('#wbOpen').click();
+  await page.getByRole('button',{name:'GitHub attachment',exact:true}).click();assert.ok(await page.locator('#repoBar').isVisible());await page.locator('#wbOpen').click();
+  await page.getByRole('button',{name:'Worker & approvals',exact:true}).click();assert.ok(await page.locator('#view-operations').isVisible());await page.locator('#wbOpen').click();
   await page.getByRole('button',{name:'RSS & WeatherAPI settings',exact:true}).click();await page.waitForFunction(()=>document.getElementById('wsSources').children.length===4);
   assert.ok(await page.locator('#wsSources input[data-category="Bangladesh"]').count()>=8);
   await page.locator('#wsProvider').selectOption('weatherapi');await page.locator('#wsLanguage').selectOption('bn');await page.locator('#wsBangladesh').click();await page.locator('#wsKey').fill(key);

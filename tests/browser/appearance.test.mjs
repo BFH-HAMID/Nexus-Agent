@@ -32,7 +32,7 @@ test('modern desktop controls combine search, categories and persistent favourit
   assert.equal(await page.getByRole('button',{name:'Favourite Context & privacy',exact:true}).getAttribute('aria-pressed'),'true');
   await page.getByRole('button',{name:'Compact layout',exact:true}).click();await page.getByRole('button',{name:'Reduce effects',exact:true}).click();
   await page.screenshot({path:shot('control'),fullPage:true,animations:'disabled'});
-  await page.locator('#guiSettings').click();assert.equal(await page.locator('#workbench').isVisible(),true);await page.screenshot({path:shot('settings'),animations:'disabled'});await page.locator('#wbClose').click();
+  await page.locator('.sidebar-nav [data-nav-id="settings"]').click();await page.waitForFunction(()=>window.nexusGui.view==='settings',null,{timeout:8000});await page.waitForFunction(()=>window.nexusSettings?.readAt>0,null,{timeout:8000});await page.screenshot({path:shot('settings'),animations:'disabled'});await page.locator('#wbOpen').click();assert.equal(await page.locator('#workbench').isVisible(),true);await page.locator('#wbClose').click();
   for(const [view,title] of [['run','Run & chat'],['operations','Your work, in focus'],['world','A wider perspective']]){
    await page.locator(`[data-gui-tab="${view}"]`).click();assert.equal(await page.locator(`[data-gui-view="${view}"] .ui-section-heading h2`).innerText(),title);
    assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true,view+' must not overflow');await page.screenshot({path:shot(view),fullPage:true,animations:'disabled'});

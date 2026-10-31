@@ -8,6 +8,7 @@
   const stored = (() => { try { return localStorage.getItem('nexus.ui.theme'); } catch { return null; } })();
   root.dataset.theme = stored === 'light' ? 'light' : 'dark';
 
+  const body = document.body;
   const toggle = document.getElementById('themeToggle');
   function paintThemeButton() {
     if (!toggle) return;
@@ -17,15 +18,51 @@
     toggle.title = light ? 'Switch to dark theme' : 'Switch to light theme';
   }
   paintThemeButton();
-  if (toggle) toggle.onclick = () => {
-    root.dataset.theme = root.dataset.theme === 'light' ? 'dark' : 'light';
-    try { localStorage.setItem('nexus.ui.theme', root.dataset.theme); } catch { /* session only */ }
+  function setTheme(value) {
+    const next = value === 'light' ? 'light' : 'dark';
+    if (root.dataset.theme === next) return next;
+    root.dataset.theme = next;
+    try { localStorage.setItem('nexus.ui.theme', next); } catch { /* session only */ }
     paintThemeButton();
-    window.dispatchEvent(new CustomEvent('nexus:theme', {detail: root.dataset.theme}));
+    window.dispatchEvent(new CustomEvent('nexus:theme', {detail: next}));
+    return next;
+  }
+  if (toggle) toggle.onclick = () => setTheme(root.dataset.theme === 'light' ? 'dark' : 'light');
+
+  /* ── display preferences: one owner for the body classes ─────────────
+     Compact layout and reduce-effects used to be toggled by whichever button
+     was clicked. The Settings page needs the same two switches, so they live
+     here once and every button asks this object instead of writing storage
+     itself. The storage keys are unchanged, so saved layouts keep working. */
+  const DISPLAY = {compact: 'ui-compact', still: 'ui-still'};
+  const readPref = (key) => {
+    try { return localStorage.getItem('nexus.ui.' + key) === 'true'; } catch { return false; }
   };
+  const display = Object.fromEntries(Object.keys(DISPLAY).map((key) => [key, readPref(key)]));
+  function applyDisplay() {
+    for (const [key, cls] of Object.entries(DISPLAY)) body.classList.toggle(cls, Boolean(display[key]));
+    window.dispatchEvent(new CustomEvent('nexus:appearance', {detail: {...display}}));
+  }
+  function setDisplay(key, on) {
+    if (!(key in DISPLAY)) return false;
+    display[key] = Boolean(on);
+    try { localStorage.setItem('nexus.ui.' + key, String(display[key])); } catch { /* session only */ }
+    applyDisplay();
+    return display[key];
+  }
+  window.nexusAppearance = {
+    get: (key) => Boolean(display[key]),
+    set: setDisplay,
+    toggle: (key) => setDisplay(key, !display[key]),
+    reset: () => { for (const key of Object.keys(DISPLAY)) setDisplay(key, false); return {...display}; },
+    theme: (value) => (value === undefined ? root.dataset.theme : setTheme(value)),
+    settings: () => ({theme: root.dataset.theme, ...display}),
+    keys: () => ({...DISPLAY}),
+  };
+  applyDisplay();
+  window.addEventListener('nexus:theme', () => paintThemeButton());
 
   /* ── mobile navigation drawer ──────────────────────────────────────── */
-  const body = document.body;
   const navToggle = document.getElementById('navToggle');
   const scrim = document.getElementById('navScrim');
   const drawerQuery = window.matchMedia('(max-width: 1080px)');
@@ -81,7 +118,7 @@
     wbOpen: { icon: 'i-terminal', label: 'Workbench', hint: 'Ctrl+K' },
     studioOpen: { icon: 'i-layers', label: 'Studio', hint: 'review · evidence' },
     guiManagement: { icon: 'i-users', label: 'Roles', hint: 'roles, agents & teams' },
-    guiSettings: { icon: 'i-sliders', label: 'Settings', hint: 'models, policy, integrations' },
+    guiSettings: { icon: 'i-sliders', label: 'Settings', hint: 'appearance, language, layout, policy' },
   };
   for (const [id, meta] of Object.entries(tools)) {
     const button = document.getElementById(id);

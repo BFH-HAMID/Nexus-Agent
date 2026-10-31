@@ -18,6 +18,7 @@
 <link rel="stylesheet" href="/dashboard/modules.css" />
 <link rel="stylesheet" href="/dashboard/desktop.css" />
 <link rel="stylesheet" href="/dashboard/shell.css" />
+<link rel="stylesheet" href="/dashboard/settings.css" />
 </head>
 <body>
 
@@ -137,7 +138,7 @@
       <svg class="ic" aria-hidden="true"><use href="#i-grid"/></svg>
       <span class="nav-label" data-i18n="nav.controls">All controls</span><span class="nav-label-short" aria-hidden="true" data-i18n="nav.controlsShort">Controls</span>
     </button>
-    <button class="nav-item" type="button" data-nav-id="settings" aria-label="Settings" data-i18n-aria="nav.settings">
+    <button class="nav-item" type="button" role="tab" data-gui-tab="settings" data-nav-id="settings" aria-selected="false" aria-label="Settings" data-i18n-aria="nav.settings">
       <svg class="ic" aria-hidden="true"><use href="#i-sliders"/></svg>
       <span class="nav-label" data-i18n="nav.settings">Settings</span><span class="nav-label-short" aria-hidden="true" data-i18n="nav.settings">Settings</span>
     </button>
@@ -239,7 +240,7 @@
         <svg class="ic" aria-hidden="true"><use href="#i-alert"/></svg><span class="btn-label" data-i18n="topbar.kill">Kill</span>
       </button>
       <span class="topbar-divider" aria-hidden="true"></span>
-      <button class="btn tool-btn" id="guiSettings" type="button" title="Models &amp; settings — model profiles, policy, integrations">
+      <button class="btn tool-btn" id="guiSettings" type="button" title="Settings — appearance, language, layout and policy links">
         <svg class="ic" aria-hidden="true"><use href="#i-sliders"/></svg><span class="btn-label">Settings</span>
       </button>
       <button class="icon-btn bell-btn" id="notifyBell" type="button" aria-label="Notifications" aria-expanded="false" aria-controls="bellPopover" data-i18n-aria="topbar.bellHint" title="Notifications">
@@ -626,6 +627,145 @@
 <article class="world-weather"><div class="section-title"><h3 id="world-weather-name">Dinajpur weather</h3><button id="world-favorite" class="secondary" aria-label="Save weather location">☆ Save</button></div><form id="world-city-form" class="inline"><label>City <input id="world-city" placeholder="Search any city" maxlength="80" minlength="2" required></label><button class="secondary">Find</button></form><div id="world-city-results" class="inline"></div><div id="world-favorites" class="inline"></div><p id="world-weather-status" class="muted">WeatherAPI.com · configure key in News & weather settings</p><p id="world-weather-alert" role="status" hidden></p><div id="world-current" class="world-current"><span class="world-weather-icon">☀</span><strong>—</strong><span>Waiting for forecast</span></div><div id="world-weather-details" class="world-weather-details"></div><h4>Next 24 hours · °C</h4><div id="world-hourly"></div><div id="world-forecast" class="world-forecast"></div><p id="world-weather-credit" class="muted">Powered by <a href="https://www.weatherapi.com/" target="_blank" rel="noopener noreferrer">WeatherAPI.com</a>. Available forecast days depend on your plan. Local thresholds are not official warnings.</p></article></div></section>
 </section>
 
+  <!-- ══ settings view ══════════════════════════════════════════════ -->
+  <section class="gui-modules settings-page" id="view-settings" data-gui-view="settings" hidden>
+    <header class="security-head">
+      <div class="security-headtext">
+        <p class="security-eyebrow" data-i18n="settings.eyebrow"></p>
+        <h1 data-i18n="settings.title"></h1>
+        <p class="security-sub" data-i18n="settings.subtitle"></p>
+      </div>
+      <div class="security-tools">
+        <button class="btn ghost" type="button" id="settingsReload"><span class="btn-label" data-i18n="settings.reload"></span></button>
+        <span class="security-stamp" id="settingsStamp">—</span>
+      </div>
+    </header>
+    <p class="security-banner" id="settingsError" role="alert" hidden></p>
+    <p class="settings-status" id="settingsStatus" role="status" aria-live="polite"></p>
+
+    <div class="settings-grid">
+      <section class="security-card" aria-labelledby="settingsAppearanceHead">
+        <div class="security-cardhead">
+          <h2 id="settingsAppearanceHead" data-i18n="settings.appearance"></h2>
+          <span class="security-chip" id="settingsAppearanceChip" role="status">—</span>
+        </div>
+        <p class="security-note" data-i18n="settings.appearanceNote"></p>
+        <div class="settings-row">
+          <span class="settings-label" data-i18n="settings.theme"></span>
+          <div class="settings-seg" role="group" aria-labelledby="settingsThemeLabel">
+            <span class="sr-only" id="settingsThemeLabel" data-i18n="settings.theme"></span>
+            <button class="btn" type="button" data-theme-choice="dark" aria-pressed="false"><span data-i18n="settings.dark"></span></button>
+            <button class="btn" type="button" data-theme-choice="light" aria-pressed="false"><span data-i18n="settings.light"></span></button>
+          </div>
+        </div>
+        <div class="settings-row">
+          <span class="settings-label" data-i18n="settings.compact"></span>
+          <button class="btn settings-switch" type="button" id="settingsCompact" aria-pressed="false" data-i18n-aria="settings.compact"><span class="settings-pill" aria-hidden="true"></span><span class="settings-state">—</span></button>
+        </div>
+        <div class="settings-row">
+          <span class="settings-label" data-i18n="settings.still"></span>
+          <button class="btn settings-switch" type="button" id="settingsStill" aria-pressed="false" data-i18n-aria="settings.still"><span class="settings-pill" aria-hidden="true"></span><span class="settings-state">—</span></button>
+        </div>
+        <div class="settings-foot">
+          <button class="btn ghost" type="button" id="settingsResetDisplay"><span class="btn-label" data-i18n="settings.resetDisplay"></span></button>
+          <span class="settings-hint" data-i18n="settings.browserOnly"></span>
+        </div>
+      </section>
+
+      <section class="security-card" aria-labelledby="settingsLanguageHead">
+        <div class="security-cardhead">
+          <h2 id="settingsLanguageHead" data-i18n="settings.language"></h2>
+          <span class="security-chip" id="settingsLanguageChip" role="status">—</span>
+        </div>
+        <p class="security-note" data-i18n="settings.languageNote"></p>
+        <div class="settings-row">
+          <span class="settings-label" data-i18n="settings.language"></span>
+          <div class="settings-seg" role="group" aria-labelledby="settingsLanguageLabel">
+            <span class="sr-only" id="settingsLanguageLabel" data-i18n="settings.language"></span>
+            <button class="btn" type="button" data-lang-choice="en" aria-pressed="false" lang="en">English</button>
+            <button class="btn" type="button" data-lang-choice="bn" aria-pressed="false" lang="bn">বাংলা</button>
+          </div>
+        </div>
+        <ul class="security-notes">
+          <li data-i18n="settings.languageScope"></li>
+          <li data-i18n="settings.languageSource"></li>
+        </ul>
+      </section>
+
+      <section class="security-card" aria-labelledby="settingsWorkspaceHead">
+        <div class="security-cardhead">
+          <h2 id="settingsWorkspaceHead" data-i18n="settings.workspace"></h2>
+          <span class="security-chip" id="settingsWorkspaceChip" role="status">—</span>
+        </div>
+        <p class="security-note" data-i18n="settings.workspaceNote"></p>
+        <dl class="settings-facts" id="settingsWorkspaceFacts"></dl>
+        <div class="settings-foot">
+          <button class="btn" type="button" id="settingsOpenLayout"><span class="btn-label" data-i18n="settings.openLayout"></span></button>
+          <button class="btn ghost" type="button" id="settingsOpenWorkbench"><span class="btn-label" data-i18n="settings.openWorkbench"></span></button>
+        </div>
+      </section>
+
+      <section class="security-card" aria-labelledby="settingsWorldHead">
+        <div class="security-cardhead">
+          <h2 id="settingsWorldHead" data-i18n="settings.world"></h2>
+          <span class="security-chip" id="settingsWorldChip" role="status">—</span>
+        </div>
+        <p class="security-note" data-i18n="settings.worldNote"></p>
+        <dl class="settings-facts" id="settingsWorldFacts"></dl>
+        <div class="settings-foot">
+          <button class="btn" type="button" id="settingsOpenWorldSettings"><span class="btn-label" data-i18n="settings.worldSettings"></span></button>
+          <button class="btn ghost" type="button" id="settingsOpenWorld"><span class="btn-label" data-i18n="settings.openWorld"></span></button>
+        </div>
+      </section>
+
+      <section class="security-card" aria-labelledby="settingsDesktopHead">
+        <div class="security-cardhead"><h2 id="settingsDesktopHead" data-i18n="settings.desktop"></h2></div>
+        <p class="security-note" data-i18n="settings.desktopNote"></p>
+        <div class="settings-links" id="settingsDesktopLinks">
+          <button class="btn ghost" type="button" id="settingsOpenDesktopSetup"><span class="btn-label" data-i18n="settings.openDesktop"></span></button>
+          <button class="btn ghost" type="button" id="settingsOpenControls"><span class="btn-label" data-i18n="settings.openControls"></span></button>
+        </div>
+      </section>
+
+      <section class="security-card" aria-labelledby="settingsElsewhereHead">
+        <div class="security-cardhead"><h2 id="settingsElsewhereHead" data-i18n="settings.elsewhere"></h2></div>
+        <p class="security-note" data-i18n="settings.elsewhereNote"></p>
+        <div class="settings-links" id="settingsElsewhereLinks">
+          <button class="btn ghost" type="button" data-goto="approvals"><span class="btn-label" data-i18n="settings.policyApprovals"></span></button>
+          <button class="btn ghost" type="button" data-goto="security"><span class="btn-label" data-i18n="settings.policySecurity"></span></button>
+          <button class="btn ghost" type="button" data-goto="cost"><span class="btn-label" data-i18n="settings.policyCost"></span></button>
+          <button class="btn ghost" type="button" data-goto="memory"><span class="btn-label" data-i18n="settings.policyMemory"></span></button>
+          <button class="btn ghost" type="button" data-goto="computer"><span class="btn-label" data-i18n="settings.policyComputer"></span></button>
+        </div>
+      </section>
+
+      <section class="security-card" aria-labelledby="settingsShortcutsHead">
+        <div class="security-cardhead"><h2 id="settingsShortcutsHead" data-i18n="settings.shortcuts"></h2></div>
+        <p class="security-note" data-i18n="settings.shortcutsNote"></p>
+        <ul class="settings-keys" id="settingsShortcuts">
+          <li><kbd>Alt</kbd>+<kbd>1</kbd><span data-i18n="settings.keyMission"></span></li>
+          <li><kbd>Alt</kbd>+<kbd>2</kbd><span data-i18n="settings.keyRun"></span></li>
+          <li><kbd>Alt</kbd>+<kbd>3</kbd><span data-i18n="settings.keyApprovals"></span></li>
+          <li><kbd>Alt</kbd>+<kbd>4</kbd><span data-i18n="settings.keyWorld"></span></li>
+          <li><kbd>Alt</kbd>+<kbd>0</kbd><span data-i18n="settings.keyControls"></span></li>
+          <li><kbd>Ctrl</kbd>+<kbd>K</kbd><span data-i18n="settings.keyPalette"></span></li>
+          <li><kbd>Esc</kbd><span data-i18n="settings.keyEscape"></span></li>
+        </ul>
+      </section>
+
+      <section class="security-card" aria-labelledby="settingsBuildHead">
+        <div class="security-cardhead">
+          <h2 id="settingsBuildHead" data-i18n="settings.build"></h2>
+          <span class="security-chip" id="settingsBuildChip" role="status">—</span>
+        </div>
+        <p class="security-note" data-i18n="settings.buildNote"></p>
+        <dl class="settings-facts" id="settingsBuildFacts"></dl>
+      </section>
+    </div>
+
+    <p class="settings-footnote" data-i18n="settings.footer"></p>
+  </section>
+
   <footer class="statusbar">
     <span class="sb-item"><i class="dot ok" aria-hidden="true"></i><span id="sbState">idle</span></span>
     <span class="sb-sep" aria-hidden="true">/</span>
@@ -668,5 +808,6 @@
 <script src="/dashboard/cost.js"></script>
 <script src="/dashboard/channels.js"></script>
 <script src="/dashboard/worlddesk.js"></script>
+<script src="/dashboard/settings.js"></script>
 </body>
 </html>
