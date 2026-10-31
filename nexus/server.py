@@ -829,6 +829,45 @@ def make_handler(state: ServerState):
                 raw = (query.get("top_k") or ["0"])[0]
                 return self._knowledge_read("knowledge.context", lambda module: knowledge.context(
                     state, task, int(raw) if raw.isdigit() else 0))
+            if path == "/api/cost/overview":
+                return self._cost_read("cost.overview", lambda cost: cost.overview(state))
+            if path.startswith("/api/cost/"):
+                query = parse_qs(parsed.query)
+                if path not in {"/api/cost/policy", "/api/cost/report", "/api/cost/latency",
+                                "/api/cost/breakdown", "/api/cost/budget", "/api/cost/providers",
+                                "/api/cost/compare", "/api/cost/comparisons", "/api/cost/resources"}:
+                    return self._send_json({"error": f"no route for {path}"}, 404)
+
+                def number(name, default):
+                    raw = (query.get(name) or [str(default)])[0]
+                    return int(raw) if raw.isdigit() else default
+
+                def word(name, default):
+                    return (query.get(name) or [default])[0]
+
+                if path == "/api/cost/policy":
+                    return self._cost_read("cost.policy", lambda module: module.policy_view(state.workspace))
+                if path == "/api/cost/report":
+                    return self._cost_read("cost.report", lambda module: module.report(state, number("days", 7)))
+                if path == "/api/cost/latency":
+                    return self._cost_read("cost.latency", lambda module: module.latency_view(
+                        state, number("days", 7), word("group", "model")))
+                if path == "/api/cost/breakdown":
+                    return self._cost_read("cost.breakdown", lambda module: module.breakdown(
+                        state, number("days", 7), word("group", "model")))
+                if path == "/api/cost/budget":
+                    return self._cost_read("cost.budget", lambda module: module.budget_state(state.workspace))
+                if path == "/api/cost/providers":
+                    return self._cost_read("cost.providers", lambda module: module.providers(state))
+                if path == "/api/cost/comparisons":
+                    return self._cost_read("cost.comparisons", lambda module: module.comparisons(
+                        state.workspace, number("limit", 20)))
+                if path == "/api/cost/resources":
+                    return self._cost_read("cost.resources", lambda module: module.resources(state))
+                ident = word("id", "")
+                if not ident:
+                    return self._send_json({"error": "An id is required"}, 400)
+                return self._cost_read("cost.compare", lambda module: module.compare_status(state, ident))
             if path.startswith("/api/workflows/"):
                 query = parse_qs(parsed.query)
                 if path == "/api/workflows/overview":
@@ -1055,6 +1094,12 @@ def make_handler(state: ServerState):
                 nonce = securitycenter.cookie_nonce(self.headers.get("Cookie", ""))
                 return self._security_action(action, payload, nonce)
 
+            if path.startswith("/api/cost/"):
+                action = path.removeprefix("/api/cost/")
+                if action not in {"policy/save", "compare", "clear"}:
+                    return self._send_json({"error": f"no route for {path}"}, 404)
+                return self._cost_action(action, payload)
+
             if path.startswith("/api/knowledge/"):
                 action = path.removeprefix("/api/knowledge/")
                 if action not in {"policy/save", "index", "collection/delete", "document/delete",
@@ -1209,6 +1254,54 @@ def make_handler(state: ServerState):
                 return self._send_json(webapi.failed("audit_unavailable",
                                                      "Palette index withheld: the audit trail is unavailable."), 503)
             return self._send_json(webapi.ok(index))
+
+        def _cost_read(self, action: str, build) -> None:
+            """Cost reads: limited per client, sampled into the same audit chain."""
+            from . import costcenter, webapi
+
+            client = self._rolehub_client()
+            bucket = "cost:" + client
+            if not state.api_limiter.allow(bucket):
+                wait = state.api_limiter.retry_after(bucket)
+                return self._send_json(webapi.failed("rate_limited",
+                                                     f"Too many cost reads; retry in {wait}s."), 429)
+            try:
+                data = build(costcenter)
+                costcenter.audit_read(state, action.removeprefix("cost."), client)
+            except ValueError as exc:
+                return self._send_json(webapi.failed("invalid_request", str(exc)[:400]), 400)
+            except (OSError, KeyError):
+                return self._send_json(webapi.failed(
+                    "store_unavailable", "Cost data withheld: a local store is unavailable."), 503)
+            return self._send_json(webapi.ok(data))
+
+        def _cost_action(self, action: str, payload) -> None:
+            """Every cost write needs its own typed token and is audited."""
+            from . import costcenter, webapi
+
+            client = self._rolehub_client()
+            bucket = "cost-write:" + client
+            if not state.api_limiter.allow(bucket):
+                wait = state.api_limiter.retry_after(bucket)
+                return self._send_json(webapi.failed("rate_limited",
+                                                     f"Too many cost actions; retry in {wait}s."), 429)
+            if not isinstance(payload, dict):
+                return self._send_json(webapi.failed("invalid_request", "A JSON object is required"), 400)
+            try:
+                if action == "policy/save":
+                    data = costcenter.save_policy(state, payload)
+                elif action == "compare":
+                    data = costcenter.compare(state, payload)
+                else:
+                    data = costcenter.cleanup(state, payload)
+            except costcenter.BudgetExceeded as exc:
+                return self._send_json(webapi.failed("budget_exceeded", str(exc)[:400]), 409)
+            except ValueError as exc:
+                return self._send_json(webapi.failed("invalid_request", str(exc)[:400]), 400)
+            except (OSError, KeyError):
+                return self._send_json(webapi.failed(
+                    "store_unavailable", "The cost store is unavailable; nothing was changed."), 503)
+            return self._send_json(webapi.ok(data))
 
         def _knowledge_read(self, action: str, build) -> None:
             """Memory & knowledge reads: limited per client, sampled audit, redacted."""

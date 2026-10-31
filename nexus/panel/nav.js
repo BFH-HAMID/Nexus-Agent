@@ -36,8 +36,8 @@
       detail: 'audit chain, sessions, vault, policy'},
     {id: 'memory', group: 'configure', icon: 'i-brain', label: 'nav.memory', view: 'memory',
       detail: 'memory policy, documents, retrieval'},
-    {id: 'cost', group: 'configure', icon: 'i-coin', label: 'nav.cost', run: () => openWorkbench('models'),
-      detail: 'Ollama inventory, prices, policy'},
+    {id: 'cost', group: 'configure', icon: 'i-coin', label: 'nav.cost', view: 'cost',
+      detail: 'spend, latency, budgets, resources'},
     {id: 'world', group: 'configure', icon: 'i-globe', label: 'nav.world', aria: 'nav.worldAria', view: 'world', hint: '4'},
     {id: 'integrations', group: 'configure', icon: 'i-puzzle', label: 'nav.integrations', view: 'run', anchor: 'integrations',
       detail: 'providers, keys, MCP & Telegram'},
@@ -50,7 +50,7 @@
   const byId = new Map(SECTIONS.map((section) => [section.id, section]));
   const viewTitles = {mission: 'nav.mission', roles: 'nav.roles', router: 'nav.router', computer: 'nav.computer',
     approvals: 'nav.approvals', workflows: 'nav.workflows', security: 'nav.security', run: 'nav.run',
-    memory: 'nav.memory',
+    memory: 'nav.memory', cost: 'nav.cost',
     operations: 'nav.approvals',
     world: 'nav.world', control: 'nav.controls'};
   let activeId = null;

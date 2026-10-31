@@ -491,6 +491,11 @@ class NexusAgent:
                 self.event(EventType.TEXT_DELTA, text=piece, role=_role)
 
             try:
+                # A configured budget stops the run *before* the call that would
+                # cross it; without one this is a single stat of a missing file.
+                from . import costcenter
+
+                costcenter.enforce(self.ws)
                 provider, completion = self.providers.call_with_fallback(
                     agent_cfg.name,
                     system,
@@ -503,7 +508,11 @@ class NexusAgent:
                     on_text=_on_text if use_stream else None,
                 )
             except Exception as exc:  # noqa: BLE001
+                from . import costcenter
+
                 self.event(EventType.ERROR, message=str(exc))
+                stopped = (f"budget stop: {exc}" if isinstance(exc, costcenter.BudgetExceeded)
+                           else f"provider error: {exc}")
                 failed = RunResult(
                     text=final_text,
                     role=active_role.name,
@@ -515,7 +524,7 @@ class NexusAgent:
                     changed_files=sorted(ctx.state.get("changed_files", set())),
                     summary=ctx.state.get("summary", ""),
                     followups=ctx.state.get("followups", []),
-                    stopped_reason=f"provider error: {exc}",
+                    stopped_reason=stopped,
                     duration_s=time.time() - started,
                     messages=messages,
                     ok=False,
