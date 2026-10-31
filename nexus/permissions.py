@@ -14,7 +14,6 @@ import time
 from pathlib import Path
 
 import yaml
-from filelock import FileLock
 
 MODES = {'READ_ONLY', 'ASK_EVERY_TIME', 'AUTO_ALLOW'}
 # Tool families that always take a fresh decision, whatever the mode says.
@@ -121,22 +120,12 @@ class Permissions:
         return {'mode': mode, 'readonly': readonly, 'forced': forced}
 
     def audit(self, spec, args, rule, decision):
-        from .config import nexus_home
-        from .studio import redact
-        home = nexus_home().resolve()
-        root = (home / 'permissions' / hashlib.sha256(str(self.root).encode()).hexdigest()).resolve()
-        if not root.is_relative_to(home):
-            raise ValueError('Permission audit must stay in the trusted Nexus state directory')
-        root.mkdir(parents=True, exist_ok=True)
-        path = root / 'audit.jsonl'
-        lock = root / 'audit.lock'
-        if path.is_symlink() or lock.is_symlink():
-            raise ValueError('Permission audit symlinks are forbidden')
-        event = {'at': time.time(), 'tool': spec.name, 'mode': rule['mode'], 'approved': decision.approved,
-                 'reason': decision.reason[:500], 'args_sha256': hashlib.sha256(json.dumps(args, sort_keys=True).encode()).hexdigest()}
-        with FileLock(str(lock), timeout=5):
-            if path.exists() and path.stat().st_size > 5_000_000:
-                raise ValueError('Permission audit full; archive it manually before further execution')
-            fd = os.open(path, os.O_WRONLY | os.O_APPEND | os.O_CREAT | getattr(os, 'O_NOFOLLOW', 0), 0o600)
-            with os.fdopen(fd, 'a', encoding='utf-8') as file:
-                file.write(json.dumps(redact(event), allow_nan=False) + '\n')
+        """One hash-linked line in the shared trail (see securitycenter.append_event)."""
+        from . import securitycenter
+        event = {'at': round(time.time(), 3), 'tool': spec.name, 'mode': rule['mode'],
+                 'approved': bool(decision.approved), 'reason': decision.reason[:500],
+                 'args_sha256': hashlib.sha256(json.dumps(args, sort_keys=True).encode()).hexdigest(),
+                 'action': 'permission.decision', 'target': spec.name,
+                 'result': 'approved' if decision.approved else 'denied',
+                 'risk': 'low', 'actor': 'agent', 'detail': {'mode': rule['mode']}}
+        securitycenter.append_event(self.root, event)

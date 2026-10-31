@@ -24,23 +24,40 @@ def valid(state, host, header):
         cookie = SimpleCookie(header)
         value = cookie[NAME].value
         expires, nonce, signed = value.split('.')
-        return (len(value) < 256 and len(nonce) == 32 and time.time() < int(expires) <= time.time() + LIFETIME + 60
-                and hmac.compare_digest(signed, signature(state, host, expires + '.' + nonce)))
+        if not (len(value) < 256 and len(nonce) == 32 and time.time() < int(expires) <= time.time() + LIFETIME + 60
+                and hmac.compare_digest(signed, signature(state, host, expires + '.' + nonce))):
+            return False
     except (ValueError, KeyError, TypeError, CookieError):
+        return False
+    # A signed cookie can still have been revoked. An unreadable store fails
+    # closed: the serve token in the login box remains the way back in.
+    from .securitycenter import is_revoked
+    try:
+        return not is_revoked(state.workspace, nonce)
+    except (ValueError, OSError):
         return False
 
 
-def issue(state, host, remember=True):
-    nonce = ('p' if remember else 's') + secrets.token_hex(16)[1:]
-    value = str(int(time.time()) + LIFETIME) + '.' + nonce
+def issue(state, host, remember=True, nonce=''):
+    nonce = nonce or ('p' if remember else 's') + secrets.token_hex(16)[1:]
+    expires = int(time.time()) + LIFETIME
+    value = str(expires) + '.' + nonce
     age = f'; Max-Age={LIFETIME}' if remember else ''
-    return f'{NAME}={value}.{signature(state, host, value)}{age}; Path=/; HttpOnly; SameSite=Strict'
+    cookie = f'{NAME}={value}.{signature(state, host, value)}{age}; Path=/; HttpOnly; SameSite=Strict'
+    # The list is what the Security page shows and revokes; a failure to record
+    # never disables an otherwise valid login, it is reported there instead.
+    try:
+        from .securitycenter import record_session
+        record_session(state.workspace, nonce, host, remember, expires)
+    except (ValueError, OSError):
+        pass
+    return cookie
 
 
 def renew(state, host, header):
-    """Call only after valid(): preserve the signed browser-session preference."""
+    """Call only after valid(): keep the same nonce, refresh the expiry."""
     nonce = SimpleCookie(header)[NAME].value.split('.')[1]
-    return issue(state, host, remember=not nonce.startswith('s'))
+    return issue(state, host, remember=not nonce.startswith('s'), nonce=nonce)
 
 
 def forget():

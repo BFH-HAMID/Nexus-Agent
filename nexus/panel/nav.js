@@ -32,8 +32,8 @@
       detail: 'canvas, versions, runs, schedules'},
     {id: 'approvals', group: 'operate', icon: 'i-shield', label: 'nav.approvals', aria: 'nav.approvalAria', view: 'approvals',
       badge: true, hint: '3'},
-    {id: 'security', group: 'operate', icon: 'i-lock', label: 'nav.security', view: 'operations', anchor: 'audit',
-      detail: 'permission audit, traces, diagnostics'},
+    {id: 'security', group: 'operate', icon: 'i-lock', label: 'nav.security', view: 'security',
+      detail: 'audit chain, sessions, vault, policy'},
     {id: 'memory', group: 'configure', icon: 'i-brain', label: 'nav.memory', view: 'run', anchor: 'memCard',
       focus: 'brainQuery', detail: 'role memory & learning brain'},
     {id: 'cost', group: 'configure', icon: 'i-coin', label: 'nav.cost', run: () => openWorkbench('models'),
@@ -49,7 +49,8 @@
 
   const byId = new Map(SECTIONS.map((section) => [section.id, section]));
   const viewTitles = {mission: 'nav.mission', roles: 'nav.roles', router: 'nav.router', computer: 'nav.computer',
-    approvals: 'nav.approvals', workflows: 'nav.workflows', run: 'nav.run', operations: 'nav.approvals',
+    approvals: 'nav.approvals', workflows: 'nav.workflows', security: 'nav.security', run: 'nav.run',
+    operations: 'nav.approvals',
     world: 'nav.world', control: 'nav.controls'};
   let activeId = null;
   let pendingAnchor = null;

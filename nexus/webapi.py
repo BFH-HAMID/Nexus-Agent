@@ -19,14 +19,11 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 import threading
 import time
 from collections import deque
 from pathlib import Path
 from typing import Any
-
-from filelock import FileLock
 
 AUDIT_LIMIT_BYTES = 5_000_000
 
@@ -100,27 +97,18 @@ def audit_api(workspace: Path, action: str, *, actor: str = "user", target: str 
     Raises ``ValueError``/``OSError`` when the record cannot be written; callers
     treat that as a hard failure instead of silently losing the trail.
     """
-    from .studio import redact
-
     if not isinstance(action, str) or not action or len(action) > 120:
         raise ValueError("Audit action must be a bounded string")
     if risk not in {"low", "medium", "high"}:
         raise ValueError("Audit risk must be low, medium or high")
-    path = audit_path(workspace)
-    lock = path.with_suffix(".lock")
-    if path.is_symlink() or lock.is_symlink():
-        raise ValueError("API audit symlinks are forbidden")
+    from . import securitycenter
+
     event = {"at": round(time.time(), 3), "actor": str(actor)[:80], "action": action,
              "target": str(target)[:300], "result": str(result)[:120],
              "risk": risk, "detail": detail}
-    line = json.dumps(redact(event), ensure_ascii=False, allow_nan=False)
-    with FileLock(str(lock), timeout=5):
-        if path.exists() and path.stat().st_size > AUDIT_LIMIT_BYTES:
-            raise ValueError("API audit full; archive it manually before further use")
-        fd = os.open(path, os.O_WRONLY | os.O_APPEND | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0), 0o600)
-        with os.fdopen(fd, "a", encoding="utf-8") as handle:
-            handle.write(line + "\n")
-    return event
+    # One writer, one chain: the permission gate and every dashboard endpoint
+    # append the same hash-linked line (see securitycenter.append_event).
+    return securitycenter.append_event(workspace, event)
 
 
 def read_audit(workspace: Path, limit: int = 40) -> list[dict[str, Any]]:

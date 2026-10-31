@@ -590,6 +590,12 @@ def make_handler(state: ServerState):
                 return hmac.compare_digest(provided.encode(), state.token.encode())
             return valid(state, self.headers.get('Host', ''), self.headers.get('Cookie', ''))
 
+        def _credential_presented(self, parsed) -> bool:
+            """Did this request actually offer a credential? A signed-out tab does not."""
+            if self.headers.get('X-Nexus-Token') or self.headers.get('Cookie'):
+                return True
+            return bool((parse_qs(parsed.query).get('token') or [''])[0])
+
         def _send_json(self, payload: Any, status: int = 200) -> None:
             body = json.dumps(payload, ensure_ascii=False, default=str).encode("utf-8")
             self.send_response(status)
@@ -661,6 +667,10 @@ def make_handler(state: ServerState):
             if not self._origin_ok():
                 return self._send_json({'error': 'Host/origin refused'}, 403)
             if not self._authorized() and not self._public_asset(path):
+                from . import securitycenter
+
+                securitycenter.note_denied(state, path, self._rolehub_client(),
+                                           presented=self._credential_presented(parsed))
                 return self._send_json({"error": "invalid or missing token"}, 401)
 
             if path == "/":
@@ -736,6 +746,56 @@ def make_handler(state: ServerState):
                         "versions": studio.versions(state.workspace),
                         "store": f"{studio.STORE_DIR}/{studio.HISTORY_DIR} (runtime state, never committed)"})
                 return self._router_read("routerstudio.lab", lambda studio: studio.lab(state))
+            if path == "/api/security/audit":
+                query = parse_qs(parsed.query)
+                raw = (query.get("limit") or ["120"])[0]
+                limit = int(raw) if raw.isdigit() else 120
+                import re
+
+                wanted = (query.get("action") or [""])[0][:120]
+                if wanted and not re.fullmatch(r"[a-z0-9._-]+", wanted):
+                    from . import webapi as _webapi
+
+                    return self._send_json(_webapi.failed(
+                        "invalid_request", "action filter must be a prefix like security."), 400)
+                return self._security_read("security.audit", lambda center: {
+                    "schema": center.SCHEMA, "observed_at": time.time(),
+                    "events": center.read_events(state.workspace, limit, wanted),
+                    "chain": center.verify_chain(state.workspace)})
+            if path.startswith("/api/security/"):
+                if path not in {"/api/security/overview", "/api/security/vault", "/api/security/sessions",
+                                "/api/security/policy", "/api/security/two-factor", "/api/security/injection",
+                                "/api/security/snapshots", "/api/security/snapshot"}:
+                    return self._send_json({"error": f"no route for {path}"}, 404)
+                from . import securitycenter
+
+                nonce = securitycenter.cookie_nonce(self.headers.get("Cookie", ""))
+                if path == "/api/security/overview":
+                    return self._security_read("security.overview",
+                                               lambda center: center.overview(state, nonce))
+                if path == "/api/security/vault":
+                    return self._security_read("security.vault", lambda center: center.vault_view(state))
+                if path == "/api/security/sessions":
+                    return self._security_read("security.sessions",
+                                               lambda center: center.sessions_view(state.workspace, nonce))
+                if path == "/api/security/policy":
+                    return self._security_read("security.policy", lambda center: center.policy_view(state))
+                if path == "/api/security/two-factor":
+                    return self._security_read("security.twofactor",
+                                               lambda center: center.totp_status(state.workspace))
+                if path == "/api/security/snapshots":
+                    return self._security_read("security.snapshots",
+                                               lambda center: center.snapshots_view(state.workspace))
+                if path == "/api/security/snapshot":
+                    wanted = (parse_qs(parsed.query).get("name") or [""])[0]
+                    return self._security_read("security.snapshot", lambda center: center.snapshot_detail(
+                        state.workspace, wanted)["blob"])
+                from .sessions import SessionStore
+                store = SessionStore()
+                return self._security_read("security.injection", lambda center: {
+                    "schema": center.SCHEMA, "observed_at": time.time(),
+                    "sessions": store.recent_for(state.workspace, limit=20),
+                    "rules": [name for name, _ in center.INJECTION_RULES]})
             if path.startswith("/api/workflows/"):
                 query = parse_qs(parsed.query)
                 if path == "/api/workflows/overview":
@@ -905,11 +965,20 @@ def make_handler(state: ServerState):
             if not self._origin_ok():
                 return self._send_json({'error': 'Host/origin refused'}, 403)
             if not self._authorized():
+                from . import securitycenter
+
+                securitycenter.note_denied(state, path, self._rolehub_client(),
+                                           presented=self._credential_presented(parsed))
                 return self._send_json({"error": "invalid or missing token"}, 401)
             if path == '/api/session':
+                from . import securitycenter
                 from .gui_session import forget, issue
                 payload = self._read_json()
                 if payload.get('forget'):
+                    try:
+                        securitycenter.revoke_current(state.workspace, self.headers.get('Cookie', ''))
+                    except (OSError, ValueError):
+                        pass
                     self._session_cookie = forget()
                 elif state.token:
                     host = self.headers.get('Host', '')
@@ -941,6 +1010,17 @@ def make_handler(state: ServerState):
                 if action not in {"simulate", "rule", "weights", "enable", "lab", "restore"}:
                     return self._send_json({"error": f"no route for {path}"}, 404)
                 return self._router_action(action, payload)
+
+            if path.startswith("/api/security/"):
+                action = path.removeprefix("/api/security/")
+                if action not in {"audit/verify", "session/revoke", "vault/set", "vault/delete",
+                                  "two-factor/begin", "two-factor/confirm", "two-factor/disable",
+                                  "policy/save", "injection/scan", "snapshot", "snapshot/restore"}:
+                    return self._send_json({"error": f"no route for {path}"}, 404)
+                from . import securitycenter
+
+                nonce = securitycenter.cookie_nonce(self.headers.get("Cookie", ""))
+                return self._security_action(action, payload, nonce)
 
             if path.startswith("/api/workflows/"):
                 action = path.removeprefix("/api/workflows/")
@@ -1252,6 +1332,78 @@ def make_handler(state: ServerState):
                     "store_unavailable", "The workflow store is unavailable; nothing was changed."), 503)
             workflowstudio.audit_action(state, action, client, data)
             workflowstudio.scheduler_for(state).ensure_started()
+            return self._send_json(webapi.ok(data))
+
+        def _security_read(self, action: str, build) -> None:
+            """Security Center reads: limited per client, sampled audit, redacted."""
+            from . import securitycenter, webapi
+
+            client = self._rolehub_client()
+            bucket = "security:" + client
+            if not state.api_limiter.allow(bucket):
+                wait = state.api_limiter.retry_after(bucket)
+                return self._send_json(webapi.failed("rate_limited",
+                                                     f"Too many security reads; retry in {wait}s."), 429)
+            try:
+                data = build(securitycenter)
+                securitycenter.audit_read(state, action, client)
+            except ValueError as exc:
+                return self._send_json(webapi.failed("invalid_request", str(exc)[:400]), 400)
+            except (OSError, KeyError):
+                return self._send_json(webapi.failed(
+                    "store_unavailable", "Security state withheld: a local store is unavailable."), 503)
+            return self._send_json(webapi.ok(data))
+
+        def _security_action(self, action: str, payload, nonce: str = "") -> None:
+            """Every security mutation needs its own token, and 2FA once enrolled."""
+            from . import securitycenter, webapi
+
+            client = self._rolehub_client()
+            bucket = "security-write:" + client
+            if not state.api_limiter.allow(bucket):
+                wait = state.api_limiter.retry_after(bucket)
+                return self._send_json(webapi.failed("rate_limited",
+                                                     f"Too many security actions; retry in {wait}s."), 429)
+            if not isinstance(payload, dict):
+                return self._send_json(webapi.failed("invalid_request", "A JSON object is required"), 400)
+            body = {**payload, "_client": client}
+            try:
+                if action == "audit/verify":
+                    chain = securitycenter.verify_chain(state.workspace)
+                    if not chain.get("ok"):
+                        first = chain.get("first_bad") or {}
+                        securitycenter.audit_action(
+                            state, "security.audit.verify", client,
+                            {"name": str(first.get("reason", "broken"))}, risk="medium", target="audit")
+                    else:
+                        securitycenter.audit_action(state, "security.audit.verify", client,
+                                                    {"name": f"seq {chain.get('seq')}"}, risk="low", target="audit")
+                    data = {"schema": securitycenter.SCHEMA, "observed_at": time.time(), "chain": chain}
+                elif action == "session/revoke":
+                    data = securitycenter.revoke_sessions(state, body, nonce)
+                elif action == "vault/set":
+                    data = securitycenter.set_secret(state, body)
+                elif action == "vault/delete":
+                    data = securitycenter.delete_secret(state, body)
+                elif action == "two-factor/begin":
+                    data = securitycenter.begin_enrolment(state, body)
+                elif action == "two-factor/confirm":
+                    data = securitycenter.confirm_enrolment(state, body)
+                elif action == "two-factor/disable":
+                    data = securitycenter.disable_two_factor(state, body)
+                elif action == "policy/save":
+                    data = securitycenter.save_policy(state, body)
+                elif action == "snapshot":
+                    data = securitycenter.take_snapshot(state, body)
+                elif action == "snapshot/restore":
+                    data = securitycenter.restore_snapshot(state, body)
+                else:
+                    data = securitycenter.scan_injection(state, body)
+            except ValueError as exc:
+                return self._send_json(webapi.failed("invalid_request", str(exc)[:400]), 400)
+            except (OSError, KeyError):
+                return self._send_json(webapi.failed(
+                    "store_unavailable", "The security store is unavailable; nothing was changed."), 503)
             return self._send_json(webapi.ok(data))
 
         def _approvals_read(self, action: str, build) -> None:

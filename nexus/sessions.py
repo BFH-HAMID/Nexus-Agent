@@ -166,6 +166,42 @@ class SessionStore:
             ).fetchall()
         return [dict(row) for row in rows]
 
+    def recent_for(self, workspace: str | Path, limit: int = 20) -> list[dict[str, Any]]:
+        """Newest runs for one workspace (the Security page picks one to scan)."""
+        count = max(1, min(int(limit), 100))
+        with self._lock, self._connect() as conn:
+            rows = conn.execute(
+                "SELECT id, created, role, agent, task, ok, turns, tool_calls FROM sessions "
+                "WHERE workspace=? ORDER BY created DESC LIMIT ?",
+                (str(workspace), count),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def latest(self, workspace: str | Path) -> dict[str, Any] | None:
+        return self._one(str(workspace), "")
+
+    def transcript(self, ident: str, *, workspace: str | Path = "") -> dict[str, Any] | None:
+        """One stored transcript for review tools. Read-only and bounded by the row."""
+        return self._one(str(workspace or ""), str(ident))
+
+    def _one(self, workspace: str, ident: str) -> dict[str, Any] | None:
+        with self._lock, self._connect() as conn:
+            if ident:
+                row = conn.execute(
+                    "SELECT id, created, workspace, role, agent, task, summary, transcript "
+                    "FROM sessions WHERE id=?", (ident,),
+                ).fetchone()
+            else:
+                row = conn.execute(
+                    "SELECT id, created, workspace, role, agent, task, summary, transcript "
+                    "FROM sessions WHERE workspace=? ORDER BY created DESC LIMIT 1", (workspace,),
+                ).fetchone()
+        if row is None:
+            return None
+        if workspace and str(row["workspace"]) != workspace:
+            return None
+        return dict(row)
+
     def save_observation(self, ident, workspace, body):
         from .evaluation.trace import sanitize
         safe = sanitize(body, workspace)
