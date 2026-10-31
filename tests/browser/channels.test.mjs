@@ -36,10 +36,11 @@ async function api(route, body, attempt = 0) {
 
 async function waitForApi(probe, ms = 20000) {
   const started = Date.now();
+  let last = 'nothing';
   for (;;) {
-    const value = await probe().catch(() => null);
+    const value = await probe().catch((error) => { last = 'refused: ' + error.message; return null; });
     if (value) return value;
-    if (Date.now() - started > ms) throw new Error('the API never reached the expected state');
+    if (Date.now() - started > ms) throw new Error('the API never reached the expected state (' + last + ')');
     await new Promise((done) => setTimeout(done, 900));
   }
 }
@@ -185,7 +186,8 @@ test('delivery only changes with the typed token, and the API agrees', async () 
   assert.equal(await settle(), true, 'the sheet closes only after the server accepted the save');
   await waitForApi(async () => {
     const now = await api('/api/channels/delivery');
-    return now.policy.quiet === quiet ? now : null;
+    if (now.policy.quiet !== quiet) throw new Error('quiet is ' + now.policy.quiet + ' (want ' + quiet + ')');
+    return now;
   });
   // Put it back through the same sheet, so the run leaves the policy it found.
   await page.waitForFunction((want) => document.getElementById('chQuiet').checked === want, quiet, {timeout: 15000});
@@ -195,7 +197,10 @@ test('delivery only changes with the typed token, and the API agrees', async () 
   assert.equal(await settle(), true, 'the restore closes only after the server accepted it');
   await waitForApi(async () => {
     const now = await api('/api/channels/delivery');
-    return now.policy.quiet === before.policy.quiet ? now : null;
+    if (now.policy.quiet !== before.policy.quiet) {
+      throw new Error('quiet is ' + now.policy.quiet + ' (want ' + before.policy.quiet + ')');
+    }
+    return now;
   });
   assert.equal(errors.length, 0, errors.join('\n'));
 });
