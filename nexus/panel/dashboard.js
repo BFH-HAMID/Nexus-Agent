@@ -954,7 +954,7 @@
     $("monLatency").textContent = average || "—";
     $("liveRunNote").textContent = state.taskId
       ? "Task " + state.taskId + (state.running ? " · live server events. Tool timing appears after completion." : " · retained run events. Open another run from History to view its metrics.")
-      : "No Nexus task selected. Start a task here or open one from History. These metrics do not track this Arena chat.";
+      : "No Nexus task selected. Start a task here or open one from History. These figures follow Nexus run events only.";
   }
 
   const themeVar = (name, fallback) => {

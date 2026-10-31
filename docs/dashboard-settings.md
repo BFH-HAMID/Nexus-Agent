@@ -130,6 +130,13 @@ simply start from the defaults, exactly as they did before this round.
 
 ## Known limits
 
+* **Bangla coverage is not yet complete.** The shell, the newer module pages
+  (Mission, World, Security, Cost, Memory, Channels, Workflows, Approvals) and
+  this page switch language; the original **Run & chat**, **Operations** and
+  **All controls** screens are still English-only. Their labels double as the
+  accessible names that ~30 browser tests pin, so they need their own reviewed
+  pass rather than a bulk replacement. The Language card says so on screen
+  instead of promising a fully translated dashboard.
 * Display preferences are per browser by design. A second device starts from the
   defaults; the page says so instead of pretending to sync them.
 * The `nexus.ui.lang` mirror writes the workspace copy only when the page is
