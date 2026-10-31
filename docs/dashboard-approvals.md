@@ -87,7 +87,9 @@ Arrow/Home/End support:
 * **Policy** — the default tool mode, per-tool overrides, adapter state, shell
   backend, autonomy level and runtime, queue limits and TTL, latch/queue/DND
   state, the families that are **always** reviewed whatever the mode says, and
-  a list of things this page deliberately does not verify.
+  a list of things this page deliberately does not verify. Those server-written
+  explanations carry a stable id and are translated on the page, so Bangla mode
+  does not fall back to English.
 * **History** — only decisions that were actually written down: the API audit
   trail plus approval-store rows, each naming its source, record id and where it
   was recorded. History re-reads when the tab opens; an empty state says so.
@@ -104,7 +106,7 @@ operations count if the inbox cannot be read.
 
 Desktop is single-column cards at ≥1080 px; 360 px keeps every control reachable
 and the document never widens (`scrollWidth − innerWidth = 0`). All labels exist
-in English and Bangla (98 `approvals.*` keys per language) and the page re-paints
+in English and Bangla (105 `approvals.*` keys per language) and the page re-paints
 on a language switch without refetching.
 
 ## Manual test

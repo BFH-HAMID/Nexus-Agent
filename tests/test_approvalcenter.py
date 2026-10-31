@@ -86,7 +86,9 @@ def test_empty_inbox_is_honest(state):
     assert body["counts"] == {"live": 0, "action": 0, "queue": 0, "total": 0}
     assert body["errors"] == []
     assert isinstance(body["observed_at"], float)
-    assert any("only while its own record" in note for note in body["notes"])
+    assert any("only while its own record" in note["text"] for note in body["notes"])
+    assert [note["id"] for note in body["notes"]] == ["record", "tokens", "queue"], \
+        "every note carries a stable id so the page can translate it"
 
 
 def test_live_request_appears_with_its_real_token_preview_and_deadline(state):
@@ -240,7 +242,8 @@ def test_policy_reports_the_real_gate_facts(state, repo: Path):
     assert body["delivery"]["quiet"] is False
     assert {"run_command", "git", "gh", "office_file", "vscode_open", "browser_action"} <= set(body["always_review"])
     assert body["counts"]["total"] == 0
-    assert len(body["not_checked"]) >= 3
+    assert {row["id"] for row in body["not_checked"]} >= {"scope", "audit", "safety", "expiry"}
+    assert all(row["text"] for row in body["not_checked"])
 
 
 def test_policy_reports_an_unreadable_permissions_file_without_guessing(state, repo: Path):

@@ -673,6 +673,13 @@
     'approvals.historyKept': 'History entries available',
     'approvals.unavailable': 'Unavailable',
     'approvals.unavailableLead': 'The approval inbox could not be read. No pending item is assumed; retry when the store is reachable.',
+    'approvals.text.record': 'A request appears here only while its own record still exists and is inside its deadline.',
+    'approvals.text.tokens': 'Deny needs one click. A grant needs the exact token this request published.',
+    'approvals.text.queue': 'Approving a queued task admits the task, not its tools; each mutation asks again.',
+    'approvals.text.scope': 'A session-scoped decision covers this run only; it is not saved as policy.',
+    'approvals.text.audit': 'The audit trail records the decisions and API calls that actually happened, not what a model intended.',
+    'approvals.text.safety': 'This page cannot prove an action was safe; it shows what was asked and who answered.',
+    'approvals.text.expiry': 'Expired or consumed requests are not revived here — the agent must ask again.',
   };
 
   const BN = {
@@ -1344,6 +1351,13 @@
     'approvals.historyKept': 'উপলব্ধ ইতিহাস এন্ট্রি',
     'approvals.unavailable': 'অনুপলব্ধ',
     'approvals.unavailableLead': 'অনুমোদন ইনবক্স পড়া যায়নি। কোনো অপেক্ষমাণ আইটেম ধরে নেওয়া হয়নি; স্টোর পৌঁছালে আবার চেষ্টা করুন।',
+    'approvals.text.record': 'কোনো অনুরোধ এখানে দেখা যায় কেবল যখন তার নিজের রেকর্ড থাকে ও মেয়াদের ভেতরে থাকে।',
+    'approvals.text.tokens': 'প্রত্যাখ্যানে এক ক্লিকই যথেষ্ট। অনুমোদনে সেই অনুরোধের প্রকাশ করা সঠিক টোকেন লাগে।',
+    'approvals.text.queue': 'কিউতে থাকা টাস্ক অনুমোদন টাস্কটি প্রবেশ করায়, তার টুল নয়; প্রতিটি পরিবর্তন আবার জিজ্ঞাসা করে।',
+    'approvals.text.scope': 'সেশন-সুযোগের সিদ্ধান্ত কেবল এই রানেই প্রযোজ্য; তা নীতি হিসেবে সংরক্ষিত হয় না।',
+    'approvals.text.audit': 'অডিট ট্রেইল শুধু বাস্তবে ঘটা সিদ্ধান্ত ও API কল লিখে রাখে, মডেলের অভিপ্রায় নয়।',
+    'approvals.text.safety': 'এই পাতা প্রমাণ করতে পারে না কোনো অ্যাকশন নিরাপদ ছিল; এটি দেখায় কী চাওয়া হয়েছিল ও কে উত্তর দিয়েছে।',
+    'approvals.text.expiry': 'মেয়াদোত্তীর্ণ বা ব্যবহৃত অনুরোধ এখানে ফিরিয়ে আনা হয় না — এজেন্টকে আবার জিজ্ঞাসা করতে হবে।',
   };
 
   let lang = document.documentElement.lang === 'bn' ? 'bn' : 'en';

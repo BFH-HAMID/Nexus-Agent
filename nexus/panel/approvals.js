@@ -342,7 +342,9 @@
       flash(status, t(`approvals.done.${decision}`), 'ok');
       state.history = null;
       if (state.tab === 'history') await loadHistory().catch(() => {});
+      root.querySelectorAll('.approvals-confirm').forEach((node) => node.remove());
       await load({quiet: true});
+      paintList({force: true});
     } catch (error) {
       flash(status, message(error), 'error');
       region.querySelectorAll('button').forEach((button) => { button.disabled = false; });
@@ -353,8 +355,11 @@
     }
   }
 
-  function paintList() {
+  function paintList({force = false} = {}) {
     const host = $('apList');
+    /* Never rebuild the list under someone who is typing a grant token: the
+       inline confirmation and its focus must survive a background poll. */
+    if (!force && host.querySelector('.approvals-confirm')) return;
     host.replaceChildren();
     const items = (state.inbox?.items || []).filter((item) => state.filter === 'all' || item.source === state.filter);
     for (const item of items) host.append(renderItem(item));
@@ -371,7 +376,7 @@
       state.lastRead = state.inbox.observed_at;
       paintCounts();
       paintFilters();
-      paintList();
+      paintList({force: !quiet});
       set($('apUpdated'), t('approvals.updated', {time: clock(state.inbox.observed_at)}));
       if (state.tab === 'diagnostics') paintDiagnostics();
     } catch (error) {
@@ -452,9 +457,17 @@
       [t('approvals.delivery'), policy.delivery?.transport || 'local'],
     ]);
     $('apAlwaysReview').replaceChildren(...(policy.always_review || []).map((name) => line(name)));
-    $('apNotChecked').replaceChildren(...(policy.not_checked || []).map((text) => line(text)));
+    $('apNotChecked').replaceChildren(...(policy.not_checked || []).map((row) => line(localised(row))));
     if (!(policy.not_checked || []).length) $('apNotChecked').append(line(t('approvals.none')));
     paintDiagnostics();
+  }
+
+  /* Server rows carry a stable id plus English fallback; translate when we can. */
+  function localised(row) {
+    if (typeof row === 'string') return row;
+    const key = `approvals.text.${row.id}`;
+    const value = t(key);
+    return value === key ? String(row.text || row.id) : value;
   }
 
   function line(text) {
@@ -513,7 +526,7 @@
     sources.replaceChildren(...(state.history?.sources || []).map((row) => line(`${row.name}: ${row.path} — ${row.note}`)));
     if (!(state.history?.sources || []).length) sources.append(line(t('approvals.historyPending')));
     const limits = $('apLimits');
-    limits.replaceChildren(...(inbox.notes || []).map((text) => line(text)));
+    limits.replaceChildren(...(inbox.notes || []).map((row) => line(localised(row))));
   }
 
   function switchTab(name) {
@@ -572,7 +585,7 @@
   document.addEventListener('visibilitychange', schedule);
   i18n.onChange(() => {
     i18n.apply(root);
-    if (state.inbox) { paintCounts(); paintFilters(); paintList(); paintDiagnostics(); }
+    if (state.inbox) { paintCounts(); paintFilters(); paintList({force: true}); paintDiagnostics(); }
     if (state.policy) paintPolicy();
     if (state.history) paintHistory();
     if (state.lastRead) set($('apUpdated'), t('approvals.updated', {time: clock(state.lastRead)}));

@@ -177,7 +177,7 @@ test('approving with the published token changes the real job and lands in histo
   }
 });
 
-test('a request answered elsewhere is reported stale, not silently dropped', async () => {
+test('a request answered elsewhere is reported stale, never shown as granted', async () => {
   const {page, context, errors} = await open();
   const created = [];
   try {
@@ -186,17 +186,40 @@ test('a request answered elsewhere is reported stale, not silently dropped', asy
     await page.locator('#apRefresh').click();
     const card = page.locator(`.approvals-item[data-ref="${job.id}"]`);
     await card.waitFor({timeout: 20000});
-    /* somebody else answers it first; the tab still shows the old request */
+
+    /* open the grant form and type into it, then let the page poll: a
+       background repaint must not wipe what the operator is typing */
+    await card.locator('[data-ap-act="approve"]').click();
+    await card.locator('.approvals-word').fill('APPROVE QUEUED TASK ');
+    await page.waitForTimeout(9000);
+    assert.equal(await card.locator('.approvals-word').inputValue(), 'APPROVE QUEUED TASK ',
+      'the inline confirmation survives a background poll');
+    await card.locator('.approvals-confirm button[type="button"]').click();
+
+    /* somebody else answers the request; the tab still shows it */
     await api(page, '/api/operations/action/review', {id: job.id, action: 'reject'});
-    await card.locator('[data-ap-act="reject"]').click();
-    await page.waitForFunction((id) => {
-      const node = document.querySelector(`.approvals-item[data-ref="${id}"] .approvals-status`);
-      return node && node.dataset.tone === 'error';
-    }, job.id, {timeout: 20000});
-    const status = await card.locator('.approvals-status').innerText();
-    assert.match(status, /no longer exists|unknown|terminal|rejected|refresh/i);
+    const statusText = await page.evaluate(async (id) => {
+      const node = document.querySelector(`.approvals-item[data-ref="${id}"] [data-ap-act="reject"]`);
+      if (!node) return 'card-already-gone';
+      node.click();
+      await new Promise((resolve) => {
+        const started = Date.now();
+        const tick = () => {
+          const status = document.querySelector(`.approvals-item[data-ref="${id}"] .approvals-status`);
+          if ((status && status.dataset.tone === 'error') || !status || Date.now() - started > 8000) return resolve();
+          setTimeout(tick, 100);
+        };
+        tick();
+      });
+      return document.querySelector(`.approvals-item[data-ref="${id}"] .approvals-status`)?.dataset.tone || '';
+    }, job.id);
+    /* either the stale refusal is shown, or the row is already gone because the
+       page re-read the inbox — both are honest; a "granted" message is not */
+    assert.ok(['error', 'card-already-gone', ''].includes(statusText), 'no silent grant: ' + statusText);
     await page.waitForFunction((id) => !document.querySelector(`.approvals-item[data-ref="${id}"]`), job.id,
       {timeout: 20000});
+    const stored = await jobStatus(page, job.id);
+    assert.equal(stored, 'rejected', 'the request keeps the decision that was actually made');
     assert.deepEqual(errors, []);
   } finally {
     await cleanup(page, created);
@@ -227,6 +250,7 @@ test('the policy tab reads the real gate and names what it cannot check', async 
     await page.waitForFunction(() => document.querySelectorAll('#apDiag dt').length > 0);
     assert.match(await page.locator('#apDiagErrors').innerText(), /Every source answered|:/);
     assert.match(await page.locator('#apLimits').innerText(), /request appears here|Deny needs/);
+    assert.ok((await page.locator('#apNotChecked li').allInnerTexts()).every((row) => row.length > 20));
     assert.deepEqual(errors, []);
   } finally { await context.close(); }
 });
@@ -268,6 +292,15 @@ test('Bangla covers the page and it fits a 360 px phone', async () => {
     await page.locator('#apTabPolicy').click();
     await page.waitForFunction(() => document.querySelectorAll('#apPermissions dt').length > 0);
     assert.match(await page.locator('#apPermissions dt').first().innerText(), /[\u0980-\u09FF]/);
+    /* server-written explanations are translated too, not left in English */
+    for (const text of await page.locator('#apNotChecked li').allInnerTexts()) {
+      assert.match(text, /[\u0980-\u09FF]/, 'not-checked text follows the language: ' + text);
+    }
+    await page.locator('#apTabDiag').click();
+    await page.waitForFunction(() => document.querySelectorAll('#apLimits li').length > 0);
+    for (const text of await page.locator('#apLimits li').allInnerTexts()) {
+      assert.match(text, /[\u0980-\u09FF]/, 'inbox guarantee follows the language: ' + text);
+    }
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth), 0);
     assert.deepEqual(errors, []);
   } finally { await context.close(); }

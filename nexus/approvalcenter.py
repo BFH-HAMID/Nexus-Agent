@@ -270,10 +270,11 @@ def inbox(state) -> dict[str, Any]:
         "counts": {**tally, "total": len(rows)},
         "limits": {"items": MAX_ITEMS, "text": MAX_TEXT},
         "errors": errors,
+        # Stable ids so the page can translate them; the text is the English fallback.
         "notes": [
-            "A request appears here only while its own record still exists and is inside its deadline.",
-            "Deny needs one click. A grant needs the exact token this request published.",
-            "Approving a queued task admits the task, not its tools; each mutation asks again.",
+            {"id": "record", "text": "A request appears here only while its own record still exists and is inside its deadline."},
+            {"id": "tokens", "text": "Deny needs one click. A grant needs the exact token this request published."},
+            {"id": "queue", "text": "Approving a queued task admits the task, not its tools; each mutation asks again."},
         ],
     })
 
@@ -328,10 +329,10 @@ def policy(state) -> dict[str, Any]:
         "counts": counts(state),
         "always_review": sorted(FORCED_REVIEW),
         "not_checked": [
-            "A session-scoped decision covers this run only; it is not saved as policy.",
-            "The audit trail records the decisions and API calls that actually happened, not what a model intended.",
-            "This page cannot prove an action was safe; it shows what was asked and who answered.",
-            "Expired or consumed requests are not revived here — the agent must ask again.",
+            {"id": "scope", "text": "A session-scoped decision covers this run only; it is not saved as policy."},
+            {"id": "audit", "text": "The audit trail records the decisions and API calls that actually happened, not what a model intended."},
+            {"id": "safety", "text": "This page cannot prove an action was safe; it shows what was asked and who answered."},
+            {"id": "expiry", "text": "Expired or consumed requests are not revived here — the agent must ask again."},
         ],
     })
 
