@@ -63,6 +63,7 @@ projects/
 .nexus/permissions/
 .nexus/knowledge/
 .nexus/cost/
+.nexus/channels/
 .nexus/computer/
 
 # Role Hub version snapshots are runtime state, never source

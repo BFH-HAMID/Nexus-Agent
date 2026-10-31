@@ -317,7 +317,7 @@
   }
   bell?.addEventListener('click', () => { if (popover?.hidden) openPopover(); else closePopover(); });
   document.getElementById('bellClose')?.addEventListener('click', closePopover);
-  bellOpen?.addEventListener('click', () => { closePopover(); window.nexusNav?.go('approvals'); });
+  bellOpen?.addEventListener('click', () => { closePopover(); window.nexusNav?.go('channels'); });
   document.addEventListener('click', (event) => {
     if (!popover || popover.hidden) return;
     if (popover.contains(event.target) || bell?.contains(event.target)) return;
@@ -329,6 +329,71 @@
     pendingState = event.detail;
     paintBell();
   });
+
+  /* ── mobile-lite: a compact reading of the same pages ──────────────── */
+  /* The preference lives on the server so a phone and a desktop agree. It is
+     display only: larger targets, one column, and tables read as cards with
+     their column names copied into each cell. No page renders different data. */
+  const mobile = {lite: false, cards: true, scale: 1};
+  const labelTables = (scope) => {
+    const area = scope && scope.nodeType === 1 ? scope : document;
+    for (const table of area.querySelectorAll('[data-gui-view] table')) {
+      const view = table.closest('[data-gui-view]');
+      if (view && view.hidden) continue;
+      const heads = [...table.querySelectorAll('thead th')].map((th) => (th.textContent || '').trim());
+      if (!heads.length) continue;
+      for (const row of table.querySelectorAll('tbody tr')) {
+        [...row.children].forEach((cell, index) => {
+          if (cell.tagName === 'TD' && heads[index] && cell.dataset.label !== heads[index]) {
+            cell.dataset.label = heads[index];
+          }
+        });
+      }
+      table.dataset.stack = '1';
+    }
+  };
+  let labelTimer = 0;
+  const decorate = (scope) => {
+    if (!mobile.lite) return;
+    window.clearTimeout(labelTimer);
+    labelTimer = window.setTimeout(() => { if (!document.hidden) labelTables(scope); }, 120);
+  };
+  let observer = null;
+  const watchDom = (on) => {
+    if (on && !observer) {
+      observer = new MutationObserver(() => decorate());
+      observer.observe(document.body, {childList: true, subtree: true});
+    } else if (!on && observer) {
+      observer.disconnect();
+      observer = null;
+    }
+  };
+  const applyMobile = (prefs) => {
+    if (!prefs || typeof prefs !== 'object') return;
+    mobile.lite = Boolean(prefs.lite);
+    mobile.cards = prefs.cards !== false;
+    mobile.scale = Math.min(1.3, Math.max(0.85, Number(prefs.font_scale) || 1));
+    document.body.classList.toggle('mobile-lite', mobile.lite);
+    document.body.classList.toggle('mobile-lite-cards', mobile.lite && mobile.cards);
+    document.documentElement.style.setProperty('--mobile-scale', String(mobile.scale));
+    watchDom(mobile.lite);
+    if (mobile.lite) labelTables();
+    window.dispatchEvent(new CustomEvent('nexus:mobile', {detail: {lite: mobile.lite, cards: mobile.cards,
+      scale: mobile.scale, active: mobile.lite}}));
+  };
+  window.nexusMobile = {
+    apply: applyMobile,
+    decorate,
+    active: () => mobile.lite,
+    settings: () => ({...mobile}),
+  };
+  window.addEventListener('nexus:view', () => decorate());
+  window.nexusGui?.ready.then(async () => {
+    try {
+      const reply = await window.nexusGui.api('/api/channels/policy');
+      applyMobile(reply?.data?.policy?.mobile);
+    } catch { /* signed out or unavailable: keep the full layout */ }
+  }).catch(() => {});
 
   /* ── friendly hint until the first event arrives ───────────────────── */
   syncTitle(window.nexusGui?.view || 'mission');

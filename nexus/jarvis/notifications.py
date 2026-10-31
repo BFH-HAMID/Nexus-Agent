@@ -32,3 +32,15 @@ def submit(count, approvals):
     if result.returncode:
         raise ValueError('Native notifier refused submission; use local inbox')
     return {'submitted': True, 'human_read_confirmed': False, 'content': 'counts only; no task text'}
+
+
+def native_available() -> dict:
+    """Which desktop notifier this machine actually has. Presence is not delivery."""
+    if sys.platform == 'win32':
+        name, path = 'powershell.exe', shutil.which('powershell.exe')
+    elif sys.platform == 'darwin':
+        name, path = 'osascript', shutil.which('osascript')
+    else:
+        name, path = 'notify-send', shutil.which('notify-send')
+    return {'platform': sys.platform, 'program': name, 'present': bool(path),
+            'note': 'A present notifier does not prove a visible desktop or that you saw it.'}

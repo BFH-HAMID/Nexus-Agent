@@ -38,6 +38,8 @@
       detail: 'memory policy, documents, retrieval'},
     {id: 'cost', group: 'configure', icon: 'i-coin', label: 'nav.cost', view: 'cost',
       detail: 'spend, latency, budgets, resources'},
+    {id: 'channels', group: 'configure', icon: 'i-bell', label: 'nav.channels', aria: 'nav.channelsAria', view: 'channels',
+      detail: 'alerts, delivery, Telegram, voice, mobile-lite'},
     {id: 'world', group: 'configure', icon: 'i-globe', label: 'nav.world', aria: 'nav.worldAria', view: 'world', hint: '4'},
     {id: 'integrations', group: 'configure', icon: 'i-puzzle', label: 'nav.integrations', view: 'run', anchor: 'integrations',
       detail: 'providers, keys, MCP & Telegram'},
@@ -50,7 +52,7 @@
   const byId = new Map(SECTIONS.map((section) => [section.id, section]));
   const viewTitles = {mission: 'nav.mission', roles: 'nav.roles', router: 'nav.router', computer: 'nav.computer',
     approvals: 'nav.approvals', workflows: 'nav.workflows', security: 'nav.security', run: 'nav.run',
-    memory: 'nav.memory', cost: 'nav.cost',
+    memory: 'nav.memory', cost: 'nav.cost', channels: 'nav.channels',
     operations: 'nav.approvals',
     world: 'nav.world', control: 'nav.controls'};
   let activeId = null;

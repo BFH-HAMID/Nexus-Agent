@@ -370,6 +370,27 @@ class ServerState:
             session.thread.start()
 
     # ------------------------------------------------------------------ #
+    def _notice(self, session: Session) -> None:
+        """Record one real notice for a finished run. Never raises."""
+        try:
+            from . import channels
+
+            result = session.result or {}
+            detail = " · ".join(part for part in (
+                str(result.get("role") or result.get("agent") or ""),
+                f"{result.get('duration_s')}s" if result.get("duration_s") is not None else "",
+                f"{result.get('tool_calls')} tool call(s)" if result.get("tool_calls") else "",
+            ) if part)
+            if result.get("stopped_reason"):
+                detail = (detail + " · " + str(result["stopped_reason"]))[:300]
+            if result.get("error"):
+                detail = (detail + " · " + str(result["error"]))[:300]
+            channels.record(self, "run", state_name=session.status,
+                            title=session.task or "Run finished", detail=detail,
+                            task_id=session.task_id)
+        except Exception:  # noqa: BLE001 - history must not fail because an alert did
+            pass
+
     def _emit(self, session: Session):
         def handler(event: Event) -> None:
             if session.cancel.is_set() and event.type not in {EventType.TOOL_OUTPUT, EventType.PROCESS, EventType.TOOL_RESULT, EventType.FILE_CHANGE}:
@@ -407,6 +428,15 @@ class ServerState:
                     "requested": time.time(), "timeout": APPROVAL_TIMEOUT,
                 }
                 session.push({"type": "approval_request", **session.pending})
+                try:
+                    from . import channels
+
+                    channels.record(self, "approval", state_name="awaiting_approval",
+                                    title=session.task or "Approval requested",
+                                    detail=f"{spec.name} · risk {getattr(risk, 'value', risk)}",
+                                    task_id=session.task_id)
+                except Exception:  # noqa: BLE001 - an alert must never block an approval
+                    pass
             got = session.approval_event.wait(APPROVAL_TIMEOUT)
             with session.changed:
                 session.pending = None
@@ -527,6 +557,7 @@ class ServerState:
                 session.result = {**(session.result or {}), "history_error": type(exc).__name__}
                 session.push({"type": "error", "message": "Run finished but durable history could not be saved"})
             session.push({"type": "done", "status": session.status, "result": session.result})
+            self._notice(session)
             try:
                 self.workbench.save_run(session)
             except Exception:
@@ -829,6 +860,27 @@ def make_handler(state: ServerState):
                 raw = (query.get("top_k") or ["0"])[0]
                 return self._knowledge_read("knowledge.context", lambda module: knowledge.context(
                     state, task, int(raw) if raw.isdigit() else 0))
+            if path == "/api/channels/overview":
+                return self._channels_read("channels.overview", lambda channels: channels.overview(state))
+            if path.startswith("/api/channels/"):
+                query = parse_qs(parsed.query)
+                if path not in {"/api/channels/inbox", "/api/channels/delivery",
+                                "/api/channels/telegram", "/api/channels/policy"}:
+                    return self._send_json({"error": f"no route for {path}"}, 404)
+
+                if path == "/api/channels/inbox":
+                    raw = (query.get("limit") or ["60"])[0]
+                    limit = int(raw) if raw.isdigit() else 60
+                    return self._channels_read("channels.inbox",
+                                               lambda module: module.inbox(state, limit))
+                if path == "/api/channels/delivery":
+                    return self._channels_read("channels.delivery",
+                                               lambda module: module.delivery_view(state))
+                if path == "/api/channels/telegram":
+                    return self._channels_read("channels.telegram",
+                                               lambda module: module.telegram_view(state))
+                return self._channels_read("channels.policy",
+                                           lambda module: module.policy_view(state.workspace))
             if path == "/api/cost/overview":
                 return self._cost_read("cost.overview", lambda cost: cost.overview(state))
             if path.startswith("/api/cost/"):
@@ -1094,6 +1146,12 @@ def make_handler(state: ServerState):
                 nonce = securitycenter.cookie_nonce(self.headers.get("Cookie", ""))
                 return self._security_action(action, payload, nonce)
 
+            if path.startswith("/api/channels/"):
+                action = path.removeprefix("/api/channels/")
+                if action not in {"policy/save", "delivery/save", "notify", "push", "ack", "telegram"}:
+                    return self._send_json({"error": f"no route for {path}"}, 404)
+                return self._channels_action(action, payload)
+
             if path.startswith("/api/cost/"):
                 action = path.removeprefix("/api/cost/")
                 if action not in {"policy/save", "compare", "clear"}:
@@ -1254,6 +1312,58 @@ def make_handler(state: ServerState):
                 return self._send_json(webapi.failed("audit_unavailable",
                                                      "Palette index withheld: the audit trail is unavailable."), 503)
             return self._send_json(webapi.ok(index))
+
+        def _channels_read(self, action: str, build) -> None:
+            """Alert, channel and preference reads: limited, sampled, redacted."""
+            from . import channels, webapi
+
+            client = self._rolehub_client()
+            bucket = "channels:" + client
+            if not state.api_limiter.allow(bucket):
+                wait = state.api_limiter.retry_after(bucket)
+                return self._send_json(webapi.failed("rate_limited",
+                                                     f"Too many channel reads; retry in {wait}s."), 429)
+            try:
+                data = build(channels)
+                channels.audit_read(state, action.removeprefix("channels."), client)
+            except ValueError as exc:
+                return self._send_json(webapi.failed("invalid_request", str(exc)[:400]), 400)
+            except (OSError, KeyError):
+                return self._send_json(webapi.failed(
+                    "store_unavailable", "Alert state withheld: a local store is unavailable."), 503)
+            return self._send_json(webapi.ok(data))
+
+        def _channels_action(self, action: str, payload) -> None:
+            """Preferences need a revision; anything that changes delivery needs a token."""
+            from . import channels, webapi
+
+            client = self._rolehub_client()
+            bucket = "channels-write:" + client
+            if not state.api_limiter.allow(bucket):
+                wait = state.api_limiter.retry_after(bucket)
+                return self._send_json(webapi.failed("rate_limited",
+                                                     f"Too many channel actions; retry in {wait}s."), 429)
+            if not isinstance(payload, dict):
+                return self._send_json(webapi.failed("invalid_request", "A JSON object is required"), 400)
+            try:
+                if action == "policy/save":
+                    data = channels.save_policy(state, payload)
+                elif action == "delivery/save":
+                    data = channels.save_delivery(state, payload)
+                elif action == "notify":
+                    data = channels.pull(state, payload)
+                elif action == "push":
+                    data = channels.push(state, payload)
+                elif action == "ack":
+                    data = channels.acknowledge(state, payload)
+                else:
+                    data = channels.telegram_action(state, payload)
+            except ValueError as exc:
+                return self._send_json(webapi.failed("invalid_request", str(exc)[:400]), 400)
+            except (OSError, KeyError):
+                return self._send_json(webapi.failed(
+                    "store_unavailable", "The alert store is unavailable; nothing was changed."), 503)
+            return self._send_json(webapi.ok(data))
 
         def _cost_read(self, action: str, build) -> None:
             """Cost reads: limited per client, sampled into the same audit chain."""

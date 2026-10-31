@@ -36,10 +36,11 @@ test('six primary sections plus the secondary group replace the old four tabs wi
     assert.ok(await page.locator('#view-mission').isVisible());
     const labels = await page.locator('.sidebar-nav .nav-item .nav-label').allTextContents();
     for (const required of ['Mission Control', 'Run & chat', 'Roles & router', 'Router Studio', 'Computer Control', 'Workflows',
-      'Approvals', 'Security & logs', 'Memory & knowledge', 'Cost & models', 'World & news', 'Integrations', 'All controls', 'Settings']) {
+      'Approvals', 'Security & logs', 'Memory & knowledge', 'Cost & models', 'Alerts & channels', 'World & news',
+      'Integrations', 'All controls', 'Settings']) {
       assert.ok(labels.includes(required), 'missing section: ' + required);
     }
-    assert.equal(labels.length, 14, 'fourteen sidebar rows, two groups');
+    assert.equal(labels.length, 15, 'fifteen sidebar rows, two groups');
     /* every legacy view still opens from the sidebar and from the hash */
     for (const [id, view] of [['run', 'run'], ['approvals', 'approvals'], ['world', 'world'], ['controls', 'control'], ['mission', 'mission']]) {
       await page.locator(`.sidebar-nav [data-nav-id="${id}"]`).click();

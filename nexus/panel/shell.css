@@ -1511,3 +1511,115 @@ pre.memory-context { margin: 0; padding: 12px 14px; border: 1px solid var(--line
 @media (max-width: 420px) {
   .cost-resource-kpis { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* ── Alerts & channels ────────────────────────────────────────────────
+   Reuses the Security Center chrome for cards, tables and checks. These
+   rules cover the notice list, the tab strip and the two preferences
+   forms; the delivery/voice/mobile notes are plain lists. */
+.channels-page { display: flex; flex-direction: column; gap: 14px; }
+.channels-tabs { display: flex; gap: 6px; flex-wrap: wrap; }
+.channels-tab {
+  padding: 7px 13px; border-radius: 999px; border: 1px solid var(--line);
+  background: var(--panel-2, var(--panel)); color: var(--text-2);
+  font: 600 12px/1.2 var(--sans); cursor: pointer;
+}
+.channels-tab[aria-selected="true"] {
+  border-color: color-mix(in srgb, var(--accent) 50%, var(--line));
+  background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--text);
+}
+.channels-tab:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.channels-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.channels-row {
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px;
+  align-items: start; padding: 10px 12px; border: 1px solid var(--line);
+  border-radius: 11px; background: var(--panel-2, var(--panel)); min-width: 0;
+}
+.channels-row[data-read="0"] { border-left: 3px solid var(--accent); }
+.channels-row[data-kind="error"] .channels-dot { background: var(--danger, #f87171); }
+.channels-row[data-kind="approval"] .channels-dot { background: var(--warn, #fbbf24); }
+.channels-dot {
+  width: 9px; height: 9px; border-radius: 50%; margin-top: 5px;
+  background: var(--accent); flex: 0 0 auto;
+}
+.channels-row[data-read="1"] .channels-dot { opacity: .35; }
+.channels-rowbody { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.channels-rowtitle { font-size: 13px; font-weight: 600; overflow-wrap: anywhere; }
+.channels-rowdetail { font-size: 11.5px; color: var(--muted); overflow-wrap: anywhere; }
+.channels-rowmeta {
+  display: flex; gap: 6px; flex-wrap: wrap; align-items: center;
+  font: 11px/1.3 var(--mono); color: var(--muted);
+}
+.channels-rowactions { display: flex; flex-direction: column; gap: 5px; align-items: flex-end; }
+.channels-empty { padding: 14px 2px; color: var(--muted); font-size: 12.5px; }
+
+.channels-form { display: flex; flex-direction: column; gap: 11px; }
+.channels-field { display: flex; flex-direction: column; gap: 5px; }
+.channels-field > label { font-size: 11.5px; color: var(--muted); }
+.channels-field select, .channels-field input[type="range"] { max-width: 320px; }
+.channels-fieldrow { display: flex; gap: 14px; flex-wrap: wrap; }
+.channels-fieldrow .channels-field { flex: 1 1 150px; min-width: 0; }
+.channels-scalerow { display: flex; gap: 10px; align-items: center; }
+.channels-scalerow input { flex: 1 1 auto; min-width: 0; }
+.channels-scalerow output { font: 600 12px/1 var(--mono); color: var(--text-2); }
+.channels-check { display: flex; gap: 8px; align-items: center; font-size: 12.5px; cursor: pointer; }
+.channels-note { margin: 0; padding-left: 16px; display: flex; flex-direction: column; gap: 5px; font-size: 11.5px; color: var(--muted); }
+.channels-note li { overflow-wrap: anywhere; }
+.channels-kpis { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+.channels-stack { display: flex; flex-direction: column; gap: 12px; }
+
+@media (max-width: 1080px) {
+  .channels-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 720px) {
+  .channels-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .channels-row { grid-template-columns: auto minmax(0, 1fr); }
+  .channels-rowactions { grid-column: 2; flex-direction: row; align-items: center; }
+}
+@media (max-width: 420px) {
+  .channels-kpis { grid-template-columns: minmax(0, 1fr); }
+  .channels-tab { flex: 1 1 auto; text-align: center; }
+}
+
+/* ── Mobile-lite: display only ─────────────────────────────────────────
+   The whole page is scaled by one variable and re-flowed to a single
+   column. Data, permissions and approvals are untouched. */
+body.mobile-lite { font-size: calc(1em * var(--mobile-scale, 1)); }
+body.mobile-lite .content, body.mobile-lite .page { max-width: 100%; }
+body.mobile-lite .security-kpis, body.mobile-lite .channels-kpis,
+body.mobile-lite .cost-kpis, body.mobile-lite .kpis {
+  grid-template-columns: minmax(0, 1fr) !important;
+}
+body.mobile-lite .security-card { padding: 12px; }
+body.mobile-lite button, body.mobile-lite .channels-tab,
+body.mobile-lite .security-action { min-height: 40px; }
+body.mobile-lite .security-table, body.mobile-lite .channels-table { display: block; }
+body.mobile-lite-cards table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+body.mobile-lite-cards table, body.mobile-lite-cards table tbody { display: block; }
+body.mobile-lite-cards table tbody tr {
+  display: block; padding: 9px 11px; margin-bottom: 8px;
+  border: 1px solid var(--line); border-radius: 10px;
+}
+body.mobile-lite-cards table tbody td {
+  display: grid; grid-template-columns: minmax(0, 38%) minmax(0, 1fr);
+  gap: 8px; padding: 3px 0; border: 0; text-align: left;
+}
+body.mobile-lite-cards table tbody td[data-label]::before {
+  content: attr(data-label); font: 600 11px/1.4 var(--sans);
+  color: var(--muted); grid-column: 1;
+}
+
+/* Readiness checks: a tick, a label and the reason it matters. */
+.channels-checks { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 7px; }
+.channels-check {
+  display: grid; grid-template-columns: 18px minmax(0, 1fr); gap: 4px 8px;
+  align-items: baseline; font-size: 12.5px; min-width: 0;
+}
+.channels-checkmark { font-weight: 700; color: var(--danger, #f87171); }
+.channels-check[data-ok="true"] .channels-checkmark { color: var(--accent); }
+.channels-checktext { overflow-wrap: anywhere; }
+.channels-check small { grid-column: 2; color: var(--muted); font-size: 11px; overflow-wrap: anywhere; }
+
+/* A switch is a control, not a banner: keep it the width of its label. */
+.channels-page .security-switch { align-self: flex-start; }
+.channels-page .security-switch:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
