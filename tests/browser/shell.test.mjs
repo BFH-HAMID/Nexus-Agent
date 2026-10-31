@@ -41,7 +41,7 @@ test('six primary sections plus the secondary group replace the old four tabs wi
     }
     assert.equal(labels.length, 14, 'fourteen sidebar rows, two groups');
     /* every legacy view still opens from the sidebar and from the hash */
-    for (const [id, view] of [['run', 'run'], ['approvals', 'operations'], ['world', 'world'], ['controls', 'control'], ['mission', 'mission']]) {
+    for (const [id, view] of [['run', 'run'], ['approvals', 'approvals'], ['world', 'world'], ['controls', 'control'], ['mission', 'mission']]) {
       await page.locator(`.sidebar-nav [data-nav-id="${id}"]`).click();
       await page.waitForFunction((v) => window.nexusGui.view === v, view);
       assert.ok(await page.locator(`[data-gui-view="${view}"]`).first().isVisible(), view + ' must open');

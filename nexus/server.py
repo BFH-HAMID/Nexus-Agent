@@ -307,6 +307,40 @@ class ServerState:
             self.sessions[session.task_id] = session
         return session
 
+    def decide_approval(self, task_id: str, approved: bool, scope: str = "once",
+                        approval_id: str | None = None, reason: str = "") -> tuple[int, dict[str, Any]]:
+        """Answer one live task approval. Returns (http_status, body).
+
+        The Run page and the Approval Center both call this so there is exactly
+        one set of checks: boolean decision, valid scope, current approval id,
+        and a fresh preview before any file-changing grant.
+        """
+        session = self.get(task_id)
+        if session is None or session.pending is None:
+            return 409, {"error": "no pending approval"}
+        if not isinstance(approved, bool) or scope not in {"once", "session"}:
+            return 400, {"error": "approved must be boolean; scope must be once or session"}
+        with session.changed:
+            if (session.pending is None or session.approval_event.is_set()
+                    or session.cancel.is_set()
+                    or (approval_id and approval_id != session.pending["approval_id"])):
+                return 409, {"error": "approval is no longer pending; refresh task status"}
+            diff = session.pending.get("proposal", {})
+            if approved and diff.get("available"):
+                from .workbench import proposal
+
+                try:
+                    current = proposal(self.workspace, session.pending["tool"], session.pending["args"])
+                except (ValueError, OSError, UnicodeError) as exc:
+                    return 409, {"error": "Cannot revalidate preview: " + str(exc)}
+                if current.get("before_hash") != diff.get("before_hash"):
+                    return 409, {"error": "File changed since preview; deny and request a fresh edit"}
+            session.approval_decision = ApprovalDecision(
+                approved=approved, scope=scope, reason=str(reason or ""),
+            )
+            session.approval_event.set()
+        return 200, {"ok": True}
+
     def get(self, task_id: str) -> Session | None:
         with self.lock:
             return self.sessions.get(task_id)
@@ -369,6 +403,7 @@ class ServerState:
                     "proposal": diff,
                     "approval_id": uuid.uuid4().hex,
                     "tool": spec.name, "risk": risk.value, "args": args, "preview": preview,
+                    "requested": time.time(), "timeout": APPROVAL_TIMEOUT,
                 }
                 session.push({"type": "approval_request", **session.pending})
             got = session.approval_event.wait(APPROVAL_TIMEOUT)
@@ -701,6 +736,19 @@ def make_handler(state: ServerState):
                         "versions": studio.versions(state.workspace),
                         "store": f"{studio.STORE_DIR}/{studio.HISTORY_DIR} (runtime state, never committed)"})
                 return self._router_read("routerstudio.lab", lambda studio: studio.lab(state))
+            if path.startswith("/api/approvals/"):
+                if path not in {"/api/approvals/inbox", "/api/approvals/policy", "/api/approvals/history"}:
+                    return self._send_json({"error": f"no route for {path}"}, 404)
+                if path == "/api/approvals/inbox":
+                    return self._approvals_read("approval.inbox", lambda center: center.inbox(state))
+                if path == "/api/approvals/policy":
+                    return self._approvals_read("approval.policy", lambda center: center.policy(state))
+                try:
+                    limit = int((parse_qs(parsed.query).get("limit") or ["40"])[0])
+                except ValueError:
+                    limit = 40
+                return self._approvals_read("approval.history",
+                                            lambda center: center.history(state, limit))
             if path.startswith("/api/computer/"):
                 if path not in {"/api/computer/state", "/api/computer/files", "/api/computer/trash",
                                 "/api/computer/browser", "/api/computer/snapshots"}:
@@ -860,6 +908,9 @@ def make_handler(state: ServerState):
                     return self._send_json({"error": f"no route for {path}"}, 404)
                 return self._router_action(action, payload)
 
+            if path == "/api/approvals/decide":
+                return self._approvals_action(payload)
+
             if path.startswith("/api/computer/"):
                 action = path.removeprefix("/api/computer/")
                 if action not in {"settings", "file/preview", "file/write", "file/undo", "file/trash",
@@ -924,34 +975,11 @@ def make_handler(state: ServerState):
                     return self._send_json({"error": f"recall unavailable: {exc}"}, 400)
 
             if path.startswith("/api/approve/"):
-                session = state.get(path.rsplit("/", 1)[-1])
-                if session is None or session.pending is None:
-                    return self._send_json({"error": "no pending approval"}, 409)
-                scope = payload.get("scope") or "once"
-                if not isinstance(payload.get("approved"), bool) or scope not in {"once", "session"}:
-                    return self._send_json({"error": "approved must be boolean; scope must be once or session"}, 400)
-                with session.changed:
-                    if (session.pending is None or session.approval_event.is_set()
-                            or session.cancel.is_set()
-                            or (payload.get("approval_id") and
-                                payload["approval_id"] != session.pending["approval_id"])):
-                        return self._send_json({"error": "approval is no longer pending; refresh task status"}, 409)
-                    diff = session.pending.get("proposal", {})
-                    if payload["approved"] and diff.get("available"):
-                        from .workbench import proposal
-
-                        try:
-                            current = proposal(state.workspace, session.pending["tool"], session.pending["args"])
-                        except (ValueError, OSError, UnicodeError) as exc:
-                            return self._send_json({"error": "Cannot revalidate preview: " + str(exc)}, 409)
-                        if current.get("before_hash") != diff.get("before_hash"):
-                            return self._send_json({"error": "File changed since preview; deny and request a fresh edit"}, 409)
-                    session.approval_decision = ApprovalDecision(
-                        approved=payload["approved"], scope=scope,
-                        reason=str(payload.get("reason") or ""),
-                    )
-                    session.approval_event.set()
-                return self._send_json({"ok": True})
+                status, body = state.decide_approval(
+                    path.rsplit("/", 1)[-1], payload.get("approved"),
+                    payload.get("scope") or "once", payload.get("approval_id"),
+                    payload.get("reason") or "")
+                return self._send_json(body, status)
 
             if path.startswith("/api/cancel/"):
                 session = state.get(path.rsplit("/", 1)[-1])
@@ -1119,6 +1147,49 @@ def make_handler(state: ServerState):
             except OSError:
                 return self._send_json(webapi.failed(
                     "store_unavailable", "The router store is unavailable; nothing was saved."), 503)
+            return self._send_json(webapi.ok(data))
+
+        def _approvals_read(self, action: str, build) -> None:
+            """Approval Center reads: limited per client, sampled audit, redacted."""
+            from . import approvalcenter, webapi
+
+            client = self._rolehub_client()
+            bucket = "approvals:" + client
+            if not state.api_limiter.allow(bucket):
+                wait = state.api_limiter.retry_after(bucket)
+                return self._send_json(webapi.failed("rate_limited",
+                                                     f"Too many approval reads; retry in {wait}s."), 429)
+            try:
+                data = build(approvalcenter)
+                approvalcenter.audit_read(state, client, action)
+            except ValueError as exc:
+                return self._send_json(webapi.failed("invalid_request", str(exc)[:400]), 400)
+            except (OSError, KeyError):
+                return self._send_json(webapi.failed(
+                    "store_unavailable", "Approvals withheld: a local store is unavailable."), 503)
+            return self._send_json(webapi.ok(data))
+
+        def _approvals_action(self, payload) -> None:
+            """Every decision is validated, limited, and audited on the spot."""
+            from . import approvalcenter, webapi
+
+            client = self._rolehub_client()
+            bucket = "approvals-write:" + client
+            if not state.api_limiter.allow(bucket):
+                wait = state.api_limiter.retry_after(bucket)
+                return self._send_json(webapi.failed("rate_limited",
+                                                     f"Too many approval decisions; retry in {wait}s."), 429)
+            if not isinstance(payload, dict):
+                return self._send_json(webapi.failed("invalid_request", "A JSON object is required"), 400)
+            try:
+                data = approvalcenter.decide(state, {**payload, "_client": client})
+            except approvalcenter.Stale as exc:
+                return self._send_json(webapi.failed("stale_request", str(exc)[:400]), 409)
+            except ValueError as exc:
+                return self._send_json(webapi.failed("invalid_request", str(exc)[:400]), 400)
+            except OSError:
+                return self._send_json(webapi.failed(
+                    "store_unavailable", "The approval store is unavailable; nothing was changed."), 503)
             return self._send_json(webapi.ok(data))
 
         def _computer_read(self, action: str, build) -> None:

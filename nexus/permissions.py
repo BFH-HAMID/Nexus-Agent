@@ -17,6 +17,9 @@ import yaml
 from filelock import FileLock
 
 MODES = {'READ_ONLY', 'ASK_EVERY_TIME', 'AUTO_ALLOW'}
+# Tool families that always take a fresh decision, whatever the mode says.
+FORCED_REVIEW = frozenset({'run_command', 'git', 'gh', 'git_prepare', 'office_file',
+                           'vscode_open', 'browser_action'})
 
 
 class Permissions:
@@ -114,7 +117,7 @@ class Permissions:
                     path = self.path(value or '.')
                     if not readonly and self.operator_control(path):
                         raise ValueError('Permission policy is operator-owned; agent edits are forbidden')
-        forced = not readonly and spec.name in {'run_command', 'git', 'gh', 'git_prepare', 'office_file', 'vscode_open', 'browser_action'}
+        forced = not readonly and spec.name in FORCED_REVIEW
         return {'mode': mode, 'readonly': readonly, 'forced': forced}
 
     def audit(self, spec, args, rule, decision):

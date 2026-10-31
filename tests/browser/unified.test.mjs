@@ -16,7 +16,9 @@ async function open(width=1440,storageState,flat=true){
  await page.waitForFunction(()=>document.getElementById('metaUplink').textContent==='online');
  return {page,context,errors};
 }
-async function operations(page){await page.getByRole('tab',{name:'Operations & approvals',exact:true}).click();await page.waitForFunction(()=>document.getElementById('connection').textContent.includes('same Nexus GUI'));}
+/* The Approvals nav entry now opens the Approval Center; the Operations page
+   itself is unchanged and still opens through its own route and deep link. */
+async function operations(page){await page.evaluate(()=>window.nexusGui.show('operations'));await page.waitForFunction(()=>document.getElementById('connection').textContent.includes('same Nexus GUI'));await page.waitForSelector('#controls',{state:'visible'});}
 test('original Run/composer/repositories/models coexist with operations under one GUI and identity',async()=>{
  const {page,errors}=await open();
  await page.locator('#taskInput').fill('Preserved main GUI draft — do not execute');

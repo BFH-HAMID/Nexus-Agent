@@ -37,7 +37,7 @@
       detail: 'permissions, files, browser, panic'},
     {id: 'workflows', group: 'operate', icon: 'i-workflow', label: 'nav.workflows', run: () => openStudio('Workflows'),
       detail: 'pipelines & Studio workflows'},
-    {id: 'approvals', group: 'operate', icon: 'i-shield', label: 'nav.approvals', aria: 'nav.approvalAria', view: 'operations', anchor: 'reviews',
+    {id: 'approvals', group: 'operate', icon: 'i-shield', label: 'nav.approvals', aria: 'nav.approvalAria', view: 'approvals',
       badge: true, hint: '3'},
     {id: 'security', group: 'operate', icon: 'i-lock', label: 'nav.security', view: 'operations', anchor: 'audit',
       detail: 'permission audit, traces, diagnostics'},
@@ -55,8 +55,8 @@
   ];
 
   const byId = new Map(SECTIONS.map((section) => [section.id, section]));
-  const viewTitles = {mission: 'nav.mission', roles: 'nav.roles', router: 'nav.router', computer: 'nav.computer', run: 'nav.run',
-    operations: 'nav.approvals', world: 'nav.world', control: 'nav.controls'};
+  const viewTitles = {mission: 'nav.mission', roles: 'nav.roles', router: 'nav.router', computer: 'nav.computer',
+    approvals: 'nav.approvals', run: 'nav.run', operations: 'nav.approvals', world: 'nav.world', control: 'nav.controls'};
   let activeId = null;
   let pendingAnchor = null;
 
@@ -232,7 +232,15 @@
       paintBadge(null);
       return;
     }
-    paintBadge(Number(lastState.pending_actions_total) || 0);
+    let pending = Number(lastState.pending_actions_total) || 0;
+    try {
+      /* The Approval Center is the inbox for every request, not just background
+         actions; prefer its count when it answers. */
+      const inbox = await gui.api('/api/approvals/inbox');
+      const total = inbox?.data?.counts?.total;
+      if (Number.isFinite(total)) pending = total;
+    } catch { /* keep the operations count and say nothing invented */ }
+    paintBadge(pending);
     window.dispatchEvent(new CustomEvent('nexus:pending', {detail: lastState}));
   }
 
