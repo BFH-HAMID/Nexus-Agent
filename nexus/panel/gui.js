@@ -53,7 +53,7 @@
   };
   let worldLoaded = false;
   async function show(view) {
-    if (!['mission','roles','router','computer','approvals','run','operations','world','control'].includes(view)) return;
+    if (!['mission','roles','router','computer','approvals','workflows','run','operations','world','control'].includes(view)) return;
     gui.view = view;
     document.body.classList.toggle('gui-module-view',view!=='run');
     document.querySelectorAll('[data-gui-view]').forEach(n => n.hidden = n.dataset.guiView !== view);

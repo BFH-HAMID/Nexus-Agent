@@ -52,6 +52,10 @@ Thumbs.db
 # Opt-in orchestration runtime (vectors, plans, statuses)
 .nexus/orchestration/
 
+# Workflow schedules and their revision history are runtime state: they name
+# local versions and fire windows, never source.
+.nexus/workflows/
+
 # Explicit new-project workspaces each own a separate Git repository
 projects/
 

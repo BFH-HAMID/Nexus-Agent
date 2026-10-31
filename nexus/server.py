@@ -736,6 +736,40 @@ def make_handler(state: ServerState):
                         "versions": studio.versions(state.workspace),
                         "store": f"{studio.STORE_DIR}/{studio.HISTORY_DIR} (runtime state, never committed)"})
                 return self._router_read("routerstudio.lab", lambda studio: studio.lab(state))
+            if path.startswith("/api/workflows/"):
+                query = parse_qs(parsed.query)
+                if path == "/api/workflows/overview":
+                    return self._workflow_read("workflow.overview", lambda studio: studio.overview(state))
+                if path == "/api/workflows/families":
+                    return self._workflow_read("workflow.families", lambda studio: studio.families(state))
+                if path == "/api/workflows/schedules":
+                    return self._workflow_read("workflow.schedules", lambda studio: {
+                        **studio.schedules_view(state), "scheduler": studio.scheduler_for(state).status()})
+                if path == "/api/workflows/runs":
+                    raw = (query.get("limit") or ["60"])[0]
+                    limit = int(raw) if raw.isdigit() else 60
+                    return self._workflow_read("workflow.runs",
+                                               lambda studio: studio.run_rows(state, limit))
+                if path in {"/api/workflows/version", "/api/workflows/run"}:
+                    identifier = (query.get("id") or [""])[0]
+                    if not identifier:
+                        return self._send_json({"error": "id is required"}, 400)
+                    if path == "/api/workflows/version":
+                        return self._workflow_read("workflow.version",
+                                                   lambda studio: studio.version_detail(state, identifier))
+                    return self._workflow_read("workflow.run",
+                                               lambda studio: studio.run_detail(state, identifier))
+                if path in {"/api/workflows/diff", "/api/workflows/run-diff"}:
+                    left = (query.get("a") or [""])[0]
+                    right = (query.get("b") or [""])[0]
+                    if not left or not right:
+                        return self._send_json({"error": "a and b are required"}, 400)
+                    if path == "/api/workflows/diff":
+                        return self._workflow_read("workflow.diff",
+                                                   lambda studio: studio.diff_versions(state, left, right))
+                    return self._workflow_read("workflow.run-diff",
+                                               lambda studio: studio.diff_runs(state, left, right))
+                return self._send_json({"error": f"no route for {path}"}, 404)
             if path.startswith("/api/approvals/"):
                 if path not in {"/api/approvals/inbox", "/api/approvals/policy", "/api/approvals/history"}:
                     return self._send_json({"error": f"no route for {path}"}, 404)
@@ -907,6 +941,13 @@ def make_handler(state: ServerState):
                 if action not in {"simulate", "rule", "weights", "enable", "lab", "restore"}:
                     return self._send_json({"error": f"no route for {path}"}, 404)
                 return self._router_action(action, payload)
+
+            if path.startswith("/api/workflows/"):
+                action = path.removeprefix("/api/workflows/")
+                if action not in {"validate", "version/save", "run", "cancel", "schedule/save",
+                                  "schedule/toggle", "schedule/remove", "schedule/run", "trigger/preview"}:
+                    return self._send_json({"error": f"no route for {path}"}, 404)
+                return self._workflow_action(action, payload)
 
             if path == "/api/approvals/decide":
                 return self._approvals_action(payload)
@@ -1149,6 +1190,70 @@ def make_handler(state: ServerState):
                     "store_unavailable", "The router store is unavailable; nothing was saved."), 503)
             return self._send_json(webapi.ok(data))
 
+        def _workflow_read(self, action: str, build) -> None:
+            """Workflow Studio reads: limited per client, sampled audit, redacted."""
+            from . import webapi, workflowstudio
+
+            client = self._rolehub_client()
+            bucket = "workflows:" + client
+            if not state.api_limiter.allow(bucket):
+                wait = state.api_limiter.retry_after(bucket)
+                return self._send_json(webapi.failed("rate_limited",
+                                                     f"Too many workflow reads; retry in {wait}s."), 429)
+            # Opening the page is enough to revive a scheduler after a restart.
+            workflowstudio.scheduler_for(state).ensure_started()
+            try:
+                data = build(workflowstudio)
+                workflowstudio.audit_read(state, action, client)
+            except ValueError as exc:
+                return self._send_json(webapi.failed("invalid_request", str(exc)[:400]), 400)
+            except (OSError, KeyError):
+                return self._send_json(webapi.failed(
+                    "store_unavailable", "Workflow state withheld: a local store is unavailable."), 503)
+            return self._send_json(webapi.ok(data))
+
+        def _workflow_action(self, action: str, payload) -> None:
+            """Every workflow mutation is validated, limited, audited and token-gated."""
+            from . import webapi, workflowstudio
+
+            client = self._rolehub_client()
+            bucket = "workflows-write:" + client
+            if not state.api_limiter.allow(bucket):
+                wait = state.api_limiter.retry_after(bucket)
+                return self._send_json(webapi.failed("rate_limited",
+                                                     f"Too many workflow actions; retry in {wait}s."), 429)
+            if not isinstance(payload, dict):
+                return self._send_json(webapi.failed("invalid_request", "A JSON object is required"), 400)
+            body = {**payload, "_client": client}
+            try:
+                if action == "version/save":
+                    data = workflowstudio.save_version(state, body)
+                elif action == "run":
+                    data = workflowstudio.run_workflow(state, body)
+                elif action == "cancel":
+                    data = workflowstudio.cancel_run(state, body)
+                elif action == "schedule/save":
+                    data = workflowstudio.save_schedule(state, body)
+                elif action == "schedule/toggle":
+                    data = workflowstudio.toggle_schedule(state, body)
+                elif action == "schedule/remove":
+                    data = workflowstudio.remove_schedule(state, body)
+                elif action == "schedule/run":
+                    data = workflowstudio.run_schedule_now(state, body)
+                elif action == "trigger/preview":
+                    data = {"schema": workflowstudio.SCHEMA, "observed_at": time.time(),
+                            "times": workflowstudio.preview_trigger(payload.get("trigger"))}
+                else:
+                    data = workflowstudio.validate_definition(state, body)
+            except ValueError as exc:
+                return self._send_json(webapi.failed("invalid_request", str(exc)[:400]), 400)
+            except (OSError, KeyError):
+                return self._send_json(webapi.failed(
+                    "store_unavailable", "The workflow store is unavailable; nothing was changed."), 503)
+            workflowstudio.audit_action(state, action, client, data)
+            workflowstudio.scheduler_for(state).ensure_started()
+            return self._send_json(webapi.ok(data))
+
         def _approvals_read(self, action: str, build) -> None:
             """Approval Center reads: limited per client, sampled audit, redacted."""
             from . import approvalcenter, webapi
@@ -1375,6 +1480,12 @@ def serve(*, host: str = "127.0.0.1", port: int = 8787, workspace: Path | None =
           open_panel: bool = False) -> int:
     ws = Path(workspace or Path.cwd()).resolve()
     state = ServerState(ws, token=token, auto_yes=auto_yes, quiet=quiet, demo=demo)
+    # Persisted workflow schedules are picked up here, so a restart resumes them
+    # (missed windows are recorded as missed, never replayed).
+    from .workflowstudio import scheduler_for
+
+    if scheduler_for(state).start():
+        print("  schedules  workflow scheduler running (persisted in .nexus/workflows)")
     if host in {"0.0.0.0", "::"} and not state.token:
         raise ValueError("Exposing the GUI requires NEXUS_SERVE_TOKEN; configure exact NEXUS_ALLOWED_HOSTS too")
     httpd = ThreadingHTTPServer((host, port), make_handler(state))
@@ -1412,6 +1523,8 @@ def serve(*, host: str = "127.0.0.1", port: int = 8787, workspace: Path | None =
     except KeyboardInterrupt:
         print("\nshutting down")
     finally:
+        if getattr(state, "workflow_scheduler", None):
+            state.workflow_scheduler.stop()
         if getattr(state, "telegram_runtime", None):
             state.telegram_runtime.stop(timeout=2)
         with state.lock:
