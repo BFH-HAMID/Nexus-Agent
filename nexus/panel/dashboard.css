@@ -132,6 +132,9 @@
   --dim-2: var(--faint);
   --edge: var(--border);
   --edge-2: var(--border-strong);
+  /* shell.css talks about `--line` throughout; without this alias every card
+     border it declares computes to `0px none` and panels run together. */
+  --line: var(--border);
   --panel: var(--surface);
 }
 

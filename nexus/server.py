@@ -18,6 +18,7 @@ POST /api/cancel/<task_id>       stop a run
 GET  /api/tasks                  run history
 GET  /api/stats                  dashboard snapshot: agents, keys, telemetry
 GET  /api/memory/<role>          per-role memory notes
+GET  /api/knowledge/<view>       memory policy, index and retrieval
 GET  /api/brain                  skills + long-term memory + past sessions
 GET  /api/skills                 the learned skills library
 GET  /api/skills/<name>          one SKILL.md in full
@@ -796,6 +797,38 @@ def make_handler(state: ServerState):
                     "schema": center.SCHEMA, "observed_at": time.time(),
                     "sessions": store.recent_for(state.workspace, limit=20),
                     "rules": [name for name, _ in center.INJECTION_RULES]})
+            if path == "/api/knowledge/overview":
+                return self._knowledge_read("knowledge.overview", lambda knowledge: knowledge.overview(state))
+            if path.startswith("/api/knowledge/"):
+                query = parse_qs(parsed.query)
+                if path not in {"/api/knowledge/policy", "/api/knowledge/memory", "/api/knowledge/collections",
+                                "/api/knowledge/collection", "/api/knowledge/search", "/api/knowledge/context"}:
+                    return self._send_json({"error": f"no route for {path}"}, 404)
+                from . import knowledge
+
+                if path == "/api/knowledge/policy":
+                    return self._knowledge_read("knowledge.policy",
+                                                lambda module: module.policy_view(state.workspace))
+                if path == "/api/knowledge/memory":
+                    return self._knowledge_read("knowledge.memory", lambda module: module.memory_view(state))
+                if path == "/api/knowledge/collections":
+                    return self._knowledge_read("knowledge.collections",
+                                                lambda module: module.collections_view(state.workspace))
+                if path == "/api/knowledge/collection":
+                    wanted = (query.get("name") or [""])[0]
+                    return self._knowledge_read("knowledge.collection", lambda module: module.collection_view(
+                        state.workspace, wanted))
+                if path == "/api/knowledge/search":
+                    text = (query.get("q") or [""])[0]
+                    name = (query.get("collection") or [""])[0]
+                    raw = (query.get("limit") or ["0"])[0]
+                    limit = int(raw) if raw.isdigit() else 0
+                    return self._knowledge_read("knowledge.search", lambda module: knowledge.search(
+                        state, text, name, limit, client=self._rolehub_client()))
+                task = (query.get("task") or [""])[0][:400]
+                raw = (query.get("top_k") or ["0"])[0]
+                return self._knowledge_read("knowledge.context", lambda module: knowledge.context(
+                    state, task, int(raw) if raw.isdigit() else 0))
             if path.startswith("/api/workflows/"):
                 query = parse_qs(parsed.query)
                 if path == "/api/workflows/overview":
@@ -1022,6 +1055,13 @@ def make_handler(state: ServerState):
                 nonce = securitycenter.cookie_nonce(self.headers.get("Cookie", ""))
                 return self._security_action(action, payload, nonce)
 
+            if path.startswith("/api/knowledge/"):
+                action = path.removeprefix("/api/knowledge/")
+                if action not in {"policy/save", "index", "collection/delete", "document/delete",
+                                  "entry/add", "entry/remove", "cleanup"}:
+                    return self._send_json({"error": f"no route for {path}"}, 404)
+                return self._knowledge_action(action, payload)
+
             if path.startswith("/api/workflows/"):
                 action = path.removeprefix("/api/workflows/")
                 if action not in {"validate", "version/save", "run", "cancel", "schedule/save",
@@ -1169,6 +1209,60 @@ def make_handler(state: ServerState):
                 return self._send_json(webapi.failed("audit_unavailable",
                                                      "Palette index withheld: the audit trail is unavailable."), 503)
             return self._send_json(webapi.ok(index))
+
+        def _knowledge_read(self, action: str, build) -> None:
+            """Memory & knowledge reads: limited per client, sampled audit, redacted."""
+            from . import knowledge, webapi
+
+            client = self._rolehub_client()
+            bucket = "memory:" + client
+            if not state.api_limiter.allow(bucket):
+                wait = state.api_limiter.retry_after(bucket)
+                return self._send_json(webapi.failed("rate_limited",
+                                                     f"Too many memory reads; retry in {wait}s."), 429)
+            try:
+                data = build(knowledge)
+                knowledge.audit_read(state, action.removeprefix("knowledge."), client)
+            except ValueError as exc:
+                return self._send_json(webapi.failed("invalid_request", str(exc)[:400]), 400)
+            except (OSError, KeyError):
+                return self._send_json(webapi.failed(
+                    "store_unavailable", "Memory state withheld: a local store is unavailable."), 503)
+            return self._send_json(webapi.ok(data))
+
+        def _knowledge_action(self, action: str, payload) -> None:
+            """Every knowledge write needs its own typed token and is audited."""
+            from . import knowledge, webapi
+
+            client = self._rolehub_client()
+            bucket = "memory-write:" + client
+            if not state.api_limiter.allow(bucket):
+                wait = state.api_limiter.retry_after(bucket)
+                return self._send_json(webapi.failed("rate_limited",
+                                                     f"Too many knowledge actions; retry in {wait}s."), 429)
+            if not isinstance(payload, dict):
+                return self._send_json(webapi.failed("invalid_request", "A JSON object is required"), 400)
+            try:
+                if action == "policy/save":
+                    data = knowledge.save_policy(state, payload)
+                elif action == "index":
+                    data = knowledge.index_collection(state, payload)
+                elif action == "collection/delete":
+                    data = knowledge.delete_collection(state, payload)
+                elif action == "document/delete":
+                    data = knowledge.remove_document(state, payload)
+                elif action == "entry/add":
+                    data = knowledge.add_entry(state, payload)
+                elif action == "entry/remove":
+                    data = knowledge.remove_entry(state, payload)
+                else:
+                    data = knowledge.cleanup(state, payload)
+            except ValueError as exc:
+                return self._send_json(webapi.failed("invalid_request", str(exc)[:400]), 400)
+            except (OSError, KeyError):
+                return self._send_json(webapi.failed(
+                    "store_unavailable", "The knowledge store is unavailable; nothing was changed."), 503)
+            return self._send_json(webapi.ok(data))
 
         def _rolehub_client(self) -> str:
             return str((getattr(self, "client_address", ("", 0)) or ("", 0))[0] or "local")
