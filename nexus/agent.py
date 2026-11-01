@@ -198,7 +198,12 @@ class NexusAgent:
         # learning surfaces (Hermes-style): skills, long-term memory, recall
         settings = self.config.settings
         self.skills_enabled = bool(getattr(settings, "skills_enabled", True))
-        self.memory_store = MemoryStore(enabled=env_flag("NEXUS_MEMORY", bool(settings.memory_enabled)))
+        from . import knowledge
+
+        # The Memory page can switch curated memory off for dashboard runs;
+        # NEXUS_MEMORY=0 still wins, and a missing policy file changes nothing.
+        self.memory_store = MemoryStore(enabled=knowledge.memory_flag(
+            self.ws, env_flag("NEXUS_MEMORY", bool(settings.memory_enabled))))
         self.sessions = SessionStore()
         self.learning = LearningLoop(self)
         self._turns_since_nudge = 0
@@ -403,6 +408,14 @@ class NexusAgent:
         global_memory = "" if getattr(self, "remote_workspace", None) else self.memory_store.prompt_sections()
         if global_memory:
             extras.append(global_memory)
+        # Document excerpts only when the operator turned retrieval *and*
+        # injection on; otherwise this is a single stat of a missing file.
+        if not getattr(self, "remote_workspace", None):
+            from . import knowledge
+
+            retrieved = knowledge.prompt_block(self.ws, task)
+            if retrieved:
+                extras.append(retrieved)
         interval = nudge_interval(self.config.settings)
         if interval and self._turns_since_nudge >= interval:
             extras.append(self.learning.nudge())
@@ -478,6 +491,11 @@ class NexusAgent:
                 self.event(EventType.TEXT_DELTA, text=piece, role=_role)
 
             try:
+                # A configured budget stops the run *before* the call that would
+                # cross it; without one this is a single stat of a missing file.
+                from . import costcenter
+
+                costcenter.enforce(self.ws)
                 provider, completion = self.providers.call_with_fallback(
                     agent_cfg.name,
                     system,
@@ -490,7 +508,11 @@ class NexusAgent:
                     on_text=_on_text if use_stream else None,
                 )
             except Exception as exc:  # noqa: BLE001
+                from . import costcenter
+
                 self.event(EventType.ERROR, message=str(exc))
+                stopped = (f"budget stop: {exc}" if isinstance(exc, costcenter.BudgetExceeded)
+                           else f"provider error: {exc}")
                 failed = RunResult(
                     text=final_text,
                     role=active_role.name,
@@ -502,7 +524,7 @@ class NexusAgent:
                     changed_files=sorted(ctx.state.get("changed_files", set())),
                     summary=ctx.state.get("summary", ""),
                     followups=ctx.state.get("followups", []),
-                    stopped_reason=f"provider error: {exc}",
+                    stopped_reason=stopped,
                     duration_s=time.time() - started,
                     messages=messages,
                     ok=False,

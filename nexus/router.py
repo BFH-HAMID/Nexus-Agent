@@ -84,9 +84,20 @@ class Router:
             score, hits = role.keyword_score(task)
             if score > 0:
                 scored.append((role, score, hits))
+        priorities: dict[str, int] = {}
+        try:
+            # Router Studio rules live in workspace runtime state. A missing or
+            # damaged file must never stop a run, so every failure is ignored.
+            from .routerstudio import active_rules
+
+            rules = active_rules(self.settings.workspace)
+        except Exception:  # noqa: BLE001 - routing outranks the editor
+            rules = ()
+        if rules:
+            scored = self._apply_rules(task, scored, rules, priorities)
         if not scored:
             return None
-        scored.sort(key=lambda item: (-item[1], item[0].name))
+        scored.sort(key=lambda item: (-item[1], -priorities.get(item[0].name, 0), item[0].name))
         best_role, best_score, best_hits = scored[0]
         candidates = [(r.name, s) for r, s, _ in scored[:6]]
 
@@ -118,6 +129,27 @@ class Router:
             candidates=candidates,
             note=note,
         )
+
+    def _apply_rules(self, task: str, scored: list[tuple[Role, float, list[str]]], rules,
+                     priorities: dict[str, int]) -> list[tuple[Role, float, list[str]]]:
+        """Add saved Router Studio weights to their target roles.
+
+        Rules are additive keywords with a priority used only to break an exact
+        score tie. A rule that names a role which no longer exists is skipped.
+        """
+        positions = {role.name: index for index, (role, _score, _hits) in enumerate(scored)}
+        for rule in rules:
+            if not rule.enabled or rule.role not in self.registry.roles or not rule.matches(task):
+                continue
+            position = positions.get(rule.role)
+            if position is None:
+                positions[rule.role] = len(scored)
+                scored.append((self.registry.roles[rule.role], 0.0, []))
+                position = positions[rule.role]
+            role, score, hits = scored[position]
+            scored[position] = (role, score + rule.weight, hits + [f"rule:{rule.id}"])
+            priorities[rule.role] = max(priorities.get(rule.role, 0), rule.priority)
+        return scored
 
     def _router_agent_name(self) -> str:
         """Prefer the configured cheap classifier agent, but never point at an

@@ -16,7 +16,9 @@ async function open(width=1440,storageState,flat=true){
  await page.waitForFunction(()=>document.getElementById('metaUplink').textContent==='online');
  return {page,context,errors};
 }
-async function operations(page){await page.getByRole('tab',{name:'Operations & approvals',exact:true}).click();await page.waitForFunction(()=>document.getElementById('connection').textContent.includes('same Nexus GUI'));}
+/* The Approvals nav entry now opens the Approval Center; the Operations page
+   itself is unchanged and still opens through its own route and deep link. */
+async function operations(page){await page.evaluate(()=>window.nexusGui.show('operations'));await page.waitForFunction(()=>document.getElementById('connection').textContent.includes('same Nexus GUI'));await page.waitForSelector('#controls',{state:'visible'});}
 test('original Run/composer/repositories/models coexist with operations under one GUI and identity',async()=>{
  const {page,errors}=await open();
  await page.locator('#taskInput').fill('Preserved main GUI draft — do not execute');
@@ -26,7 +28,7 @@ test('original Run/composer/repositories/models coexist with operations under on
  assert.match(await page.locator('#privacy-state').innerText(),/OFF/);
  await page.getByRole('tab',{name:'Run & chat',exact:true}).click();
  assert.equal(await page.locator('#taskInput').inputValue(),'Preserved main GUI draft — do not execute');
- await page.locator('#guiSettings').click();assert.equal(await page.locator('#workbench').isVisible(),true);await page.locator('#wbClose').click();
+ await page.locator('#wbOpen').click();assert.equal(await page.locator('#workbench').isVisible(),true);await page.locator('#wbClose').click();
  assert.equal(new URL(page.url()).pathname,'/dashboard');assert.deepEqual(errors,[]);
 });
 test('main GUI background queue approval and cancellation use the real shared Studio store',async()=>{
@@ -55,6 +57,15 @@ test('main GUI lifecycle buttons receive actual worker acknowledgements without 
 test('world/news/weather are native sections of the original GUI and preserve ordinary scrolling',async()=>{
  const {page,errors}=await open(430);
  await operations(page);
+ /* The world widget labels countries in the language stored in its own server
+    settings; pin it to English so this assertion measures the widget, not a
+    value another suite may have left behind. */
+ const worldSettings=body=>page.evaluate(async b=>(await window.nexusGui.api('/api/workbench/world-settings',b)).data,body);
+ const current=await worldSettings();
+ const worldLanguage=current.settings.language;
+ if(worldLanguage!=='en')
+  await worldSettings({confirmation:'SAVE NEWS AND WEATHER',revision:current.revision,
+   settings:{sources:current.settings.sources,weather_provider:current.settings.weather_provider,language:'en',enabled:current.settings.enabled},clear_session_key:false});
  const wrong=[];page.on('request',r=>{if(/\/api\/operations\/(countries|news|weather|crypto|cities|quakes)/.test(r.url()))wrong.push(r.url());});
  await page.getByRole('tab',{name:'World, news & weather',exact:true}).click();
  await page.waitForFunction(()=>document.getElementById('world-countries').children.length>200);
@@ -65,6 +76,8 @@ test('world/news/weather are native sections of the original GUI and preserve or
  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
  await page.getByRole('tab',{name:'Run & chat',exact:true}).click();assert.equal(await page.locator('#taskInput').isVisible(),true);
  assert.deepEqual(errors,[]);
+ if(worldLanguage!=='en'){const now=await worldSettings();await worldSettings({confirmation:'SAVE NEWS AND WEATHER',revision:now.revision,
+  settings:{sources:now.settings.sources,weather_provider:now.settings.weather_provider,language:worldLanguage,enabled:now.settings.enabled},clear_session_key:false});}
 });
 test('one remembered GUI login survives reload and a reopened browser context; logout forgets it',async()=>{
  const {page,context,errors}=await open();const cookie=(await context.cookies()).find(c=>c.name==='nexus_gui_session');

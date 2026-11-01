@@ -91,8 +91,8 @@ clearing. No production demo data or simulated hardware is installed.
 
 The configured-agent count is configuration inventory, not a count of online
 services. Several agents can share an endpoint. The **LIVE RUN DATA** card only
-tracks the selected Nexus task's real events, not activity in an external Arena
-chat. Without a selected run it explains how to start/open one. Model turns count
+tracks the selected Nexus task's real events, not activity in any other chat
+window. Without a selected run it explains how to start/open one. Model turns count
 observed model-request events; tool calls count actual tool-call events. Average
 tool duration uses the latest three completed-tool duration measurements, and
 shows **No results yet** until a timed result arrives. Values update immediately

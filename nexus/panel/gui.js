@@ -39,13 +39,24 @@
     },
     async api(path, body) {
       const r = await gui.fetch(path, {method:body===undefined?'GET':'POST', headers:{'Content-Type':'application/json'},...(body===undefined?{}:{body:JSON.stringify(body)})});
-      const value = await r.json(); if(!r.ok) throw Error(value.error || value.detail || 'Request refused'); return value;
+      const value = await r.json();
+      if(!r.ok) throw Error(value?.error?.message || value?.error || value?.error_message || value?.detail || 'Request refused');
+      return value;
     },
-    view: 'run'
+    view: 'run',
+    /* EventSource cannot send headers: use the remembered cookie normally, and
+       fall back to the query token only for a session that chose not to be
+       remembered. Referrer-Policy keeps it out of Referer headers. */
+    streamUrl(path) {
+      return credential ? path + (path.includes('?') ? '&' : '?') + 'token=' + encodeURIComponent(credential) : path;
+    }
   };
+  /* Every page the shell can show. One list, so a new view cannot be
+     reachable from the sidebar but silently ignored by the router. */
+  const VIEWS = ['mission','roles','router','computer','approvals','workflows','security','memory','cost','channels','run','operations','world','control','settings'];
   let worldLoaded = false;
   async function show(view) {
-    if (!['run','operations','world','control'].includes(view)) return;
+    if (!VIEWS.includes(view)) return;
     gui.view = view;
     document.body.classList.toggle('gui-module-view',view!=='run');
     document.querySelectorAll('[data-gui-view]').forEach(n => n.hidden = n.dataset.guiView !== view);
@@ -71,7 +82,11 @@
     if(view && view!==gui.view)show(view);
   });
   gui.show=show;
-  document.getElementById('guiSettings').onclick=()=>document.getElementById('wbOpen')?.click();
+  // Hash deep links (#run, #mission, …) follow the address bar without a reload.
+  window.addEventListener('hashchange',()=>{const next=location.hash.slice(1);if(VIEWS.includes(next)&&next!==gui.view)show(next);});
+  document.getElementById('guiSettings').onclick=()=>show('settings');
+  // Shared label helper: feature scripts write into .btn-label so icons survive language switches.
+  gui.label=(node,text)=>{if(!node)return;const label=node.querySelector('.btn-label');if(label)label.textContent=text;else node.textContent=text;};
   document.getElementById('guiLogout').onclick=async()=>{
     await gui.api('/api/session',{forget:true});credential='';location.reload();
   };
@@ -80,11 +95,11 @@
     if(detail.type==='approval_request') {show('run');queueMicrotask(()=>document.getElementById('approvalCard')?.scrollIntoView({block:'nearest'}));}
   });
   const attention=document.createElement('div');attention.id='guiAttention';attention.hidden=true;attention.setAttribute('role','status');
-  const text=document.createElement('span'),review=document.createElement('button');review.className='btn';review.textContent='Review background actions';review.onclick=()=>show('operations');attention.append(text,review);document.querySelector('.gui-navigation').after(attention);
+  const text=document.createElement('span'),review=document.createElement('button');review.className='btn';review.textContent='Review background actions';review.onclick=()=>show('operations');attention.append(text,review);document.body.append(attention);
   setInterval(async()=>{if(document.hidden||login.open||gui.view==='operations')return;try{const state=await gui.api('/api/operations/state');const count=state.pending_actions_total||0;text.textContent=count+' background action(s) await your approval.';attention.hidden=count===0;}catch{/* No invented alert when status is unavailable. */}},10000);
   window.addEventListener('nexus:view',e=>{if(e.detail==='operations')attention.hidden=true;});
   const hash=location.hash.slice(1);const bookmarked=document.getElementById(hash)?.closest('[data-gui-view]')?.dataset.guiView;
-  show(bookmarked||(['run','operations','world','control'].includes(hash)?hash:'control'));
+  show(bookmarked||(VIEWS.includes(hash)?hash:'mission'));
 })();
 
 /* Desktop presentation: reuse native controls; never execute or grant permissions. */
@@ -102,15 +117,28 @@ document.addEventListener('DOMContentLoaded', () => {
     header.append(text, make('span', 'Ctrl + Shift + P · Find controls', 'ui-shortcut'));
     document.querySelector(`[data-gui-view="${view}"]`)?.prepend(header);
   }
-  const preferences = make('div', undefined, 'ui-preferences'); preferences.setAttribute('role', 'group'); preferences.setAttribute('aria-label', 'Dashboard appearance');
-  for (const [key, label, cls] of [['compact', 'Compact layout', 'ui-compact'], ['still', 'Reduce effects', 'ui-still']]) {
-    const button = make('button', label, 'btn'); button.type = 'button'; let enabled = false;
-    try { enabled = localStorage.getItem('nexus.ui.' + key) === 'true'; } catch { /* In-session fallback. */ }
-    const apply = () => { document.body.classList.toggle(cls, enabled); button.setAttribute('aria-pressed', String(enabled)); };
-    apply(); button.onclick = () => { enabled = !enabled; apply(); try { localStorage.setItem('nexus.ui.' + key, String(enabled)); } catch { /* In-session fallback. */ } };
+  const preferences = make('div', undefined, 'ui-preferences'); preferences.setAttribute('role', 'group');
+  preferences.setAttribute('data-i18n-aria', 'settings.appearance');
+  const preferencesTitle = make('span', 'Display', 'ui-preferences-title'); preferencesTitle.dataset.i18n = 'group.display';
+  preferences.append(preferencesTitle);
+  /* The state lives in shell.js (window.nexusAppearance) so these buttons and
+     the Settings page always agree; this file only draws and forwards clicks.
+     `data-pref` is a stable hook: the labels themselves change with language. */
+  const appearance = window.nexusAppearance;
+  const drawn = [];
+  for (const [key, label, i18nKey] of [['compact', 'Compact layout', 'settings.compact'], ['still', 'Reduce effects', 'settings.still']]) {
+    const button = make('button', label, 'btn'); button.type = 'button';
+    button.dataset.pref = key; button.dataset.i18n = i18nKey;
+    drawn.push([key, button]);
+    button.onclick = () => appearance?.toggle(key);
     preferences.append(button);
   }
+  const paintPreferences = () => { for (const [key, button] of drawn) button.setAttribute('aria-pressed', String(Boolean(appearance?.get(key)))); };
+  paintPreferences();
+  window.addEventListener('nexus:appearance', paintPreferences);
   document.querySelector('.gui-navigation')?.append(preferences);
+  /* i18n.js may already have painted the static shell; translate the row we just built. */
+  window.nexusI18n?.apply?.(preferences);
   const grid = document.getElementById('dcGrid'), search = document.getElementById('dcSearch');
   if (grid && search) {
     const cards = [...grid.querySelectorAll('.dc-card')], title = card => card.querySelector('h2').textContent;

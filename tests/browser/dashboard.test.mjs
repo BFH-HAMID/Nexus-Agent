@@ -287,8 +287,11 @@ test('workbench model controls, Bengali layout and keyboard palette work on mobi
     await page.waitForFunction(()=>document.querySelector('#wbClose').textContent==='বন্ধ করুন');
     assert.equal(await page.locator('body').evaluate(el=>el.classList.contains('wb-focus')),true);
     await page.click('#wbClose');await page.keyboard.press('Control+k');
-    assert.equal(await page.locator('#wbPalette').isVisible(),true);
-    await page.fill('#wbSearch','ত্রুটি');await page.keyboard.press('Enter');
+    /* Ctrl+K is the global command palette since the shell rebuild; it can open
+       any existing workbench pane by name, including in Bangla. */
+    assert.equal(await page.locator('#palette').isVisible(),true);
+    await page.fill('#paletteInput','>ত্রুটি');await page.waitForSelector('.palette-row');
+    await page.keyboard.press('Enter');
     await page.waitForFunction(()=>!document.querySelector('#wbPane-errors').hidden&&document.querySelector('#workbench').open);
     assert.equal(await page.locator('#wbPane-errors').isVisible(),true);
     assert.deepEqual(errors,[]);

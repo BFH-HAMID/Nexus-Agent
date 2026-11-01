@@ -52,8 +52,20 @@ Thumbs.db
 # Opt-in orchestration runtime (vectors, plans, statuses)
 .nexus/orchestration/
 
+# Workflow schedules and their revision history are runtime state: they name
+# local versions and fire windows, never source.
+.nexus/workflows/
+
 # Explicit new-project workspaces each own a separate Git repository
 projects/
 
 # Permission audit is runtime state, never training data or source
 .nexus/permissions/
+.nexus/knowledge/
+.nexus/cost/
+.nexus/channels/
+.nexus/computer/
+
+# Role Hub version snapshots are runtime state, never source
+.nexus/rolehub/
+.nexus/router/

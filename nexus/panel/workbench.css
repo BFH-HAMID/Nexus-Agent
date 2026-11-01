@@ -1,43 +1,157 @@
-#wbOpen { margin: 0 8px; }
-#workbench { position: fixed; inset: 5vh 3vw; width: 94vw; height: 90vh; max-width: none; max-height: none; padding: 0; color: #d9fff2; background: #071314; border: 1px solid #28736a; border-radius: 12px; z-index: 50; box-shadow: 0 20px 100px #000c; }
-#workbench::backdrop { background: #000b; }
-.wb-shell { height: 100%; display: grid; grid-template: auto 1fr / 180px 1fr; }
-.wb-header { grid-column: 1/-1; display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-bottom: 1px solid #26433c; }
-.wb-header h2 { margin: 0; font-size: 16px; flex: 1; }
-.wb-nav { padding: 12px; border-right: 1px solid #26433c; overflow: auto; }
-.wb-nav button { display: block; width: 100%; text-align: left; margin-bottom: 8px; }
-.wb-main { padding: 16px 22px; overflow: auto; min-width: 0; }
-.wb-pane[hidden] { display: none; }
-.wb-pane h3 { color: #22e3ff; font-size: 15px; }
-.wb-pane p, .wb-note { font-size: 12px; line-height: 1.6; color: #a7c8be; }
-#workbench button, #wbPalette button { padding: 8px 12px; border: 1px solid #315b50; border-radius: 5px; background: #0e2823; color: #d9fff2; cursor: pointer; font: inherit; }
-#workbench button:disabled { opacity: .5; cursor: wait; }
-#workbench button[aria-selected="true"] { border-color: #00ffa3; color: #00ffa3; }
-.wb-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 12px 0; }
-.wb-pane label { display: flex; flex-direction: column; gap: 5px; margin: 10px 0; font-size: 12px; }
-.wb-pane label.wb-check { flex-direction: row; align-items: center; }
-.wb-pane input:not([type="checkbox"]), .wb-pane select, .wb-pane textarea, #wbSearch { background: #04100f; color: #d9fff2; border: 1px solid #315b50; border-radius: 5px; padding: 9px; font: inherit; min-width: 0; max-width: 100%; }
-.wb-pane textarea { width: 100%; min-height: 90px; resize: vertical; }
-.wb-output { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 48vh; overflow: auto; padding: 12px; background: #020b0b; border: 1px solid #23453c; font: 12px/1.6 var(--mono); }
-.wb-error { color: #ffbda5; }
-.wb-list { display: grid; gap: 8px; }
-.wb-list button { text-align: left; overflow-wrap: anywhere; }
-#wbPalette { background: #071314; color: #d9fff2; width: min(560px, 92vw); border: 1px solid #28736a; border-radius: 10px; }
-#wbPalette input { width: 100%; margin: 10px 0; }
-#wbCommands { display: grid; gap: 8px; max-height: 55vh; overflow: auto; }
-body.wb-focus .col-left, body.wb-focus .col-right, body.wb-focus .map-card { display: none; }
-body.wb-focus .deck { grid-template-columns: minmax(0,1fr); }
-body.wb-focus .col-center { grid-template-rows: minmax(0,1fr); grid-column: 1/-1; }
-.card.wb-resizable { resize: vertical; overflow: auto; min-height: 90px; }
-@media(max-width: 700px) {
-  #workbench { inset: 2vh 2vw; width: 96vw; height: 96vh; }
-  .wb-shell { grid-template: auto auto 1fr / 1fr; }
-  .wb-nav { display: flex; gap: 6px; overflow-x: auto; border-right: 0; }
-  .wb-nav button { white-space: nowrap; width: auto; margin: 0; }
-  .wb-main { padding: 10px; }
+/* ──────────────────────────────────────────────────────────────────────────
+   Workbench, Studio and command palette dialogs.
+   Same tokens as the dashboard; controls keep their behaviour and safety gates.
+   ────────────────────────────────────────────────────────────────────────── */
+
+#workbench, #nexusStudio {
+  position: fixed; inset: 5vh 4vw; width: 92vw; height: 90vh;
+  max-width: none; max-height: none; padding: 0;
+  color: var(--text); background: var(--surface);
+  border: 1px solid var(--border-strong); border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg); z-index: 60; overflow: hidden;
 }
+#workbench::backdrop, #nexusStudio::backdrop { background: var(--scrim); backdrop-filter: blur(3px); }
 
-.card[hidden] { display: none !important; }
+.wb-shell {
+  height: 100%; display: grid;
+  grid-template: auto minmax(0, 1fr) / 216px minmax(0, 1fr);
+  background: var(--surface);
+}
+.wb-header {
+  grid-column: 1 / -1; display: flex; align-items: center; gap: 12px;
+  padding: 14px 18px; border-bottom: 1px solid var(--border);
+  background: var(--sidebar);
+}
+.wb-header h2 { margin: 0; flex: 1 1 auto; font-size: 15.5px; font-weight: 650; letter-spacing: -.01em; }
+#wbSaved { font-size: 12px; color: var(--muted); }
+.wb-nav {
+  padding: 12px 10px; border-right: 1px solid var(--border);
+  overflow: auto; background: var(--sidebar);
+}
+.wb-nav button {
+  display: block; width: 100%; text-align: left; margin-bottom: 2px;
+  padding: 9px 11px; border-radius: var(--radius-sm);
+  border: 1px solid transparent; background: transparent;
+  color: var(--muted); font-size: 13px; cursor: pointer;
+}
+.wb-nav button:hover { background: var(--surface-2); color: var(--text); }
+.wb-nav button[aria-selected="true"] { background: var(--accent-soft); color: var(--accent-strong); font-weight: 600; }
+.wb-main { padding: 22px 26px 34px; overflow: auto; min-width: 0; }
+.wb-pane[hidden] { display: none; }
+.wb-pane, #stPane { max-width: 980px; }
+.wb-pane h3 { margin: 4px 0 10px; font-size: 16px; font-weight: 650; color: var(--text); letter-spacing: -.01em; }
+.wb-pane h4 { margin: 18px 0 8px; font-size: 13px; font-weight: 650; color: var(--text); }
+.wb-pane p, .wb-note { margin: 8px 0; font-size: 13px; line-height: 1.65; color: var(--muted); }
+.wb-pane a { color: var(--info); }
+.wb-pane small { color: var(--faint); font-size: 12px; }
 
-#nexusStudio{width:min(1200px,96vw);height:90vh;background:var(--bg,#10151c);color:var(--text,#e0e8ef);border:1px solid #34434d;padding:0} #nexusStudio::backdrop{background:#0009} #nexusStudio .wb-main{overflow:auto} #nexusStudio button{margin:5px} #nexusStudio label{display:block;margin:10px 0} #nexusStudio textarea{display:block;width:100%;min-height:90px} #nexusStudio .wb-output{white-space:pre-wrap;overflow-wrap:anywhere;max-height:450px;overflow:auto}
-#nexusStudio button{padding:8px 12px;border:1px solid #315b50;border-radius:5px;background:#0e2823;color:#d9fff2;cursor:pointer;font:inherit} #nexusStudio input:not([type=checkbox]),#nexusStudio textarea,#nexusStudio select{background:#04100f;color:#d9fff2;border:1px solid #315b50;padding:8px;max-width:100%;box-sizing:border-box} #stError{color:#ffb5a8} @media(max-width:700px){#nexusStudio .wb-shell{grid-template:auto auto 1fr / 1fr}#nexusStudio .wb-nav{display:flex;flex-wrap:wrap;padding:4px}#nexusStudio .wb-nav button{width:auto}#nexusStudio .wb-main{padding:12px}}
+#workbench button, #nexusStudio button, #wbPalette button {
+  padding: 8px 12px; min-height: 34px;
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--surface-2); color: var(--text);
+  font: inherit; font-size: 13px; cursor: pointer;
+}
+#workbench button:hover, #nexusStudio button:hover, #wbPalette button:hover {
+  background: var(--surface-3); border-color: var(--border-strong);
+}
+#workbench button:disabled, #nexusStudio button:disabled { opacity: .5; cursor: not-allowed; }
+#workbench button[aria-selected="true"], #nexusStudio button[aria-selected="true"] {
+  border-color: transparent; background: var(--accent-soft); color: var(--accent-strong);
+}
+#wbClose, #stClose, #repoClose { margin-left: auto; }
+
+.wb-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 12px 0; }
+.wb-pane label, #stPane label { display: flex; flex-direction: column; gap: 6px; margin: 12px 0; font-size: 12.5px; color: var(--text-2); }
+.wb-pane label.wb-check, #dsForm .dc-check {
+  flex-direction: row; align-items: center; gap: 9px;
+  padding: 8px 10px; border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm); background: var(--surface-2);
+}
+.wb-pane input:not([type="checkbox"]):not([type="radio"]),
+#stPane input:not([type="checkbox"]):not([type="radio"]),
+.wb-pane select, #stPane select, .wb-pane textarea, #stPane textarea, #wbSearch {
+  width: 100%; max-width: 100%; padding: 9px 11px;
+  background: var(--surface-2); color: var(--text);
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  font: inherit; font-size: 13px; min-width: 0;
+}
+.wb-pane input:focus, .wb-pane select:focus, .wb-pane textarea:focus, #wbSearch:focus {
+  outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.wb-pane textarea { min-height: 96px; resize: vertical; line-height: 1.55; }
+.wb-pane fieldset {
+  margin: 14px 0; padding: 12px 14px; min-width: 0;
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+.wb-pane legend { padding: 0 6px; font-size: 12px; font-weight: 650; color: var(--text-2); }
+.wb-output {
+  white-space: pre-wrap; overflow-wrap: anywhere; overflow: auto; max-height: 48vh;
+  margin: 10px 0; padding: 12px 14px;
+  background: var(--surface-2); border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  font: 12px/1.65 var(--mono); color: var(--text-2);
+  user-select: text;
+}
+.wb-error { color: var(--danger); }
+.wb-list { display: grid; gap: 8px; margin: 10px 0; }
+.wb-list button { text-align: left; overflow-wrap: anywhere; }
+.wb-pane details { margin: 10px 0; padding: 10px 12px; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); }
+.wb-pane summary { cursor: pointer; color: var(--muted); font-size: 12.5px; }
+.wb-pane details pre { margin-top: 8px; }
+
+/* desktop setup + management panes */
+#dsStatus, #mcStatus {
+  padding: 10px 12px; margin: 12px 0;
+  border-left: 3px solid var(--accent); border-radius: 4px;
+  background: var(--accent-soft); color: var(--text-2); font-size: 12.5px;
+}
+#dsForm label, #mcFields label { display: flex; flex-direction: column; gap: 6px; margin: 12px 0; font-size: 12.5px; color: var(--text-2); }
+#dsForm input:not([type="checkbox"]), #dsForm select, #dsForm textarea,
+#mcFields input:not([type="checkbox"]), #mcFields select, #mcFields textarea {
+  width: 100%; max-width: 100%; padding: 9px 11px;
+  background: var(--surface-2); color: var(--text);
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  font: inherit; font-size: 13px;
+}
+#dsForm textarea, #mcFields textarea { min-height: 110px; resize: vertical; }
+#dsForm pre, #mcReview {
+  white-space: pre-wrap; overflow-wrap: anywhere; overflow: auto;
+  max-height: 340px; padding: 12px 14px;
+  background: var(--surface-2); border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm); font: 12px/1.6 var(--mono); color: var(--text-2);
+}
+.dc-warning {
+  padding: 10px 12px; border-radius: var(--radius-sm);
+  border: 1px solid var(--warn); background: var(--warn-soft);
+  color: var(--text-2); font-size: 12.5px; line-height: 1.6;
+}
+.dc-check { display: flex; align-items: center; gap: 9px; }
+
+/* command palette */
+#wbPalette {
+  width: min(560px, 92vw); padding: 18px;
+  background: var(--surface); color: var(--text);
+  border: 1px solid var(--border-strong); border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+}
+#wbPalette::backdrop { background: var(--scrim); }
+#wbPalette h3 { margin: 0 0 10px; font-size: 14px; font-weight: 650; }
+#wbSearch { width: 100%; margin: 6px 0 12px; }
+#wbCommands { display: grid; gap: 6px; max-height: 55vh; overflow: auto; }
+#wbCommands button { text-align: left; }
+
+/* focus mode hides secondary rails, keeps the live run and approvals */
+body.wb-focus .col-left, body.wb-focus .col-right { display: none; }
+body.wb-focus .deck { grid-template-columns: minmax(0, 1fr); }
+
+@media (max-width: 880px) {
+  #workbench, #nexusStudio { inset: 2vh 2vw; width: 96vw; height: 96vh; }
+  .wb-shell { grid-template: auto auto minmax(0, 1fr) / minmax(0, 1fr); }
+  .wb-nav {
+    grid-row: 2; display: flex; gap: 6px; overflow-x: auto;
+    border-right: 0; border-bottom: 1px solid var(--border); padding: 8px 10px;
+  }
+  .wb-nav button { margin: 0; white-space: nowrap; width: auto; }
+  .wb-main { grid-row: 3; padding: 16px 16px 28px; }
+}
