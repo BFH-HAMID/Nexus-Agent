@@ -1873,6 +1873,41 @@ Workflow: Evolve → Export → Import → Status → Promote → Prune → Coun
 
 ---
 
+# ⚙️ Runtime: এই roster দিয়েই role ম্যানেজ হয়
+
+এই ডকুমেন্টটাই শুধু কাগজ নয় — একই টেবিল থেকে `teams.yaml` তৈরি হয়, আর Nexus সেটাই পড়ে।
+তাই "ডকুমেন্টে যা লেখা" আর "অ্যাপ যা জানে" একই থাকে; কোনোটাই হাতে বদলানো যায় না।
+
+```bash
+python3 scripts/build_teams.py --yaml    # docs/teams.md  ->  teams.yaml (generated)
+python3 scripts/build_teams.py --check   # ডকুমেন্ট ⇄ teams.yaml ⇄ role packs — তিনটাই মিলছে কি না
+```
+
+| কমান্ড | কী করে |
+|---|---|
+| `nexus teams` | ৪৮টি team + ১০টি language sub-team, member ও ধাপ সংখ্যা সহ |
+| `nexus teams show red-team` | workflow লাইন + প্রতিটি ধাপের role (`--stage Scoping`) |
+| `nexus teams show 34a` | number, id বা title — যেভাবেই খুঁজুন |
+| `nexus teams role bengali-nlp` | role-টি কোন কোন team-এর কোন ধাপে আছে |
+| `nexus teams check` | রোস্টার বনাম ইনস্টল করা role: অজানা নাম, ভাঙা handoff/parent/child |
+| `nexus roles --team qa-testing-team` | সাধারণ role লিস্টে team ফিল্টার |
+| `nexus doctor` | `teams` লাইনে ৪৮ team / ১০০০ role দেখায় |
+
+`nexus teams check` যা কঠোরভাবে ধরে (exit 1):
+`docs/teams.md`-এর কোনো role নাম `roles.yaml` বা `roles.d/*.yaml`-এ নেই · handoff এমন team-এ
+যায় যা রোস্টারে নেই · parent/child ভাঙা · কোনো team-এ কোনো stage নেই।
+
+লেয়ারিং `roles.yaml`-এর মতোই: bundled → repo checkout → `$NEXUS_HOME` → `./.nexus/teams.yaml`
+→ `./teams.yaml`। অর্থাৎ প্রজেক্টে নিজের team যোগ করা যায়, repo-র ৪৮টি team রয়ে যায়।
+প্রজেক্টে যোগ করা নতুন role কোনো team-এ না থাকলে `check` শুধু *note* দেয় (error নয়), কারণ
+সেটা বৈধ — কিন্তু shipped ১০০০ role-এর জন্য coverage ১০০০/১০০০ থাকতেই হবে।
+
+**সীমা:** এটা grouping/management — routing আগের মতোই role-ভিত্তিক, execution
+`pipelines.yaml` + approval gate দিয়ে, আর এতে কোনো নতুন autonomy যোগ হয় না। `nexus teams`
+কোনো model কল করে না, কোনো টুল চালায় না।
+
+---
+
 # ✅ Verification & Changelog
 
 ## যাচাই কীভাবে হয়

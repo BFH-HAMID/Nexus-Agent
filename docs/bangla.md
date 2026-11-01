@@ -255,5 +255,20 @@ python3 scripts/build_teams.py --stats   # প্রতি team-এর সংখ
 python3 scripts/build_teams.py --write   # সংখ্যা নতুন করে গোনে লেখে
 ```
 
-এটা documentation-স্তরের ম্যাপ — runtime routing আগের মতোই role-ভিত্তিক
-(`roles.yaml` + `roles.d/`), আর 실행যোগ্য pipeline হলো `pipelines.yaml`।
+`docs/teams.md`-এর এই টেবিলগুলো থেকেই `teams.yaml` তৈরি হয় (generated), আর CLI সেটাই পড়ে —
+তাই ডকুমেন্ট আর কোড কখনো আলাদা হতে পারে না:
+
+```bash
+nexus teams                         # ৪৮টি team + ১০টি language sub-team, member/ধাপ সংখ্যা সহ
+nexus teams show red-team           # workflow + প্রতিটি ধাপের role
+nexus teams role bengali-nlp        # কোন কোন team-এর কোন ধাপে role-টি আছে
+nexus teams check                   # রোস্টার বনাম ইনস্টল করা role — অজানা নাম/ভাঙা handoff ধরবে
+nexus roles --team qa-testing-team  # সাধারণ role লিস্টে team ফিল্টার
+```
+
+কোনো role নাম `roles.yaml` / `roles.d/*.yaml`-এ না থাকলে বা handoff এমন team-এ যায় যা
+রোস্টারে নেই, তাহলে `nexus teams check` ব্যর্থ হয় (exit 1)। প্রজেক্টে `.nexus/teams.yaml`
+দিয়ে রোস্টার বাড়ানো/বদলানো যায় — `roles.yaml`-এর মতোই লেয়ার।
+
+এটা grouping — runtime routing আগের মতোই role-ভিত্তিক (`roles.yaml` + `roles.d/`), আর
+**নতুন কোনো autonomy যোগ হয়নি**; execution এখনো `pipelines.yaml` + approval gate দিয়ে হয়।

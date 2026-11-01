@@ -13,6 +13,7 @@ Run from the repo root:
     python3 scripts/build_teams.py --check    # validate, exit 1 on any problem
     python3 scripts/build_teams.py --stats    # per-team counts and pack mix
     python3 scripts/build_teams.py --write    # refresh the "মোট Member" counts
+    python3 scripts/build_teams.py --yaml     # regenerate teams.yaml (the runtime roster)
 
 What is checked
   * every role named in a table exists in the pack the table claims (or, for rows
@@ -23,6 +24,9 @@ What is checked
   * every ``Handoff → Team N`` target is a team defined in the document;
   * every role loaded from ``roles.yaml`` + ``roles.d/`` belongs to at least one
     team, so the roster really covers all of them.
+
+``teams.yaml`` is generated from the same tables, so the file ``nexus teams`` reads and
+the document a human reads can never disagree; ``--check`` fails when either drifts.
 
 Counts are always recomputed; ``--write`` only rewrites the ``মোট Member`` numbers,
 never the prose or the tables.
@@ -53,7 +57,7 @@ PACKS: dict[str, str] = {
 
 BANGLA_DIGITS = str.maketrans('0123456789', '০১২৩৪৫৬৭৮৯')
 
-TEAM_HEAD = re.compile(r'^##\s.*?TEAM\s+(\d+)\s*:\s*(.+?)\s*$')
+TEAM_HEAD = re.compile(r'^##\s+(\S+)\s+TEAM\s+(\d+)\s*:\s*(.+?)\s*$')
 SUB_HEAD = re.compile(r'^###\s+(\d+[A-Z])\s*:\s*(.+?)\s*$')
 COUNT_LINE = re.compile(r'^\*\*মোট Member:.*$')
 HEADER_ROW = re.compile(r'^\|\s*(ধাপ|Role)\s*\|')
@@ -77,6 +81,7 @@ class Team:
     ident: str
     name: str
     line: int
+    emoji: str = ''
     workflow: list[str] = field(default_factory=list)
     handoff: str = ''
     handoff_targets: list[str] = field(default_factory=list)
@@ -162,7 +167,7 @@ def parse(doc: str) -> Roster:
 
         head = TEAM_HEAD.match(line)
         if head and not in_fence:
-            team = Team(ident=head.group(1), name=head.group(2), line=index)
+            team = Team(ident=head.group(2), name=head.group(3), line=index, emoji=head.group(1))
             roster.teams.append(team)
             stage, header, seen_sub = '', [], False
             continue
@@ -171,7 +176,7 @@ def parse(doc: str) -> Roster:
             name = re.sub(r'\s*\([^)]*\)\s*$', '', sub.group(2)).strip()
             team = Team(ident=sub.group(1), name=name, line=index)
             roster.teams.append(team)
-            stage, header, seen_sub = sub.group(2), [], True
+            stage, header, seen_sub = '', [], True
             continue
         if team is None:
             continue
@@ -213,11 +218,11 @@ def parse(doc: str) -> Roster:
         elif len(header) == 2 and header[0] == 'Role':   # role | pack
             for role in parse_roles(cells[0]):
                 team.assignments.append(
-                    Assignment(stage or team.name, role, parse_packs(cells[1]), index + 1))
+                    Assignment(stage or 'Roster', role, parse_packs(cells[1]), index + 1))
         elif len(header) == 3 and header[0] == 'Role':   # role | pack | related team
             for role in parse_roles(cells[0]):
                 team.assignments.append(
-                    Assignment(stage or team.name, role, parse_packs(cells[1]), index + 1))
+                    Assignment(stage or 'Roster', role, parse_packs(cells[1]), index + 1))
     return roster
 
 
@@ -290,6 +295,80 @@ def check(roster: Roster, owners: dict[str, list[str]]) -> tuple[list[str], list
     return errors, warnings, notes
 
 
+def slugify(title: str) -> str:
+    """``Red Team (Offensive Security)`` -> ``red-team``."""
+    base = re.sub(r'\s*\([^)]*\)\s*$', '', title)
+    return re.sub(r'[^a-z0-9]+', '-', base.lower()).strip('-')
+
+
+def team_slugs(roster: Roster) -> dict[str, str]:
+    """Stable, unique ids for every team block (sub-teams keep their own id)."""
+    used: set[str] = set()
+    slugs: dict[str, str] = {}
+    for team in roster.teams:
+        slug = slugify(team.name) or f'team-{team.ident.lower()}'
+        if slug in used:
+            slug = f'{slug}-{team.ident.lower()}'
+        used.add(slug)
+        slugs[team.ident] = slug
+    return slugs
+
+
+def roster_data(roster: Roster) -> dict:
+    """The runtime roster: exactly the tables of docs/teams.md, nothing added."""
+    import yaml
+
+    slugs = team_slugs(roster)
+    teams: dict[str, dict] = {}
+    for team in roster.teams:
+        parent, _, children = '', '', []
+        if not team.ident.isdigit():
+            parent = team.ident.rstrip('ABCDEFGHIJKLMNOPQRSTUVWXYZ')
+        children = [slugs[other.ident] for other in roster.teams
+                    if not other.ident.isdigit() and other.ident.rstrip('ABCDEFGHIJKLMNOPQRSTUVWXYZ') == team.ident]
+        stages: list[dict] = []
+        for item in team.assignments:
+            if not stages or stages[-1]['name'] != item.stage:
+                stages.append({'name': item.stage, 'roles': []})
+            stages[-1]['roles'].append(item.role)
+        entry: dict = {
+            'number': team.ident,
+            'title': team.name,
+            'emoji': team.emoji,
+            'workflow': list(team.workflow),
+            'handoff': team.handoff,
+            'handoff_teams': [slugs[t] for t in team.handoff_targets if t in slugs],
+            'stages': stages,
+        }
+        if parent:
+            entry['parent'] = slugs.get(parent, parent)
+        if children:
+            entry['children'] = children
+        teams[slugs[team.ident]] = entry
+    payload = {
+        'version': 1,
+        'generated_from': 'docs/teams.md',
+        'generated_by': 'scripts/build_teams.py --yaml',
+        'teams': teams,
+    }
+    header = (
+        '# ─────────────────────────────────────────────────────────────────────────────\n'
+        '# Nexus Agent - teams.yaml  (generated - do not edit by hand)\n'
+        '#\n'
+        '# The 48 teams of docs/teams.md, in document order, with the exact role names and\n'
+        '# workflow stages of that document. Regenerate with:\n'
+        '#\n'
+        '#   python3 scripts/build_teams.py --yaml\n'
+        '#\n'
+        '# `python3 scripts/build_teams.py --check` fails if this file drifts from the\n'
+        '# document or names a role that roles.yaml / roles.d/*.yaml do not define.\n'
+        '# `nexus teams` reads this file: list, show, per-role lookup, and a health check.\n'
+        '# ─────────────────────────────────────────────────────────────────────────────\n'
+    )
+    return payload, header + yaml.safe_dump(payload, sort_keys=False, allow_unicode=True,
+                                            default_flow_style=False, width=100)
+
+
 def render_counts(doc: str, roster: Roster) -> str:
     lines = doc.splitlines()
     for team in roster.teams:
@@ -314,6 +393,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument('--stats', action='store_true', help='print per-team counts and pack mix')
     parser.add_argument('--write', action='store_true', help='rewrite the মোট Member counts in docs/teams.md')
     parser.add_argument('--doc', default=str(DOC), help='roster document to validate')
+    parser.add_argument('--yaml', nargs='?', const=str(ROOT / 'teams.yaml'), default=None,
+                        help='regenerate teams.yaml (the roster `nexus teams` reads)')
     args = parser.parse_args(argv)
 
     path = Path(args.doc)
@@ -348,6 +429,22 @@ def main(argv: list[str] | None = None) -> int:
         print(f'warning: {warning}')
     for error in errors:
         print(f'error: {error}', file=sys.stderr)
+
+    _data, expected_yaml = roster_data(roster)
+    yaml_path = Path(args.yaml) if args.yaml else ROOT / 'teams.yaml'
+    if args.yaml:
+        current = yaml_path.read_text(encoding='utf-8') if yaml_path.exists() else ''
+        if current != expected_yaml:
+            yaml_path.write_text(expected_yaml, encoding='utf-8')
+            print(f'wrote {yaml_path}')
+        else:
+            print(f'{yaml_path} already up to date')
+    elif args.check:
+        if not yaml_path.exists():
+            errors.append(f'{yaml_path.name} is missing - run scripts/build_teams.py --yaml')
+        elif yaml_path.read_text(encoding='utf-8') != expected_yaml:
+            errors.append(f'{yaml_path.name} is out of sync with docs/teams.md - '
+                          f'run scripts/build_teams.py --yaml')
 
     if args.write:
         updated = render_counts(doc, roster)

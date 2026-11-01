@@ -1,0 +1,2743 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Nexus Agent - teams.yaml  (generated - do not edit by hand)
+#
+# The 48 teams of docs/teams.md, in document order, with the exact role names and
+# workflow stages of that document. Regenerate with:
+#
+#   python3 scripts/build_teams.py --yaml
+#
+# `python3 scripts/build_teams.py --check` fails if this file drifts from the
+# document or names a role that roles.yaml / roles.d/*.yaml do not define.
+# `nexus teams` reads this file: list, show, per-role lookup, and a health check.
+# ─────────────────────────────────────────────────────────────────────────────
+version: 1
+generated_from: docs/teams.md
+generated_by: scripts/build_teams.py --yaml
+teams:
+  red-team:
+    number: '1'
+    title: Red Team (Offensive Security)
+    emoji: 🔴
+    workflow:
+    - Scoping
+    - Recon
+    - Enumeration
+    - Exploit
+    - Post-Exploit
+    - Report
+    - Retest
+    - Purple Team
+    - Blue Team Handoff
+    handoff: 🔁 Handoff → Blue Team (Team 2)
+    handoff_teams:
+    - blue-team
+    stages:
+    - name: Scoping
+      roles:
+      - pentesting
+      - security-audit
+      - bug-bounty
+      - security-penetration-tester
+      - security-architect
+    - name: Recon
+      roles:
+      - osint
+      - osint-investigation
+      - dark-web-monitoring-analyst
+      - web-scraping
+      - data-scraper-agent
+    - name: Enumeration
+      roles:
+      - network-security
+      - attack-surface-management-specialist
+      - active-directory-attack-specialist
+      - api-security-tester
+      - database-security-pentester
+    - name: Exploit
+      roles:
+      - web-application-pentester
+      - mobile-app-pentester
+      - wireless-security-auditor
+      - iot-security-tester
+      - cloud-pentester
+      - ci-cd-pipeline-pentester
+      - llm-ai-red-teamer
+    - name: Post-Exploit
+      roles:
+      - reverse-engineering
+      - malware-analysis
+      - forensics
+      - memory-forensics-analyst
+      - network-forensics-analyst
+      - mobile-forensics-examiner
+    - name: Report
+      roles:
+      - security-bounty-hunter
+      - security-review
+      - social-engineering-analyst
+    - name: Retest
+      roles:
+      - ctf-player
+      - ctf-mentor
+      - physical-security-assessor
+    - name: Purple Team
+      roles:
+      - purple-team-coordinator
+  blue-team:
+    number: '2'
+    title: Blue Team (Defensive Security)
+    emoji: 🔵
+    workflow:
+    - Threat Intel
+    - Detection
+    - Monitoring
+    - Incident Response
+    - Forensics
+    - Hardening
+    - Compliance
+    handoff: 🔁 Handoff → DevSecOps Team (Team 3) — Continuous Integration
+    handoff_teams:
+    - devsecops-pipeline-team
+    stages:
+    - name: Threat Intel
+      roles:
+      - security-threat-intelligence-analyst
+      - security-threat-detection-engineer
+      - dark-web-monitoring-analyst
+    - name: Detection
+      roles:
+      - soc-analyst
+      - siem-engineer
+      - blue-team
+      - security-scan
+      - security-review
+    - name: Monitoring
+      roles:
+      - observability
+      - soar-engineer
+      - deception-technology-specialist
+    - name: Incident Response
+      roles:
+      - engineering-incident-response-commander
+      - security-incident-responder
+      - safety-guard
+    - name: Forensics
+      roles:
+      - forensics
+      - reverse-engineering
+      - memory-forensics-analyst
+      - network-forensics-analyst
+      - mobile-forensics-examiner
+    - name: Hardening
+      roles:
+      - security-hardening-advisor
+      - zero-trust-architect
+      - container-kubernetes-security-specialist
+      - ics-scada-security-specialist
+    - name: Compliance
+      roles:
+      - compliance
+      - security-compliance-auditor
+      - iam
+      - engineering-identity-access-engineer
+      - saas-tenant-isolation-assessor
+  devsecops-pipeline-team:
+    number: '3'
+    title: DevSecOps Pipeline Team
+    emoji: 🟣
+    workflow:
+    - Code Commit
+    - SAST/DAST
+    - Dependency Scan
+    - Secret Scan
+    - Container Scan
+    - Deploy Gate
+    - Monitor
+    handoff: 🔁 Handoff → Platform Engineering Team (Team 6)
+    handoff_teams:
+    - platform-infrastructure-team
+    stages:
+    - name: Code Commit
+      roles:
+      - devsecops
+      - engineering-code-reviewer
+      - conventional-commit-review
+      - git-workflow
+    - name: SAST/DAST
+      roles:
+      - security-ai-generated-code-auditor
+      - application-security-engineer
+      - code-reviewer-ecc
+      - security-reviewer
+    - name: Dependency Scan
+      roles:
+      - dependency-doctor
+      - mcp-dependency-review
+      - software-supply-chain-security-researcher
+    - name: Secret Scan
+      roles:
+      - security-secrets-credential-engineer
+      - cryptography
+    - name: Container Scan
+      roles:
+      - container-kubernetes-security-specialist
+      - docker-patterns
+      - kubernetes-patterns
+    - name: Deploy Gate
+      roles:
+      - delivery-gate
+      - gateguard
+      - release-engineering
+    - name: Monitor
+      roles:
+      - security-senior-secops
+      - canary-watch
+  vulnerability-research-team:
+    number: '4'
+    title: Vulnerability Research Team
+    emoji: 🟡
+    workflow:
+    - Target Selection
+    - Fuzzing
+    - Root Cause
+    - PoC
+    - Disclosure
+    - Patch Verify
+    handoff: 🔁 Handoff → Red Team (retest) অথবা Blue Team (patch verify)
+    handoff_teams: []
+    stages:
+    - name: Target Selection
+      roles:
+      - bug-bounty
+      - attack-surface-management-specialist
+    - name: Fuzzing
+      roles:
+      - coverage-guided-fuzzing-expert
+      - firmware-security-researcher
+    - name: Root Cause
+      roles:
+      - vulnerability-root-cause-researcher
+      - browser-security-researcher
+      - network-protocol-security-researcher
+    - name: PoC Development
+      roles:
+      - reverse-engineering
+      - malware-analysis
+      - hardware-root-of-trust-security-assessor
+    - name: Disclosure
+      roles:
+      - security-review
+      - security-bounty-hunter
+    - name: Protocol Audit
+      roles:
+      - oauth-oidc-security-specialist
+      - saml-federation-security-assessor
+    - name: Blockchain Audit
+      roles:
+      - security-blockchain-security-auditor
+      - defi-amm-security
+      - evm-token-decimals
+      - llm-trading-agent-security
+  full-stack-product-engineering-team:
+    number: '5'
+    title: Full-Stack Product Engineering Team
+    emoji: 🟢
+    workflow:
+    - Requirements
+    - Architecture
+    - Frontend
+    - Backend
+    - Database
+    - API
+    - Testing
+    - Deploy
+    - Monitor
+    handoff: 🔁 Handoff → QA Team (Team 7) → DevSecOps (Team 3) → Release
+    handoff_teams:
+    - qa-testing-team
+    - devsecops-pipeline-team
+    stages:
+    - name: Requirements
+      roles:
+      - product-management
+      - business-analysis
+      - product-manager
+      - product-feedback-synthesizer
+      - spec-miner
+      - planner
+    - name: Architecture
+      roles:
+      - architecture
+      - engineering-software-architect
+      - architect
+      - code-architect
+      - hexagonal-architecture
+      - architecture-decision-records
+      - ai-system-architect-r1
+    - name: Frontend
+      roles:
+      - frontend
+      - react
+      - css
+      - web-performance
+      - engineering-frontend-developer
+      - react-patterns
+      - react-performance
+      - vue-patterns
+      - angular-developer
+      - nextjs-turbopack
+      - nuxt4-patterns
+      - tailwind
+      - vite-patterns
+      - frontend-patterns
+      - ui-to-vue
+      - frontend-design-direction
+      - engineering-senior-developer
+    - name: Backend
+      roles:
+      - backend
+      - engineering-backend-architect
+      - backend-architect-with-memory
+      - backend-patterns
+      - nestjs-patterns
+      - django-patterns
+      - fastapi-patterns
+      - rails-patterns
+      - springboot-patterns
+      - laravel-patterns
+      - quarkus-patterns
+      - fullstack
+    - name: Database
+      roles:
+      - database
+      - nosql
+      - engineering-database-optimizer
+      - engineering-database-reliability-engineer
+      - postgres-patterns
+      - mysql-patterns
+      - redis-patterns
+      - clickhouse-io
+      - prisma-patterns
+      - database-migrations
+      - database-reviewer
+    - name: API
+      roles:
+      - api-design
+      - engineering-api-platform-engineer
+      - api-design-ecc
+      - api-connector-builder
+    - name: Testing
+      roles:
+      - qa
+      - test-automation
+      - performance-testing
+      - testing-test-automation-engineer
+      - tdd-workflow
+      - e2e-testing
+      - browser-qa
+      - e2e-runner
+      - test-collaboration
+      - module-regression
+    - name: Deploy
+      roles:
+      - devops
+      - cloud-infra
+      - release-engineering
+      - engineering-devops-automator
+      - deployment-patterns
+      - docker-patterns
+    - name: Monitor
+      roles:
+      - observability
+      - sre-site-reliability-engineer
+      - canary-watch
+      - production-audit
+  platform-infrastructure-team:
+    number: '6'
+    title: Platform & Infrastructure Team
+    emoji: 🔶
+    workflow:
+    - Infra Design
+    - Provisioning
+    - CI/CD
+    - Networking
+    - Monitoring
+    - Cost Optimization
+    - Incident
+    handoff: 🔁 Handoff → DevSecOps (Team 3) — Security validation
+    handoff_teams:
+    - devsecops-pipeline-team
+    stages:
+    - name: Infra Design
+      roles:
+      - cloud-infra
+      - devops
+      - engineering-platform-engineer
+      - homelab-architect
+    - name: Provisioning
+      roles:
+      - security-cloud-security-architect
+      - docker-patterns
+      - kubernetes-patterns
+      - uncloud
+      - flox-environments
+    - name: CI/CD
+      roles:
+      - release-engineering
+      - engineering-mobile-release-engineer
+      - github-ops
+      - orch-pipeline
+      - opensource-pipeline
+    - name: Networking
+      roles:
+      - network-security
+      - engineering-network-engineer
+      - network-architect
+      - network-troubleshooter
+      - network-config-validation
+      - network-interface-health
+      - network-bgp-diagnostics
+      - netmiko-ssh-automation
+      - cisco-ios-patterns
+      - network-config-reviewer
+    - name: Homelab/Edge
+      roles:
+      - homelab-network-readiness
+      - homelab-network-setup
+      - homelab-pihole-dns
+      - homelab-vlan-segmentation
+      - homelab-wireguard-vpn
+    - name: Cost Optimization
+      roles:
+      - engineering-finops-engineer
+      - cost-aware-llm-pipeline
+      - cost-tracking
+      - ecc-tools-cost-audit
+      - token-budget-advisor
+    - name: Monitoring
+      roles:
+      - observability
+      - sre-site-reliability-engineer
+      - production-audit
+      - canary-watch
+    - name: Incident
+      roles:
+      - engineering-incident-response-commander
+      - chaos-engineering
+  qa-testing-team:
+    number: '7'
+    title: QA & Testing Team
+    emoji: 🧪
+    workflow:
+    - Test Planning
+    - Unit/Integration
+    - E2E
+    - Performance
+    - Accessibility
+    - Security Test
+    - Report
+    handoff: 🔁 Handoff → Product Team (sign-off) → Release Engineering
+    handoff_teams: []
+    stages:
+    - name: Test Planning
+      roles:
+      - qa
+      - test-automation
+      - testing-workflow-optimizer
+      - tdd-guide
+      - tdd-workflow
+    - name: Unit/Integration
+      roles:
+      - testing-test-automation-engineer
+      - react-testing
+      - python-testing
+      - rust-testing
+      - golang-testing
+      - kotlin-testing
+      - cpp-testing
+      - csharp-testing
+      - fsharp-testing
+      - perl-testing
+      - swift-protocol-di-testing
+    - name: E2E
+      roles:
+      - e2e-testing
+      - e2e-runner
+      - browser-qa
+      - click-path-audit
+      - windows-desktop-e2e
+      - testing-evidence-collector
+    - name: Performance
+      roles:
+      - performance-testing
+      - testing-performance-benchmarker
+      - benchmark
+      - benchmark-methodology
+      - benchmark-optimization-loop
+      - data-throughput-accelerator
+    - name: Accessibility
+      roles:
+      - accessibility
+      - testing-accessibility-auditor
+      - section-508-accessibility-specialist
+      - accessibility-ecc
+      - frontend-a11y
+      - a11y-architect
+    - name: API Testing
+      roles:
+      - testing-api-tester
+    - name: Reality Check
+      roles:
+      - testing-reality-checker
+      - testing-tool-evaluator
+      - testing-test-results-analyzer
+  ai-ml-engineering-team:
+    number: '8'
+    title: AI/ML Engineering Team
+    emoji: 🤖
+    workflow:
+    - Research
+    - Data Prep
+    - Model Training
+    - Evaluation
+    - RAG/Agent Build
+    - Deploy
+    - Monitor
+    handoff: 🔁 Handoff → Platform Team (deploy) → DevSecOps (security scan)
+    handoff_teams: []
+    stages:
+    - name: Research
+      roles:
+      - research
+      - ai-safety
+      - ai-deep-research-agent
+      - ai-domain-deep-research-agent
+      - openai-research-agent
+      - multi-agent-researcher
+      - deep-research
+      - exa-search
+      - scientific-thinking-literature-review
+      - scientific-thinking-scholar-evaluation
+      - ai-reasoning-agent
+      - ai-knowledge-explorer
+    - name: Data Prep
+      roles:
+      - data-engineering
+      - data-science
+      - engineering-data-engineer
+      - ai-data-analysis-agent
+      - ai-data-visualisation-agent
+      - engineering-data-visualization-engineer
+      - bengali-nlp
+    - name: Model Training
+      roles:
+      - ml-ops
+      - ai-engineering
+      - engineering-llm-post-training-engineer
+      - engineering-ai-engineer
+      - mle-workflow
+      - mle-reviewer
+      - ito-training
+      - ito-compute
+      - ito-inference
+      - pytorch-patterns
+      - pytorch-build-resolver
+      - foundation-models-on-device
+    - name: Evaluation
+      roles:
+      - ai-safety
+      - agent-eval
+      - agent-self-evaluation
+      - eval-harness
+      - gan-evaluator
+      - specialized-model-qa
+      - healthcare-eval-harness
+      - ai-regression-testing
+    - name: RAG Pipeline
+      roles:
+      - rag-pipeline-reviewer
+      - agentic-rag-gpt5
+      - agentic-rag-with-reasoning
+      - agentic-rag-embedding-gemma
+      - autonomous-rag
+      - corrective-rag
+      - hybrid-search-rag
+      - knowledge-graph-rag-citations
+      - vision-rag
+      - contextualai-rag-agent
+      - rag-as-a-service
+      - local-rag-agent
+      - deepseek-local-rag-agent
+      - rag-chain
+      - rag-database-routing
+      - rag-failure-diagnostics-clinic
+      - agentic-rag-math-agent
+      - agentic-typed-rag-pydanticai
+      - gemini-agentic-rag
+      - llama3-1-local-rag
+      - qwen-local-rag
+      - local-hybrid-search-rag
+      - rag-agent-cohere
+    - name: Agent Build
+      roles:
+      - engineering-multi-agent-systems-architect
+      - agentic-engineering
+      - agentic-os
+      - agent-architecture-audit
+      - multi-agent-trust-layer
+      - trust-gated-agent-team
+      - ai-agent-governance
+      - ai-self-evolving-agent
+    - name: Deploy/Monitor
+      roles:
+      - ml-ops
+      - agent-runtime-gateway-smoke-test
+      - recsys-pipeline-architect
+      - ml-adoption-playbook
+  nlp-computer-vision-team:
+    number: '9'
+    title: NLP & Computer Vision Team
+    emoji: 💬
+    workflow:
+    - Data Collection
+    - Annotation
+    - Model Train
+    - Fine-tune
+    - Evaluate
+    - API Serve
+    handoff: 🔁 Handoff → AI/ML Team (integration) → Product Team
+    handoff_teams: []
+    stages:
+    - name: Data Collection
+      roles:
+      - web-scraping
+      - web-scraping-ai-agent
+      - scientific-db-pubmed-database
+      - scientific-db-uspto-database
+    - name: NLP
+      roles:
+      - nlp
+      - bengali-nlp
+      - language-translator
+      - translation
+    - name: Computer Vision
+      roles:
+      - computer-vision
+      - ai-medical-imaging-agent
+    - name: Multimodal
+      roles:
+      - multimodal-ai-agent
+      - multimodal-coding-agent-team
+    - name: Voice
+      roles:
+      - ai-audio-tour-agent
+      - customer-support-voice-agent
+      - voice-rag-openaisdk
+      - ai-speech-trainer-agent
+      - engineering-voice-ai-integration-engineer
+  game-development-team:
+    number: '10'
+    title: Game Development Team
+    emoji: 🎮
+    workflow:
+    - Concept
+    - Design
+    - Art/Audio
+    - Programming
+    - Networking
+    - Testing
+    - Polish
+    - Launch
+    handoff: 🔁 Handoff → QA Team → Release → Marketing Team
+    handoff_teams: []
+    stages:
+    - name: Concept
+      roles:
+      - game-design
+      - game-designer
+      - narrative-designer
+      - economy-designer
+      - level-designer
+      - ai-game-design-agent-team
+    - name: Art/Audio
+      roles:
+      - illustration
+      - motion-graphics
+      - technical-artist
+      - unreal-technical-artist
+      - unity-shader-graph-artist
+      - godot-shader-developer
+      - game-audio-engineer
+      - blender-add-on-engineer
+      - design-image-prompt-engineer
+    - name: Programming
+      roles:
+      - game-dev
+      - unity-architect
+      - unity-editor-tool-developer
+      - unreal-systems-engineer
+      - unreal-world-builder
+      - godot-gameplay-scripter
+      - roblox-systems-scripter
+      - roblox-experience-designer
+      - roblox-avatar-creator
+    - name: Networking
+      roles:
+      - unity-multiplayer-engineer
+      - unreal-multiplayer-architect
+      - godot-multiplayer-engineer
+    - name: 3D/XR
+      roles:
+      - visionos-spatial-engineer
+      - xr-immersive-developer
+      - xr-interface-architect
+      - xr-cockpit-interaction-specialist
+      - macos-spatial-metal-engineer
+    - name: Testing
+      roles:
+      - ai-chess-agent
+      - ai-tic-tac-toe-agent
+      - ai-3dpygame-r1
+  mobile-cross-platform-team:
+    number: '11'
+    title: Mobile & Cross-Platform Team
+    emoji: 📱
+    workflow:
+    - Design
+    - Native Dev
+    - Cross-Platform
+    - Build/Resolve
+    - Test
+    - Release
+    - Monitor
+    handoff: 🔁 Handoff → QA Team → App Store (marketing-app-store-optimizer)
+    handoff_teams: []
+    stages:
+    - name: Design
+      roles:
+      - design
+      - design-ui-designer
+      - design-ux-architect
+    - name: Android
+      roles:
+      - android
+      - android-clean-architecture
+      - kotlin-patterns
+      - kotlin-coroutines-flows
+      - kotlin-build-resolver
+      - kotlin-reviewer
+    - name: iOS
+      roles:
+      - ios
+      - swift-build-resolver
+      - swift-reviewer
+      - swift-concurrency-6-2
+      - swift-actor-persistence
+      - swiftui-patterns
+    - name: Cross-Platform
+      roles:
+      - cross-platform
+      - engineering-mobile-app-builder
+      - flutter-reviewer
+      - flutter-dart-code-review
+      - dart-build-resolver
+      - dart-flutter-patterns
+      - compose-multiplatform-patterns
+      - react-native-patterns
+      - mobile
+    - name: Build/Resolve
+      roles:
+      - harmonyos-app-resolver
+    - name: Release
+      roles:
+      - engineering-mobile-release-engineer
+    - name: Testing
+      roles:
+      - mobile-app-pentester
+      - mobile-forensics-examiner
+  desktop-embedded-team:
+    number: '12'
+    title: Desktop & Embedded Team
+    emoji: 🖥️
+    workflow:
+    - Requirements
+    - Architecture
+    - Development
+    - Firmware
+    - Testing
+    - Deploy
+    handoff: 🔁 Handoff → QA Team → Platform Team (deploy)
+    handoff_teams: []
+    stages:
+    - name: Requirements
+      roles:
+      - desktop
+      - embedded
+    - name: Architecture
+      roles:
+      - engineering-desktop-app-engineer
+      - engineering-embedded-firmware-engineer
+    - name: Development
+      roles:
+      - rust
+      - golang
+      - rust-patterns
+      - rust-testing
+      - rust-build-resolver
+      - engineering-rust-refactoring-specialist
+      - engineering-webassembly-engineer
+      - engineering-iot-fleet-engineer
+    - name: Terminal
+      roles:
+      - terminal-integration-specialist
+      - terminal-ops
+      - terminal-opener
+    - name: Testing
+      roles:
+      - windows-desktop-e2e
+      - windows-use-autonomous-agent
+      - firmware-security-researcher
+  blockchain-defi-team:
+    number: '13'
+    title: Blockchain & DeFi Team
+    emoji: ⛓️
+    workflow:
+    - Research
+    - Smart Contract Dev
+    - Audit
+    - Deploy
+    - Monitor
+    - Incident Response
+    handoff: 🔁 Handoff → Security Team (audit) → Blue Team (monitor)
+    handoff_teams: []
+    stages:
+    - name: Research
+      roles:
+      - blockchain
+      - defi-analyst
+      - quant-research
+      - prediction-market-oracle-research
+      - prediction-market-risk-review
+    - name: Smart Contract Dev
+      roles:
+      - engineering-solidity-smart-contract-engineer
+      - nodejs-keccak256
+    - name: Audit
+      roles:
+      - security-blockchain-security-auditor
+      - defi-amm-security
+      - evm-token-decimals
+    - name: Trading
+      roles:
+      - trading
+      - risk-management
+      - llm-trading-agent-security
+      - ai-investment-agent
+    - name: DeFi
+      roles:
+      - defi-analyst
+      - ai-personal-finance-agent
+      - ai-x402-paying-agent
+      - agent-payment-x402
+  data-engineering-analytics-team:
+    number: '14'
+    title: Data Engineering & Analytics Team
+    emoji: 📊
+    workflow:
+    - Ingest
+    - Transform
+    - Store
+    - Analyze
+    - Visualize
+    - Report
+    - Predict
+    handoff: 🔁 Handoff → Product Team (insights) → Business Strategy Team
+    handoff_teams: []
+    stages:
+    - name: Ingest
+      roles:
+      - data-engineering
+      - engineering-data-engineer
+      - data-scraper-agent
+      - enrichment-agent
+      - web-scraping-ai-agent
+    - name: Transform
+      roles:
+      - engineering-ai-data-remediation-engineer
+      - data-consolidation-agent
+    - name: Store
+      roles:
+      - database
+      - nosql
+      - engineering-database-optimizer
+      - postgres-patterns
+      - mysql-patterns
+      - clickhouse-io
+    - name: Analyze
+      roles:
+      - analytics
+      - data-science
+      - ai-data-analysis-agent
+      - support-analytics-reporter
+      - finance-financial-analyst
+    - name: Visualize
+      roles:
+      - engineering-data-visualization-engineer
+      - ai-data-visualisation-agent
+      - ai-dashboard-canvas-agent
+      - dashboard-builder
+      - charts
+    - name: Report
+      roles:
+      - support-executive-summary-generator
+      - report-distribution-agent
+    - name: Predict
+      roles:
+      - quant-research
+      - ito-baskets
+      - ito-inference
+  marketing-growth-team:
+    number: '15'
+    title: Marketing & Growth Team
+    emoji: 📣
+    workflow:
+    - Research
+    - Strategy
+    - Content Create
+    - SEO/AEO
+    - Distribute
+    - Paid Media
+    - Analyze
+    - Optimize
+    handoff: 🔁 Handoff → Sales Team (leads) → Product Team (feedback)
+    handoff_teams: []
+    stages:
+    - name: Research
+      roles:
+      - product-trend-researcher
+      - market-research
+      - competitive-platform-analysis
+      - competitive-report-structure
+      - brand-discovery
+      - ai-competitor-intelligence-agent-team
+    - name: Strategy
+      roles:
+      - marketing
+      - content-strategy
+      - marketing-growth-hacker
+      - marketing-agent
+      - marketing-campaign
+      - business-strategist
+      - product-behavioral-nudge-engine
+    - name: Content Creation
+      roles:
+      - copywriting
+      - content-writing
+      - marketing-content-creator
+      - marketing-book-co-author
+      - content-engine
+      - article-writing
+      - brand-voice
+      - ai-blog-to-podcast-agent
+    - name: SEO/AEO
+      roles:
+      - seo
+      - marketing-seo-specialist
+      - marketing-aeo-foundations
+      - marketing-agentic-search-optimizer
+      - marketing-ai-citation-strategist
+      - marketing-baidu-seo-specialist
+      - seo-ecc
+      - seo-specialist-ecc
+      - ai-seo-audit-team
+    - name: Social Media
+      roles:
+      - social-media
+      - marketing-social-media-strategist
+      - marketing-tiktok-strategist
+      - marketing-douyin-strategist
+      - marketing-instagram-curator
+      - marketing-linkedin-content-creator
+      - marketing-twitter-engager
+      - marketing-x-twitter-intelligence-analyst
+      - marketing-reddit-community-builder
+      - marketing-kuaishou-strategist
+      - marketing-bilibili-content-strategist
+      - marketing-weibo-strategist
+      - marketing-wechat-official-account
+      - marketing-xiaohongshu-specialist
+      - marketing-zhihu-strategist
+      - social-publisher
+      - crosspost
+    - name: Email
+      roles:
+      - email-marketing
+      - marketing-email-strategist
+      - ai-email-gtm-outreach-agent
+      - ai-email-gtm-reachout-agent
+      - email-ops
+    - name: Podcast/Video
+      roles:
+      - podcast-production
+      - video-script
+      - marketing-podcast-strategist
+      - marketing-global-podcast-strategist
+      - marketing-video-optimization-specialist
+      - marketing-short-video-editing-coach
+      - marketing-livestream-commerce-coach
+      - marketing-carousel-growth-engine
+    - name: Paid Media
+      roles:
+      - paid-media-ppc-strategist
+      - paid-media-paid-social-strategist
+      - paid-media-programmatic-buyer
+      - paid-media-creative-strategist
+      - paid-media-auditor
+      - paid-media-search-query-analyst
+      - tracking-measurement-specialist
+    - name: PR
+      roles:
+      - marketing-pr-communications-manager
+    - name: China Market
+      roles:
+      - cross-border-e-commerce-specialist
+      - marketing-china-market-localization-strategist
+      - marketing-china-ecommerce-operator
+      - marketing-private-domain-operator
+    - name: App Store
+      roles:
+      - marketing-app-store-optimizer
+    - name: Multi-Platform
+      roles:
+      - marketing-multi-platform-publisher
+    - name: Developer Marketing
+      roles:
+      - marketing-developer-community-builder
+      - specialized-developer-advocate
+    - name: Analytics
+      roles:
+      - growth-log
+      - signal-scorer
+  sales-revenue-team:
+    number: '16'
+    title: Sales & Revenue Team
+    emoji: 💰
+    workflow:
+    - Lead Gen
+    - Research
+    - Discovery
+    - Proposal
+    - Negotiation
+    - Close
+    - Handoff to CS
+    handoff: 🔁 Handoff → Customer Success → Support Team → Product (feedback loop)
+    handoff_teams: []
+    stages:
+    - name: Lead Gen
+      roles:
+      - sales-offer-lead-gen-strategist
+      - sales-outbound-strategist
+      - sales-outreach
+      - sales-data-extraction-agent
+      - lead-intelligence
+      - ai-sales-intelligence-agent-team
+    - name: Research
+      roles:
+      - sales-account-strategist
+      - sales-pipeline-analyst
+      - connections-optimizer
+      - mutual-mapper
+      - social-graph-ranker
+    - name: Discovery
+      roles:
+      - sales-discovery-coach
+      - sales-coach
+    - name: Proposal
+      roles:
+      - sales-proposal-strategist
+      - sales-engineer
+      - outreach-drafter
+    - name: Deal Strategy
+      roles:
+      - sales-deal-strategist
+      - specialized-pricing-analyst
+    - name: Close
+      roles:
+      - sales
+    - name: Customer Success
+      roles:
+      - customer-success-manager
+      - customer-service
+      - support-support-responder
+      - ai-customer-support-agent
+      - retail-customer-returns
+  finance-accounting-team:
+    number: '17'
+    title: Finance & Accounting Team
+    emoji: 💼
+    workflow:
+    - Bookkeeping
+    - Analysis
+    - Tax Strategy
+    - Investment
+    - Risk
+    - Billing
+    - Reporting
+    handoff: 🔁 Handoff → Legal Team (compliance) → Business Strategy
+    handoff_teams: []
+    stages:
+    - name: Bookkeeping
+      roles:
+      - finance-bookkeeper-controller
+      - accounts-payable-agent
+      - support-finance-tracker
+    - name: Analysis
+      roles:
+      - finance
+      - finance-financial-analyst
+      - finance-fpa-analyst
+      - ai-finance-agent-team
+      - xai-finance-agent
+      - ai-financial-coach-agent
+    - name: Tax
+      roles:
+      - finance-tax-strategist
+    - name: Investment
+      roles:
+      - finance-investment-researcher
+      - ai-investment-agent
+      - ai-vc-due-diligence-agent-team
+      - investor-materials
+      - investor-outreach
+    - name: Risk
+      roles:
+      - risk-management
+      - ai-fraud-investigation-agent
+    - name: Billing
+      roles:
+      - engineering-payments-billing-engineer
+      - customer-billing-ops
+      - finance-billing-ops
+      - loan-officer-assistant
+    - name: Insurance
+      roles:
+      - ai-life-insurance-advisor-agent
+      - insurance-claim-live-agent-team
+    - name: Reporting
+      roles:
+      - chief-financial-officer
+      - earnings-call-analyst-agent
+  legal-compliance-team:
+    number: '18'
+    title: Legal & Compliance Team
+    emoji: ⚖️
+    workflow:
+    - Intake
+    - Review
+    - Draft
+    - Compliance Check
+    - Audit
+    - Privacy
+    - ESG
+    handoff: 🔁 Handoff → Finance Team → HR Team → Business Strategy
+    handoff_teams: []
+    stages:
+    - name: Intake
+      roles:
+      - legal-client-intake
+    - name: Review
+      roles:
+      - legal-document-review
+      - ai-legal-agent-team
+      - local-ai-legal-agent-team
+      - support-legal-compliance-checker
+    - name: Draft
+      roles:
+      - legal-draft
+      - master-agreement-generator
+      - visa-doc-translate
+    - name: Billing
+      roles:
+      - legal-billing-time-tracking
+    - name: Compliance
+      roles:
+      - compliance
+      - security-compliance-auditor
+      - specialized-fedramp-rmf-compliance
+      - hipaa-compliance
+      - healthcare-phi-compliance
+    - name: Privacy
+      roles:
+      - data-privacy-officer
+      - engineering-privacy-engineer
+    - name: ESG
+      roles:
+      - esg-sustainability-officer
+    - name: Marketing Compliance
+      roles:
+      - healthcare-marketing-compliance-specialist
+  hr-people-operations-team:
+    number: '19'
+    title: HR & People Operations Team
+    emoji: 👥
+    workflow:
+    - Recruitment
+    - Screening
+    - Onboarding
+    - Training
+    - Career Dev
+    - Retention
+    handoff: 🔁 Handoff → All Teams (talent distribution)
+    handoff_teams: []
+    stages:
+    - name: Recruitment
+      roles:
+      - hr
+      - recruitment-specialist
+      - ai-recruitment-agent-team
+      - engineering-ats-validator-architect
+    - name: Screening
+      roles:
+      - resume-tailor
+    - name: Onboarding
+      roles:
+      - hr-onboarding
+      - codebase-onboarding
+      - engineering-codebase-onboarding-engineer
+    - name: Training
+      roles:
+      - corporate-training-designer
+      - tutorial-writing
+      - ai-teaching-agent-team
+    - name: Career Development
+      roles:
+      - personal-growth-mentor
+      - adk-career-coach-agent-memory
+      - study-abroad-advisor
+    - name: Culture
+      roles:
+      - organizational-psychologist
+      - specialized-cultural-intelligence-strategist
+  business-strategy-operations-team:
+    number: '20'
+    title: Business Strategy & Operations Team
+    emoji: 🏢
+    workflow:
+    - Analysis
+    - Strategy
+    - Planning
+    - M&A
+    - Operations
+    - Change Mgmt
+    - Reporting
+    handoff: 🔁 Handoff → All Teams (strategic directives)
+    handoff_teams: []
+    stages:
+    - name: Analysis
+      roles:
+      - business-analysis
+      - business-strategist
+      - product-capability
+      - product-lens
+      - ai-startup-trend-analysis-agent
+      - ai-startup-insight-fire1-agent
+    - name: Strategy
+      roles:
+      - startup-strategy
+      - specialized-strategy-duel-agent
+      - specialized-master-plan-architect
+      - specialized-chief-of-staff
+      - chief-of-staff-ecc
+    - name: Planning
+      roles:
+      - operations
+      - operations-manager
+      - product-sprint-prioritizer
+    - name: M&A
+      roles:
+      - m-a-integration-manager
+      - ai-vc-due-diligence-agent-team
+    - name: Supply Chain
+      roles:
+      - supply-chain-strategist
+      - inventory-demand-planning
+      - production-scheduling
+      - logistics-exception-management
+      - returns-reverse-logistics
+      - carrier-relationship-management
+      - customs-trade-compliance
+    - name: Change Mgmt
+      roles:
+      - change-management-consultant
+    - name: Consulting
+      roles:
+      - ai-consultant-agent
+      - government-digital-presales-consultant
+      - specialized-french-consulting-market
+      - specialized-korean-business-navigator
+    - name: Real Estate
+      roles:
+      - real-estate-buyer-seller
+      - ai-real-estate-agent-team
+    - name: Energy
+      roles:
+      - energy-procurement
+  documentation-developer-experience-team:
+    number: '21'
+    title: Documentation & Developer Experience Team
+    emoji: 📝
+    workflow:
+    - Audit
+    - Plan
+    - Write
+    - Review
+    - Publish
+    - Maintain
+    - DX Optimize
+    handoff: 🔁 Handoff → All Engineering Teams (docs delivery)
+    handoff_teams: []
+    stages:
+    - name: Audit
+      roles:
+      - docs-governance
+      - living-docs-governance
+      - documentation-lookup
+      - docs-lookup
+    - name: Plan
+      roles:
+      - developer-experience
+      - product-dx-engineer
+    - name: Write
+      roles:
+      - docs
+      - tutorial-writing
+      - engineering-technical-writer
+      - engineering-universal-document-compiler
+      - specialized-document-generator
+      - article-writing
+    - name: UX Writing
+      roles:
+      - ux-writing
+    - name: Code Tour
+      roles:
+      - code-tour
+      - codebase-onboarding
+      - specialized-codebase-archaeologist
+      - commit-archaeologist
+    - name: API Docs
+      roles:
+      - api-design-ecc
+      - contract-first
+    - name: Maintain
+      roles:
+      - doc-updater
+      - i18n-sync
+    - name: DX
+      roles:
+      - engineering-developer-tooling-engineer
+      - specialized-developer-advocate
+  design-creative-team:
+    number: '22'
+    title: Design & Creative Team
+    emoji: 🎨
+    workflow:
+    - Research
+    - UX
+    - UI
+    - Brand
+    - Motion
+    - Content
+    - Review
+    handoff: 🔁 Handoff → Frontend Team (implementation) → QA (accessibility audit)
+    handoff_teams: []
+    stages:
+    - name: Research
+      roles:
+      - design-ux-researcher
+      - persona-walkthrough-specialist
+    - name: UX
+      roles:
+      - design-ux-architect
+      - design
+      - accessibility
+      - make-interfaces-feel-better
+    - name: UI
+      roles:
+      - design-ui-designer
+      - design-ui-finish-gate-reviewer
+      - design-system
+      - liquid-glass-design
+      - taste
+      - taste-application
+      - taste-distillation
+      - ios-icon-gen
+    - name: Brand
+      roles:
+      - branding
+      - design-brand-guardian
+      - brand-voice
+      - brand-discovery
+    - name: Visuals
+      roles:
+      - illustration
+      - design-inclusive-visuals-specialist
+      - design-visual-storyteller
+      - design-image-prompt-engineer
+      - design-whimsy-injector
+    - name: Motion
+      roles:
+      - motion-graphics
+      - animations
+      - text-animations
+      - transitions
+      - motion-foundations
+      - motion-advanced
+      - motion-patterns
+    - name: Content
+      roles:
+      - content-writing
+      - creative-writing
+    - name: Multimodal Design
+      roles:
+      - multimodal-design-agent-team
+      - multimodal-uiux-feedback-agent-team
+      - ai-shadcn-component-generator
+  video-media-production-team:
+    number: '23'
+    title: Video & Media Production Team
+    emoji: 🎬
+    workflow:
+    - Script
+    - Record/Capture
+    - Edit
+    - Motion/VFX
+    - Audio
+    - Captions
+    - Render
+    - Distribute
+    handoff: 🔁 Handoff → Marketing Team (distribute) → Social Media
+    handoff_teams: []
+    stages:
+    - name: Script
+      roles:
+      - video-script
+      - ai-movie-production-agent
+    - name: Capture
+      roles:
+      - extract-frames
+      - get-video-dimensions
+      - get-video-duration
+      - get-audio-duration
+      - can-decode
+    - name: Edit
+      roles:
+      - video-editing
+      - trimming
+      - sequencing
+      - videos
+      - images
+      - gifs
+      - remotion-video-creation
+      - tasteforge-video
+    - name: Motion/VFX
+      roles:
+      - motion-graphics
+      - 3d
+      - animations
+      - text-animations
+      - transitions
+      - lottie
+      - blender-motion-state-inspection
+      - manim-video
+    - name: Audio
+      roles:
+      - audio
+      - ai-music-generator-agent
+      - podcast-production
+    - name: Captions
+      roles:
+      - display-captions
+      - import-srt-captions
+      - transcribe-captions
+    - name: Metadata
+      roles:
+      - calculate-metadata
+      - measuring-dom-nodes
+      - measuring-text
+      - timing
+    - name: Fonts/Assets
+      roles:
+      - fonts
+      - assets
+    - name: Compositions
+      roles:
+      - compositions
+    - name: Streaming
+      roles:
+      - engineering-video-streaming-engineer
+      - videodb
+    - name: AI Media
+      roles:
+      - fal-ai-media
+      - ai-meme-generator-agent-browseruse
+    - name: Slides/Presentation
+      roles:
+      - presentation
+      - frontend-slides
+      - ui-demo
+  healthcare-engineering-team:
+    number: '24'
+    title: Healthcare Engineering Team
+    emoji: 🏥
+    workflow:
+    - Requirements
+    - Compliance Check
+    - Build
+    - Clinical Validate
+    - Deploy
+    - Monitor
+    handoff: 🔁 Handoff → Legal Team (compliance audit) → QA Team
+    handoff_teams: []
+    stages:
+    - name: Requirements
+      roles:
+      - healthcare-innovation-strategist
+      - healthcare-sovereign-health-systems-agent
+    - name: Compliance
+      roles:
+      - hipaa-compliance
+      - healthcare-phi-compliance
+      - healthcare-marketing-compliance-specialist
+      - data-privacy-officer
+    - name: Build
+      roles:
+      - healthcare-cdss-patterns
+      - healthcare-emr-patterns
+      - medical-billing-coding-specialist
+    - name: Clinical Validation
+      roles:
+      - healthcare-clinical-evidence-agent
+      - healthcare-reviewer
+      - healthcare-eval-harness
+    - name: AI/Imaging
+      roles:
+      - ai-medical-imaging-agent
+      - ai-health-fitness-agent
+      - ai-mental-wellbeing-agent
+    - name: Services
+      roles:
+      - healthcare-customer-service
+      - healthcare-aging-parent-care-companion
+    - name: Wellness
+      roles:
+      - ai-recipe-meal-planning-agent
+  gis-spatial-engineering-team:
+    number: '25'
+    title: GIS & Spatial Engineering Team
+    emoji: 🗺️
+    workflow:
+    - Data Collect
+    - Process
+    - Analyze
+    - Visualize
+    - 3D/BIM
+    - QA
+    - Deploy
+    handoff: 🔁 Handoff → Product Team → Engineering Team (integration)
+    handoff_teams: []
+    stages:
+    - name: Data Collect
+      roles:
+      - gis-spatial-data-engineer
+      - drone-reality-mapping-specialist
+    - name: Process
+      roles:
+      - gis-geoprocessing-specialist
+      - gis-spatial-data-scientist
+    - name: Analyze
+      roles:
+      - gis-analyst
+      - gis-geoai-ml-engineer
+    - name: Visualize
+      roles:
+      - gis-cartography-designer
+      - gis-3d-scene-developer
+    - name: BIM
+      roles:
+      - gis-bim-specialist
+    - name: Web
+      roles:
+      - gis-web-gis-developer
+    - name: QA
+      roles:
+      - gis-qa-engineer
+    - name: Consulting
+      roles:
+      - gis-technical-consultant
+      - gis-solution-engineer
+  language-specific-code-review-team:
+    number: '26'
+    title: Language-Specific Code Review Team
+    emoji: 🔧
+    workflow:
+    - PR Submitted
+    - Language Review
+    - Build Resolve
+    - Style Check
+    - Approve/Reject
+    handoff: 🔁 Handoff → CI/CD Pipeline → QA Team
+    handoff_teams: []
+    stages:
+    - name: Review
+      roles:
+      - cpp-reviewer
+      - csharp-reviewer
+      - django-reviewer
+      - fastapi-reviewer
+      - flutter-reviewer
+      - fsharp-reviewer
+      - go-reviewer
+      - java-reviewer
+      - kotlin-reviewer
+      - php-reviewer
+      - python-reviewer
+      - react-reviewer
+      - ruby-reviewer
+      - rust-reviewer
+      - swift-reviewer
+      - typescript-reviewer
+      - vue-reviewer
+      - bengali-reviewer
+    - name: Build Resolve
+      roles:
+      - cpp-build-resolver
+      - django-build-resolver
+      - go-build-resolver
+      - java-build-resolver
+      - kotlin-build-resolver
+      - pytorch-build-resolver
+      - react-build-resolver
+      - rust-build-resolver
+      - swift-build-resolver
+      - dart-build-resolver
+      - harmonyos-app-resolver
+      - build-error-resolver
+  cms-web-platform-team:
+    number: '27'
+    title: CMS & Web Platform Team
+    emoji: 🛠️
+    workflow:
+    - Setup
+    - Develop
+    - Optimize
+    - Secure
+    - Launch
+    handoff: 🔁 Handoff → SEO Team → Marketing Team
+    handoff_teams: []
+    stages:
+    - name: Setup
+      roles:
+      - wordpress
+      - engineering-cms-developer
+      - engineering-uswds-developer
+    - name: Develop
+      roles:
+      - php
+      - engineering-drupal-performance
+      - engineering-drupal-shopping-cart
+      - engineering-wordpress-performance
+      - engineering-wordpress-shopping-cart
+      - laravel-patterns
+      - laravel-plugin-discovery
+    - name: Optimize
+      roles:
+      - web-performance
+      - laravel-security
+      - laravel-tdd
+      - laravel-verification
+    - name: Secure
+      roles:
+      - perl-security
+  internationalization-localization-team:
+    number: '28'
+    title: Internationalization & Localization Team
+    emoji: 🌐
+    workflow:
+    - Audit
+    - Extract
+    - Translate
+    - Adapt
+    - Validate
+    - Deploy
+    handoff: 🔁 Handoff → QA Team → Marketing Team (localized content)
+    handoff_teams: []
+    stages:
+    - name: Audit
+      roles:
+      - localization-engineering
+      - i18n-sync
+      - internationalization-engineer
+    - name: Translate
+      roles:
+      - translation
+      - language-translator
+      - visa-doc-translate
+      - bengali-nlp
+    - name: Cultural Adapt
+      roles:
+      - specialized-cultural-intelligence-strategist
+      - marketing-china-market-localization-strategist
+      - specialized-korean-business-navigator
+      - specialized-french-consulting-market
+    - name: Content
+      roles:
+      - editor
+  project-management-ops-team:
+    number: '29'
+    title: Project Management & Ops Team
+    emoji: 🤝
+    workflow:
+    - Intake
+    - Plan
+    - Sprint
+    - Track
+    - Report
+    - Retrospective
+    handoff: 🔁 Handoff → All Teams (coordination)
+    handoff_teams: []
+    stages:
+    - name: Intake
+      roles:
+      - product-management
+      - project-manager-senior
+      - project-management-project-shepherd
+    - name: Plan
+      roles:
+      - product-sprint-prioritizer
+      - plan-canvas
+      - plan-orchestrate
+      - writing-plans
+      - executing-plans
+    - name: Sprint
+      roles:
+      - project-management-jira-workflow-steward
+      - jira-integration
+      - project-flow-ops
+    - name: Track
+      roles:
+      - project-management-experiment-tracker
+      - story-lifecycle
+      - project-management-meeting-notes-specialist
+      - ai-meeting-agent
+    - name: Studio Ops
+      roles:
+      - project-management-studio-operations
+      - project-management-studio-producer
+    - name: Research
+      roles:
+      - research-synthesist
+      - research-ops
+  agent-orchestration-meta-ai-team:
+    number: '30'
+    title: Agent Orchestration & Meta-AI Team
+    emoji: 🧠
+    workflow:
+    - Design
+    - Build
+    - Orchestrate
+    - Evaluate
+    - Secure
+    - Optimize
+    - Scale
+    handoff: 🔁 Handoff → সব Team-কে Agent capability provide করে
+    handoff_teams: []
+    stages:
+    - name: Design
+      roles:
+      - agent-architecture-audit
+      - agentic-engineering
+      - agentic-os
+      - ai-first-engineering
+      - blueprint
+      - specialized-workflow-architect
+      - specialized-mcp-builder
+    - name: Build
+      roles:
+      - engineering-prompt-engineer
+      - engineering-rag-pipeline-engineer
+      - engineering-multi-agent-systems-architect
+      - engineering-orgscript-engineer
+      - agent-introspection-debugging
+      - autonomous-agent-harness
+      - deepseek-harness-setup
+      - eval-harness
+      - gan-style-harness
+      - nanoclaw-repl
+      - openclaw-persona-forge
+      - agent-harness-construction
+    - name: MCP
+      roles:
+      - ai-mcp-app-builder
+      - mcp-server-patterns
+      - mcp-dependency-review
+      - mcp-use-server
+      - mcp-apps-generative-ui-showcase
+      - browser-mcp-agent
+      - github-mcp-agent
+      - multi-mcp-agent
+      - multi-mcp-agent-router
+      - notion-mcp-agent
+      - openai-remote-mcp-bridge
+      - codehealth-mcp
+    - name: Orchestrate
+      roles:
+      - agents-orchestrator
+      - orch-add-feature
+      - orch-build-mvp
+      - orch-change-feature
+      - orch-fix-defect
+      - orch-refine-code
+      - orch-pipeline
+      - team-agent-orchestration
+      - team-builder
+      - dev-team
+      - dmux-workflows
+      - council
+      - council-multi-model
+      - ecc-council
+      - dynamic-workflow-mode
+      - operator-approval-loop
+      - advisor-orchestrator-worker
+    - name: Parallel
+      roles:
+      - parallel-execution-optimizer
+      - dispatching-parallel-agents
+      - subagent-driven-development
+    - name: Memory
+      roles:
+      - unified-memory
+      - llm-app-personalized-memory
+      - ai-arxiv-agent-memory
+      - ai-travel-agent-memory
+      - adk-career-coach-agent-memory
+    - name: Evaluate
+      roles:
+      - agent-eval
+      - agent-self-evaluation
+      - agent-sort
+      - testing-reality-checker
+      - specialized-model-qa
+      - agent-evaluator
+      - harness-optimizer
+    - name: Scale
+      roles:
+      - enterprise-agent-ops
+    - name: Secure
+      roles:
+      - agent-security-hardening
+      - ai-agent-governance
+      - multi-agent-trust-layer
+      - trust-gated-agent-team
+      - agentic-identity-trust-architect
+    - name: Optimize
+      roles:
+      - prompt-optimizer
+      - prompt-caching-strategy
+      - token-budget-advisor
+      - token-card
+      - cost-aware-llm-pipeline
+      - cost-tracking
+      - context-budget
+      - regex-vs-llm-structured-text
+      - iterative-retrieval
+    - name: Loops
+      roles:
+      - autonomous-loops
+      - continuous-agent-loop
+      - loop-design-check
+      - loop-operator
+      - verification-loop
+    - name: Skills Mgmt
+      roles:
+      - skill-create
+      - skill-health
+      - skill-comply
+      - skill-scout
+      - skill-stocktake
+      - skill-host-compat
+    - name: Config
+      roles:
+      - configure-ecc
+      - ecc-conventions
+      - ecc-guide
+      - ecc-recipes
+      - hookify-rules
+      - rules-distill
+      - hermes-imports
+      - config-gc
+    - name: Meta
+      roles:
+      - using-superpowers
+      - diagnosing-superpowers
+      - brainstorming
+      - writing-skills
+      - strategic-compact
+      - context-and-decisions
+      - recursive-decision-ledger
+      - observer
+      - continuous-learning
+      - continuous-learning-v2
+      - search-first
+  reverse-engineering-legacy-team:
+    number: '31'
+    title: Reverse Engineering & Legacy Team
+    emoji: 🔄
+    workflow:
+    - Discovery
+    - Analyze
+    - Document
+    - Modernize
+    - Verify
+    handoff: 🔁 Handoff → Engineering Team (modernized codebase)
+    handoff_teams: []
+    stages:
+    - name: Discovery
+      roles:
+      - reverse-engineer-anything
+      - rea-analysis-optimization
+      - specialized-codebase-archaeologist
+      - code-explorer
+    - name: Analyze
+      roles:
+      - rea-tool-design
+      - type-design-analyzer
+      - comment-analyzer
+      - conversation-analyzer
+      - pr-test-analyzer
+    - name: Document
+      roles:
+      - rea-changelog-update
+      - code-tour
+    - name: Modernize
+      roles:
+      - legacy-modernization
+      - refactoring
+      - refactor-cleaner
+      - code-simplifier
+      - inherit-legacy-style
+      - brownfield-retrospective
+      - ai-codebase-migration-agent
+    - name: Verify
+      roles:
+      - rea-ci-tests-audit
+  open-source-community-team:
+    number: '32'
+    title: Open Source & Community Team
+    emoji: 📦
+    workflow:
+    - Scout
+    - Fork
+    - Sanitize
+    - Package
+    - Publish
+    - Community
+    handoff: 🔁 Handoff → Documentation Team → Marketing Team
+    handoff_teams: []
+    stages:
+    - name: Scout
+      roles:
+      - repo-scan
+      - skill-scout
+    - name: Fork
+      roles:
+      - opensource-forker
+    - name: Sanitize
+      roles:
+      - opensource-sanitizer
+    - name: Package
+      roles:
+      - opensource-packager
+    - name: Pipeline
+      roles:
+      - opensource-pipeline
+    - name: Community
+      roles:
+      - marketing-developer-community-builder
+      - specialized-developer-advocate
+      - marketing-reddit-community-builder
+  china-apac-tech-ecosystem-team:
+    number: '33'
+    title: China & APAC Tech Ecosystem Team
+    emoji: ☁️
+    workflow:
+    - Market Research
+    - Platform Adapt
+    - Content
+    - Launch
+    - Optimize
+    handoff: 🔁 Handoff → Sales Team → Business Strategy
+    handoff_teams: []
+    stages:
+    - name: Research
+      roles:
+      - marketing-china-market-localization-strategist
+      - specialized-korean-business-navigator
+    - name: Platform
+      roles:
+      - engineering-china-network-engineer
+      - engineering-feishu-integration-developer
+      - engineering-wechat-mini-program-developer
+      - engineering-gaussdb-expert
+    - name: Content
+      roles:
+      - marketing-baidu-seo-specialist
+      - marketing-bilibili-content-strategist
+      - marketing-douyin-strategist
+      - marketing-kuaishou-strategist
+      - marketing-weibo-strategist
+      - marketing-wechat-official-account
+      - marketing-xiaohongshu-specialist
+      - marketing-zhihu-strategist
+    - name: Commerce
+      roles:
+      - cross-border-e-commerce-specialist
+      - marketing-china-ecommerce-operator
+      - marketing-livestream-commerce-coach
+      - marketing-private-domain-operator
+  language-specific-engineering-teams:
+    number: '34'
+    title: Language-Specific Engineering Teams
+    emoji: 💻
+    workflow: []
+    handoff: ''
+    handoff_teams: []
+    stages: []
+    children:
+    - rust-team
+    - python-team
+    - java-kotlin-jvm-team
+    - go-team
+    - c-systems-team
+    - net-c-f-team
+    - ruby-rails-team
+    - php-laravel-team
+    - elixir-perl-other-team
+    - specialized-platform-team
+  rust-team:
+    number: 34A
+    title: Rust Team
+    emoji: ''
+    workflow:
+    - Design
+    - Code
+    - Review
+    - Test
+    - Build Resolve
+    - Refactor
+    handoff: ''
+    handoff_teams: []
+    stages:
+    - name: Roster
+      roles:
+      - rust
+      - rust-patterns
+      - rust-testing
+      - rust-reviewer
+      - rust-build-resolver
+      - engineering-rust-refactoring-specialist
+      - engineering-webassembly-engineer
+    parent: language-specific-engineering-teams
+  python-team:
+    number: 34B
+    title: Python Team
+    emoji: ''
+    workflow:
+    - Design
+    - Code
+    - Review
+    - Test
+    - Build Resolve
+    - Deploy
+    handoff: ''
+    handoff_teams: []
+    stages:
+    - name: Roster
+      roles:
+      - python
+      - python-patterns
+      - python-testing
+      - python-reviewer
+      - django-patterns
+      - django-security
+      - django-tdd
+      - django-verification
+      - django-reviewer
+      - django-build-resolver
+      - django-celery
+      - fastapi-patterns
+      - fastapi-reviewer
+      - generating-python-installer
+    parent: language-specific-engineering-teams
+  java-kotlin-jvm-team:
+    number: 34C
+    title: Java/Kotlin/JVM Team
+    emoji: ''
+    workflow:
+    - Design
+    - Code
+    - Review
+    - Test
+    - Build Resolve
+    - Deploy
+    handoff: ''
+    handoff_teams: []
+    stages:
+    - name: Roster
+      roles:
+      - java
+      - java-coding-standards
+      - java-reviewer
+      - java-build-resolver
+      - jpa-patterns
+      - mybatis-patterns
+      - springboot-patterns
+      - springboot-security
+      - springboot-tdd
+      - springboot-verification
+      - kotlin-patterns
+      - kotlin-coroutines-flows
+      - kotlin-exposed-patterns
+      - kotlin-ktor-patterns
+      - kotlin-testing
+      - kotlin-reviewer
+      - kotlin-build-resolver
+      - quarkus-patterns
+      - quarkus-security
+      - quarkus-tdd
+      - quarkus-verification
+    parent: language-specific-engineering-teams
+  go-team:
+    number: 34D
+    title: Go Team
+    emoji: ''
+    workflow: []
+    handoff: ''
+    handoff_teams: []
+    stages:
+    - name: Roster
+      roles:
+      - golang
+      - golang-patterns
+      - golang-testing
+      - go-reviewer
+      - go-build-resolver
+    parent: language-specific-engineering-teams
+  c-systems-team:
+    number: 34E
+    title: C++/Systems Team
+    emoji: ''
+    workflow: []
+    handoff: ''
+    handoff_teams: []
+    stages:
+    - name: Roster
+      roles:
+      - cpp-coding-standards
+      - cpp-testing
+      - cpp-reviewer
+      - cpp-build-resolver
+    parent: language-specific-engineering-teams
+  net-c-f-team:
+    number: 34F
+    title: .NET/C#/F# Team
+    emoji: ''
+    workflow: []
+    handoff: ''
+    handoff_teams: []
+    stages:
+    - name: Roster
+      roles:
+      - dotnet
+      - dotnet-patterns
+      - csharp-reviewer
+      - csharp-testing
+      - fsharp-reviewer
+      - fsharp-testing
+    parent: language-specific-engineering-teams
+  ruby-rails-team:
+    number: 34G
+    title: Ruby/Rails Team
+    emoji: ''
+    workflow: []
+    handoff: ''
+    handoff_teams: []
+    stages:
+    - name: Roster
+      roles:
+      - ruby
+      - ruby-reviewer
+      - rails-patterns
+    parent: language-specific-engineering-teams
+  php-laravel-team:
+    number: 34H
+    title: PHP/Laravel Team
+    emoji: ''
+    workflow: []
+    handoff: ''
+    handoff_teams: []
+    stages:
+    - name: Roster
+      roles:
+      - php
+      - php-reviewer
+      - laravel-patterns
+      - laravel-security
+      - laravel-tdd
+      - laravel-verification
+      - laravel-plugin-discovery
+    parent: language-specific-engineering-teams
+  elixir-perl-other-team:
+    number: 34I
+    title: Elixir/Perl/Other Team
+    emoji: ''
+    workflow: []
+    handoff: ''
+    handoff_teams: []
+    stages:
+    - name: Roster
+      roles:
+      - elixir
+      - perl-patterns
+      - perl-security
+      - perl-testing
+    parent: language-specific-engineering-teams
+  specialized-platform-team:
+    number: 34J
+    title: Specialized Platform Team
+    emoji: ''
+    workflow: []
+    handoff: ''
+    handoff_teams: []
+    stages:
+    - name: Roster
+      roles:
+      - engineering-servicenow-developer-mentor
+      - specialized-salesforce-architect
+      - tinystruct-patterns
+      - bun-runtime
+    parent: language-specific-engineering-teams
+  support-customer-operations-team:
+    number: '35'
+    title: Support & Customer Operations Team
+    emoji: 🔊
+    workflow:
+    - Ticket In
+    - Triage
+    - Respond
+    - Escalate
+    - Resolve
+    - Feedback
+    handoff: 🔁 Handoff → Product Team (feedback) → Engineering (bug fixes)
+    handoff_teams: []
+    stages:
+    - name: Intake
+      roles:
+      - support-engineering
+      - customer-service
+      - ai-customer-support-agent
+    - name: Respond
+      roles:
+      - support-support-responder
+      - customer-support-voice-agent
+    - name: Hospitality
+      roles:
+      - hospitality-guest-services
+      - retail-customer-returns
+    - name: Customer Success
+      roles:
+      - customer-success-manager
+    - name: Analytics
+      roles:
+      - support-analytics-reporter
+      - support-executive-summary-generator
+    - name: Infrastructure
+      roles:
+      - support-infrastructure-maintainer
+  research-academic-team:
+    number: '36'
+    title: Research & Academic Team
+    emoji: ✍️
+    workflow:
+    - Literature Review
+    - Hypothesis
+    - Data Collect
+    - Analyze
+    - Write
+    - Peer Review
+    - Publish
+    handoff: 🔁 Handoff → Product Team (applied research)
+    handoff_teams: []
+    stages:
+    - name: Literature
+      roles:
+      - research
+      - scientific-thinking-literature-review
+      - scientific-thinking-scholar-evaluation
+      - deep-research
+      - exa-search
+    - name: Domain Expertise
+      roles:
+      - academic-anthropologist
+      - academic-geographer
+      - academic-historian
+      - academic-narratologist
+      - academic-psychologist
+      - academic-statistician
+    - name: Data
+      roles:
+      - scientific-db-pubmed-database
+      - scientific-db-uspto-database
+      - scientific-pkg-gget
+    - name: Research Agents
+      roles:
+      - ag2-adaptive-research-team
+      - research-agent-gemini-interaction-api
+      - llm-panel-agent-team
+    - name: Writing
+      roles:
+      - grant-writing
+      - grant-writer
+    - name: Analysis
+      roles:
+      - ai-reasoning-agent
+  communication-workspace-ops-team:
+    number: '37'
+    title: Communication & Workspace Ops Team
+    emoji: 📲
+    workflow:
+    - Setup
+    - Integrate
+    - Automate
+    - Monitor
+    - Report
+    handoff: 🔁 Handoff → All Teams (communication infrastructure)
+    handoff_teams: []
+    stages:
+    - name: Workspace
+      roles:
+      - google-workspace-ops
+      - workspace-surface-audit
+    - name: Email
+      roles:
+      - email-ops
+      - engineering-email-intelligence-engineer
+      - mailtrap-email-integration
+    - name: Messages
+      roles:
+      - messages-ops
+      - unified-notifications-ops
+    - name: Knowledge
+      roles:
+      - knowledge-ops
+      - engineering-knowledge-graph-engineer
+    - name: Automation
+      roles:
+      - spreadsheet-automation
+      - automation-audit-ops
+      - automation-governance-architect
+    - name: IT
+      roles:
+      - engineering-it-service-manager
+    - name: Social
+      roles:
+      - x-api
+  lifestyle-personal-ai-team:
+    number: '38'
+    title: Lifestyle & Personal AI Team
+    emoji: 🏠
+    workflow:
+    - Need Identify
+    - Plan
+    - Execute
+    - Monitor
+    - Adapt
+    handoff: ''
+    handoff_teams: []
+    stages:
+    - name: Health
+      roles:
+      - ai-health-fitness-agent
+      - ai-mental-wellbeing-agent
+      - ai-breakup-recovery-agent
+    - name: Home
+      roles:
+      - ai-home-renovation-agent
+    - name: Food
+      roles:
+      - ai-recipe-meal-planning-agent
+    - name: Travel
+      roles:
+      - ai-travel-agent-memory
+      - ai-travel-planner-mcp-agent-team
+      - ai-audio-tour-agent
+    - name: Air Quality
+      roles:
+      - ai-aqi-analysis-agent
+    - name: General
+      roles:
+      - general
+      - assistant
+      - local-worker
+      - local-heavy
+      - local-chat
+      - uncensored-local
+  journalism-content-intelligence-team:
+    number: '39'
+    title: Journalism & Content Intelligence Team
+    emoji: 📰
+    workflow:
+    - Monitor
+    - Investigate
+    - Write
+    - Edit
+    - Publish
+    - Distribute
+    handoff: 🔁 Handoff → Marketing Team → Social Media
+    handoff_teams: []
+    stages:
+    - name: Monitor
+      roles:
+      - always-on-hn-briefing-agent
+      - release-radar-agent
+      - product-launch-intelligence-agent
+    - name: Investigate
+      roles:
+      - ai-journalist-agent
+      - osint-investigation
+    - name: Write
+      roles:
+      - content-writing
+      - creative-writing
+    - name: Edit
+      roles:
+      - editor
+    - name: Blog
+      roles:
+      - ai-blog-search
+    - name: Podcast
+      roles:
+      - ai-blog-to-podcast-agent
+  enterprise-integration-servicenow-team:
+    number: '40'
+    title: Enterprise Integration & ServiceNow Team
+    emoji: 🏗️
+    workflow:
+    - Assess
+    - Design
+    - Build
+    - Integrate
+    - Test
+    - Deploy
+    handoff: 🔁 Handoff → Platform Team → Support Team
+    handoff_teams: []
+    stages:
+    - name: Assess
+      roles:
+      - engineering-servicenow-developer-mentor
+      - specialized-salesforce-architect
+    - name: Build
+      roles:
+      - engineering-realtime-collaboration-engineer
+      - engineering-rapid-prototyper
+    - name: Document
+      roles:
+      - engineering-pdf-engine-architect
+      - esign-field-placement
+      - nutrient-document-processing
+    - name: Search
+      roles:
+      - search-engineering
+      - engineering-search-relevance-engineer
+    - name: Notifications
+      roles:
+      - notifications
+    - name: Payments
+      roles:
+      - payments
+      - engineering-payments-billing-engineer
+  dev-workflow-superpowers-team:
+    number: '41'
+    title: Dev Workflow Superpowers Team
+    emoji: 🔬
+    workflow:
+    - Plan
+    - Code
+    - Review
+    - Debug
+    - Test
+    - Verify
+    - Ship
+    handoff: 🔁 Handoff → সব Engineering Teams-এ methodology inject করে
+    handoff_teams: []
+    stages:
+    - name: Plan
+      roles:
+      - brainstorming
+      - writing-plans
+      - executing-plans
+    - name: Code
+      roles:
+      - using-superpowers
+      - writing-skills
+      - coding-standards
+      - intent-driven-development
+      - santa-method
+      - engineering-minimal-change-engineer
+    - name: Git
+      roles:
+      - using-git-worktrees
+      - finishing-a-development-branch
+      - git-workflow
+      - github-ops
+      - engineering-git-workflow-master
+    - name: Review
+      roles:
+      - requesting-code-review
+      - receiving-code-review
+      - code-review
+      - engineering-code-reviewer
+      - commit-reviewer
+      - plankton-code-quality
+      - change-impact
+    - name: Debug
+      roles:
+      - systematic-debugging
+      - diagnosing-superpowers
+      - debugging
+      - silent-failure-hunter
+      - error-handling
+    - name: Test
+      roles:
+      - test-driven-development
+      - tdd-guide
+      - tdd-workflow
+    - name: Verify
+      roles:
+      - verification-before-completion
+      - verification-loop
+    - name: Parallel
+      roles:
+      - dispatching-parallel-agents
+      - subagent-driven-development
+  gan-generative-ai-team:
+    number: '42'
+    title: GAN & Generative AI Team
+    emoji: 📊
+    workflow:
+    - Plan
+    - Generate
+    - Evaluate
+    - Iterate
+    handoff: 🔁 Handoff → Design Team → Frontend Team
+    handoff_teams: []
+    stages:
+    - name: Plan
+      roles:
+      - gan-planner
+    - name: Generate
+      roles:
+      - gan-generator
+      - ai-shadcn-component-generator
+      - generative-ui-starter-project
+    - name: Evaluate
+      roles:
+      - gan-evaluator
+      - gan-style-harness
+  performance-optimization-team:
+    number: '43'
+    title: Performance & Optimization Team
+    emoji: ⚡
+    workflow:
+    - Benchmark
+    - Profile
+    - Optimize
+    - Validate
+    - Monitor
+    handoff: 🔁 Handoff → Engineering Teams → Platform Team
+    handoff_teams: []
+    stages:
+    - name: Benchmark
+      roles:
+      - benchmark
+      - benchmark-methodology
+      - benchmark-optimization-loop
+      - performance-testing
+    - name: Profile
+      roles:
+      - performance-optimizer
+      - web-performance
+      - react-performance
+      - latency-critical-systems
+    - name: Optimize
+      roles:
+      - data-throughput-accelerator
+      - content-hash-cache-pattern
+      - engineering-filament-optimization-specialist
+      - engineering-autonomous-optimization-architect
+  supply-chain-logistics-team:
+    number: '44'
+    title: Supply Chain & Logistics Team
+    emoji: 🧮
+    workflow:
+    - Demand Plan
+    - Source
+    - Produce
+    - Ship
+    - Track
+    - Returns
+    handoff: 🔁 Handoff → Finance Team (billing) → Operations Team
+    handoff_teams: []
+    stages:
+    - name: Demand
+      roles:
+      - inventory-demand-planning
+    - name: Source
+      roles:
+      - carrier-relationship-management
+      - counterparty-channel-discipline
+    - name: Produce
+      roles:
+      - production-scheduling
+      - quality-nonconformance
+    - name: Ship
+      roles:
+      - logistics-exception-management
+      - customs-trade-compliance
+    - name: Returns
+      roles:
+      - returns-reverse-logistics
+    - name: Strategy
+      roles:
+      - supply-chain-strategist
+  search-discovery-engineering-team:
+    number: '45'
+    title: Search & Discovery Engineering Team
+    emoji: 🔍
+    workflow:
+    - Index
+    - Relevance
+    - Personalize
+    - Monitor
+    handoff: 🔁 Handoff → Product Team → Frontend Team
+    handoff_teams: []
+    stages:
+    - name: Index
+      roles:
+      - search-engineering
+      - lsp-index-engineer
+    - name: Relevance
+      roles:
+      - engineering-search-relevance-engineer
+    - name: Personalize
+      roles:
+      - recsys-pipeline-architect
+    - name: Tools
+      roles:
+      - ai-blog-search
+  generative-ui-mcp-apps-team:
+    number: '46'
+    title: Generative UI & MCP Apps Team
+    emoji: 🎶
+    workflow:
+    - Design
+    - Build
+    - MCP Connect
+    - Deploy
+    - Showcase
+    handoff: 🔁 Handoff → Frontend Team → Design Team
+    handoff_teams: []
+    stages:
+    - name: Design
+      roles:
+      - generative-ui-starter-project
+      - ai-shadcn-component-generator
+    - name: Build
+      roles:
+      - ai-mcp-app-builder
+      - mcp-apps-generative-ui-showcase
+    - name: MCP
+      roles:
+      - threejs-server
+      - web
+      - mcp-server-patterns
+    - name: Dev Agents
+      roles:
+      - devpulse-ai
+      - multimodal-coding-agent-team
+  ecc-command-evolution-team:
+    number: '47'
+    title: ECC Command & Evolution Team
+    emoji: 🚀
+    workflow:
+    - Evolve
+    - Export
+    - Import
+    - Status
+    - Promote
+    - Prune
+    - Council
+    handoff: ''
+    handoff_teams: []
+    stages:
+    - name: Evolve
+      roles:
+      - evolve
+    - name: Instinct
+      roles:
+      - instinct-export
+      - instinct-import
+      - instinct-status
+    - name: Projects
+      roles:
+      - projects
+    - name: Promote
+      roles:
+      - promote
+    - name: Prune
+      roles:
+      - prune
+    - name: Skills
+      roles:
+      - skill-create
+      - skill-health
+    - name: Council
+      roles:
+      - ecc-council
+    - name: Guide
+      roles:
+      - ecc-guide
+      - ecc-conventions
+      - ecc-recipes
+      - claude-devfleet
+      - ck
+      - nasiko-control-plane
+      - ralphinho-rfc-pipeline
+  remaining-specialists:
+    number: '48'
+    title: Remaining Specialists (Uncategorized/Cross-Cutting)
+    emoji: 🔗
+    workflow: []
+    handoff: ''
+    handoff_teams: []
+    stages:
+    - name: Roster
+      roles:
+      - ai-services-agency
+      - specialized-civil-engineer
+      - specialized-focus-music-architect
+      - zk-steward
+      - identity-graph-operator
+      - scope-creep-detector
+      - first-reader
+      - project-graveyard
+      - thinking-out-loud
