@@ -414,6 +414,12 @@ On top of that, `roles.d/` ships **852 agents imported from five public repos**
 `nexus roles` prints the live table; `nexus roles -s <needle>` searches all 1000.
 Full list of the curated core with personas: [`docs/roles.md`](docs/roles.md).
 
+All 1000 specialists are also grouped by workflow into **48 teams** (Red/Blue, DevSecOps,
+Vulnerability Research, QA, AI/ML, Platform, business, content and domain teams), with
+every role name checked against the pack that really defines it: [`docs/teams.md`](docs/teams.md).
+`python3 scripts/build_teams.py --check` re-validates that roster (also a CI step) and
+`--stats` prints exact per-team counts.
+
 ### Grow the team: `/addagent`
 
 Adding a specialist is a YAML block — and importing a whole repo of them is one

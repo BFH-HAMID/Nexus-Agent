@@ -242,3 +242,18 @@ Command চলার সময় stdout/stderr, actual exit/stop status এবং 
 দেখানো হয়। **Stop command & task** বর্তমান task-এর managed command বন্ধ করে;
 approval বা isolation bypass করে না। Thinking মানে model response-এর অপেক্ষা,
 গোপন reasoning নয়। সীমা ও পরীক্ষার বিবরণ: [Live dashboard](live-dashboard.md)।
+
+### ১০০০ role, ৪৮টি team
+
+কোন role কোন team-এ, কোন ধাপে — সব এক জায়গায়: [teams.md](teams.md)। প্রতিটি team-এর
+member সংখ্যা এখন গোনা (আনুমানিক নয়) এবং প্রতিটি role নাম আসল pack-এর সাথে মিলিয়ে
+যাচাই করা — ১০০০/১০০০ role কোনো team-এ বাদ পড়েনি।
+
+```bash
+python3 scripts/build_teams.py --check   # যাচাই (CI-তেও চলে)
+python3 scripts/build_teams.py --stats   # প্রতি team-এর সংখ্যা
+python3 scripts/build_teams.py --write   # সংখ্যা নতুন করে গোনে লেখে
+```
+
+এটা documentation-স্তরের ম্যাপ — runtime routing আগের মতোই role-ভিত্তিক
+(`roles.yaml` + `roles.d/`), আর 실행যোগ্য pipeline হলো `pipelines.yaml`।

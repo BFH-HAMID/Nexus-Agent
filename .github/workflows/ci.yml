@@ -41,6 +41,17 @@ jobs:
             exit 1
           fi
 
+      - name: Validate the team roster (docs/teams.md against the role packs)
+        run: python scripts/build_teams.py --check --stats
+
+      - name: Ensure team member counts in docs/teams.md are up to date
+        run: |
+          python scripts/build_teams.py --write
+          if ! git diff --exit-code docs/teams.md; then
+            echo "::error::docs/teams.md counts are stale - run python scripts/build_teams.py --write"
+            exit 1
+          fi
+
       - name: Ensure docs/roles.md is up to date with its generator
         run: |
           python scripts/build_roles.py --docs --out /tmp/roles.yaml
