@@ -60,6 +60,7 @@ packages = ["nexus"]
 "roles.yaml" = "nexus/_config/roles.yaml"
 "roles.d" = "nexus/_config/roles.d"
 "pipelines.yaml" = "nexus/_config/pipelines.yaml"
+"teams.yaml" = "nexus/_config/teams.yaml"
 "skills" = "nexus/_config/skills"
 "role-index.yaml" = "nexus/_config/role-index.yaml"
 "permissions.yaml" = "nexus/_config/permissions.yaml"
@@ -105,7 +106,7 @@ packages = ["nexus"]
 "examples/mcp" = "nexus/_config/examples/mcp"
 
 [tool.hatch.build.targets.sdist]
-include = ["nexus", "roles.d", "skills", "tests", "scripts", "examples", "frontend/world", "agents.yaml", "roles.yaml", "pipelines.yaml", "role-index.yaml", "permissions.yaml", "autonomy.yaml", "hud.yaml", "widget.yaml", "mcp.yaml", "telegram.yaml", "context.yaml", ".env.example", "docs", "README.md", "LICENSE"]
+include = ["nexus", "roles.d", "skills", "tests", "scripts", "examples", "frontend/world", "agents.yaml", "roles.yaml", "pipelines.yaml", "teams.yaml", "role-index.yaml", "permissions.yaml", "autonomy.yaml", "hud.yaml", "widget.yaml", "mcp.yaml", "telegram.yaml", "context.yaml", ".env.example", "docs", "README.md", "LICENSE"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

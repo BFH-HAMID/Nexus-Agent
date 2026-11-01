@@ -395,6 +395,8 @@ HELP_SECTIONS: tuple[tuple[str, tuple[tuple[str, str], ...]], ...] = (
     )),
     ("team & models", (
         ("/roles [needle]", "list or search the team"),
+        ("/roles --team <id>", "only that team's roles"),
+        ("/teams [show|role|check]", "the 48-team roster: stages and their roles"),
         ("/role <name>", "pin a role (auto-routing off)"),
         ("/auto [on|off]", "toggle automatic routing"),
         ("/agents", "configured model endpoints"),

@@ -612,7 +612,18 @@ def handle_slash(agent: NexusAgent, line: str) -> bool:
             pull = want[0] if want else None
         cmd_local(argparse.Namespace(host=None, pull=pull, json=False))
     elif cmd == "roles":
-        print_roles(agent.config, arg)  # return code ignored inside the REPL
+        bits = arg.split()
+        if bits and bits[0] == "--team":
+            cmd_roles(argparse.Namespace(workspace=None, json=False, show=None, category=None,
+                                         search=None, team=bits[1] if len(bits) > 1 else None))
+        else:
+            print_roles(agent.config, arg)  # return code ignored inside the REPL
+    elif cmd == "teams":
+        bits = arg.split()
+        action = bits[0] if bits and bits[0] in {"list", "show", "role", "check"} else "list"
+        target = bits[1] if action != "list" and len(bits) > 1 else None
+        cmd_teams(argparse.Namespace(action=action, target=target, stage=None, workspace=None,
+                                     json=False))  # return code ignored inside the REPL
     elif cmd == "addagent":
         _slash_addagent(agent, arg)
     elif cmd == "keys":
@@ -969,7 +980,33 @@ def _read_stdin_task() -> str:
 
 
 def cmd_roles(args: argparse.Namespace) -> int:
-    config = load_config(Path(args.workspace).resolve() if args.workspace else Path.cwd())
+    workspace = Path(args.workspace).resolve() if args.workspace else Path.cwd()
+    config = load_config(workspace)
+    team_filter = getattr(args, "team", None)
+    if team_filter:
+        from .teams import load_teams
+
+        book = load_teams(workspace)
+        team = book.get(team_filter)
+        if team is None:
+            matches = book.find(team_filter)
+            if len(matches) == 1:
+                team = matches[0]
+            else:
+                print(COLORS.red(f"no team matches '{team_filter}' - `nexus teams` lists them all"))
+                return 1
+        wanted = [name for name in team.roles if name in config.roles]
+        if args.json:
+            print(json.dumps([config.roles.get(name).to_dict() for name in wanted],
+                             ensure_ascii=False, indent=2))
+            return 0
+        print(COLORS.bold(f"{team.label()}") + COLORS.dim(
+            f"  [{team.ident}] {len(wanted)} roles · stages: {', '.join(s.name for s in team.stages)}"))
+        for name in wanted:
+            role = config.roles.get(name)
+            stages = ", ".join(team.stage_of(name))
+            print(f"  {name:<30} {role.category:<12} -> {role.agent:<16} {COLORS.dim(stages)}")
+        return 0
     if args.json:
         payload = [r.to_dict() for r in config.roles.roles.values()]
         print(json.dumps(payload, ensure_ascii=False, indent=2))
@@ -998,6 +1035,125 @@ def cmd_roles(args: argparse.Namespace) -> int:
         print(COLORS.red(f"no category '{args.category}'"))
         return 1
     return print_roles(config, args.search or "")
+
+
+def cmd_teams(args: argparse.Namespace) -> int:
+    """`nexus teams` - read the generated roster (docs/teams.md -> teams.yaml)."""
+    from .teams import load_teams
+
+    workspace = Path(args.workspace).resolve() if args.workspace else Path.cwd()
+    config = load_config(workspace)
+    book = load_teams(workspace)
+    if not len(book):
+        print(COLORS.red("no teams.yaml found - run `python3 scripts/build_teams.py --yaml`"))
+        return 1
+    action = args.action or "list"
+
+    if action == "list":
+        if args.json:
+            print(json.dumps(book.to_dict(), ensure_ascii=False, indent=2))
+            return 0
+        top = [team for team in book if team.number.isdigit()]
+        subs = len(book) - len(top)
+        extra = f" + {subs} language sub-teams" if subs else ""
+        print(COLORS.bold(f"{len(top)} teams{extra} · {len(book.roles())} roles") +
+              COLORS.dim(f"  ({book.sources[-1]})"))
+        for team in book:
+            print(f"  {team.number:>3}  {team.ident:<36} {team.size:>4} roles  "
+                  f"{len(team.stages):>2} stages  {team.label()}")
+        print(COLORS.dim("  nexus teams show <team>   ·   nexus teams role <role>   ·   nexus teams check"))
+        return 0
+
+    if action == "show":
+        target = (args.target or "").strip()
+        team = book.get(target)
+        if team is None:
+            matches = book.find(target)
+            if not matches:
+                print(COLORS.red(f"no team matches '{target}' - `nexus teams` lists them all"))
+                return 1
+            if len(matches) > 1:
+                print(COLORS.yellow(f"'{target}' is ambiguous:"))
+                for candidate in matches:
+                    print(f"  {candidate.number:>3}  {candidate.ident:<36} {candidate.title}")
+                return 1
+            team = matches[0]
+        if args.json:
+            print(json.dumps(team.to_dict(), ensure_ascii=False, indent=2))
+            return 0
+        print(COLORS.bold(f"{team.label()}") + COLORS.dim(f"  [{team.ident} · team {team.number}]"))
+        print(f"  members:  {team.size} ({team.assignments} stage assignments) · stages: {len(team.stages)}")
+        if team.handoff:
+            print(f"  handoff:  {team.handoff}")
+        if team.workflow:
+            print(f"  workflow: {' -> '.join(team.workflow)}")
+        if team.parent:
+            print(f"  parent:   {team.parent}")
+        if team.children:
+            print(f"  sub-teams: {', '.join(team.children)}")
+        print()
+        for stage in team.stages:
+            if args.stage and args.stage.strip().lower() not in stage.name.strip().lower():
+                continue
+            print(f"  {stage.name:<22} {', '.join(stage.roles)}")
+        if args.stage and not any(args.stage.strip().lower() in stage.name.strip().lower()
+                                  for stage in team.stages):
+            print(COLORS.yellow(f"  no stage matching '{args.stage}' in {team.ident}"))
+            return 1
+        return 0
+
+    if action == "role":
+        target = (args.target or "").strip()
+        if not target:
+            print(COLORS.red("usage: nexus teams role <role-name>"))
+            return 1
+        hits = book.for_role(target)
+        name = target
+        if target in config.roles:
+            role = config.roles.get(target)
+            name = role.name
+            if not args.json:
+                print(COLORS.bold(role.name) + COLORS.dim(f"  [{role.category}] {role.title}"))
+        if not hits:
+            print(COLORS.red(f"'{name}' is not in any team of the roster"))
+            return 1
+        if args.json:
+            print(json.dumps([{"team": team.ident, "number": team.number, "title": team.title,
+                               "stages": stages} for team, stages in hits],
+                             ensure_ascii=False, indent=2))
+            return 0
+        for team, stages in hits:
+            print(f"  {team.number:>3}  {team.ident:<36} {team.label():<34} {', '.join(stages)}")
+        return 0
+
+    if action == "check":
+        errors = book.check(config.roles)
+        uncovered = book.uncovered(config.roles)
+        covered = len(config.roles) - len(uncovered)
+        for error in errors:
+            print(COLORS.red(f"error: {error}"), file=sys.stderr)
+        if args.json:
+            print(json.dumps({"teams": len(book), "roles": len(config.roles), "covered": covered,
+                              "uncovered": uncovered, "errors": errors},
+                             ensure_ascii=False, indent=2))
+            return 1 if errors else 0
+        top = [team for team in book if team.number.isdigit()]
+        subs = len(book) - len(top)
+        extra = f" + {subs} language sub-teams" if subs else ""
+        print(f"{len(top)} teams{extra} · {len(book.roles())} roster roles · "
+              f"{covered}/{len(config.roles)} installed roles placed")
+        if uncovered:
+            print(COLORS.yellow(f"note: {len(uncovered)} installed role(s) are in no team "
+                                f"(project-local additions are expected): {', '.join(uncovered[:8])}"
+                                f"{' ...' if len(uncovered) > 8 else ''}"))
+        if errors:
+            print(COLORS.red(f"{len(errors)} problem(s) - the roster does not match the installed roles"))
+            return 1
+        print(COLORS.green("ok: every roster role exists and every handoff resolves"))
+        return 0
+
+    print(COLORS.red(f"unknown action '{action}' - use list, show, role or check"))
+    return 1
 
 
 def _local_status(base_url: str) -> str:
@@ -1354,6 +1510,18 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     add("workspace", True, str(workspace))
     add("roles", len(config.roles) > 0, f"{len(config.roles)} roles registered",
         "add roles to roles.yaml or .nexus/roles.yaml")
+    try:
+        from .teams import load_teams
+
+        book = load_teams(workspace)
+        team_errors = book.check(config.roles)
+        add("teams", not team_errors,
+            f"{len([t for t in book if t.number.isdigit()])} teams / {len(book.roles())} roster roles",
+            "regenerate with `python3 scripts/build_teams.py --yaml`"
+            if not len(book) else "fix `nexus teams check`")
+    except ConfigError as exc:
+        add("teams", False, str(exc), "fix or regenerate teams.yaml")
+
     add("git repo", (workspace / ".git").exists(),
         "inside a git repository" if (workspace / ".git").exists() else "not a git repository",
         "git tools need a repository: `git init`")
@@ -1959,6 +2127,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--search", "-s")
     p.add_argument("--show")
     p.add_argument("--category", "-c")
+    p.add_argument("--team", help="only roles of this team (see `nexus teams`)")
     p.add_argument("--json", action="store_true")
     p.set_defaults(func=cmd_roles)
 
@@ -1979,6 +2148,14 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--list", action="store_true", help="show installed packs and role counts")
     p.add_argument("--json", action="store_true")
     p.set_defaults(func=cmd_addagent)
+
+    p = sub.add_parser("teams", help="the 48-team roster: list / show / role / check")
+    p.add_argument("action", nargs="?", default="list", choices=["list", "show", "role", "check"])
+    p.add_argument("target", nargs="?", help="team id/number (show) or role name (role)")
+    p.add_argument("--stage", help="only this stage when showing a team")
+    p.add_argument("--workspace", "-C")
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(func=cmd_teams)
 
     p = sub.add_parser("pipeline", help="run a multi-role pipeline")
     add_common(p)

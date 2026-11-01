@@ -2,7 +2,7 @@ PY ?= .venv/bin/python
 PIP ?= .venv/bin/pip
 PORT ?= 8787
 
-.PHONY: help venv install test lint roles docs check smoke demo serve panel gui local clean
+.PHONY: help venv install test lint roles teams docs check smoke demo serve panel gui local clean
 
 help:  ## show this help
 	@grep -hE '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}'
@@ -17,18 +17,23 @@ install: venv  ## venv + editable install + dev extras
 test:  ## run the full offline suite
 	$(PY) -m pytest -q
 
-lint:  ## ruff check + roles validation
+lint:  ## ruff check + roles + team-roster validation
 	-$(PY) -m ruff check nexus tests scripts
 	$(PY) scripts/build_roles.py --check --stats
+	$(PY) scripts/build_teams.py --check
 
 roles:  ## regenerate roles.yaml from the generator
 	$(PY) scripts/build_roles.py
 
+teams:  ## validate the 48-team roster in docs/teams.md
+	$(PY) scripts/build_teams.py --check --stats
+
 docs:  ## regenerate docs/roles.md
 	$(PY) scripts/build_roles.py --docs
 
-check:  ## CI parity: roles in sync + tests + CLI smoke
+check:  ## CI parity: roles in sync + team roster + tests + CLI smoke
 	$(PY) scripts/build_roles.py --check
+	$(PY) scripts/build_teams.py --check
 	$(PY) scripts/build_roles.py --out /tmp/roles-check.yaml
 	diff -u roles.yaml /tmp/roles-check.yaml
 	$(PY) -m pytest -q

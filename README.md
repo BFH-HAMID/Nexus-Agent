@@ -414,6 +414,26 @@ On top of that, `roles.d/` ships **852 agents imported from five public repos**
 `nexus roles` prints the live table; `nexus roles -s <needle>` searches all 1000.
 Full list of the curated core with personas: [`docs/roles.md`](docs/roles.md).
 
+All 1000 specialists are also grouped by workflow into **48 teams** (Red/Blue, DevSecOps,
+Vulnerability Research, QA, AI/ML, Platform, business, content and domain teams). That roster
+is data, not prose: [`docs/teams.md`](docs/teams.md) is the readable view and
+[`teams.yaml`](teams.yaml) is generated from it, so the CLI and the document cannot drift apart.
+
+```bash
+nexus teams                        # 48 teams + 10 language sub-teams, member/stage counts
+nexus teams show red-team          # workflow + every stage's roles (--stage Scoping to filter)
+nexus teams role bengali-nlp       # which teams and stages use a role
+nexus teams check                  # roster vs installed roles: unknown names, broken handoffs
+nexus roles --team qa-testing-team # the team filter on the normal role list
+```
+
+`nexus teams check` fails on a role name that `roles.yaml` / `roles.d/*.yaml` do not define and
+on a handoff that points at a team which is not in the roster; `python3 scripts/build_teams.py
+--check` does the same from the repo side and fails when `teams.yaml` or a `মোট Member` count
+drifted from [`docs/teams.md`](docs/teams.md) (also a CI step). `--stats` prints exact per-team
+counts. A project can override or extend the roster in `.nexus/teams.yaml` exactly like
+`roles.yaml`.
+
 ### Grow the team: `/addagent`
 
 Adding a specialist is a YAML block — and importing a whole repo of them is one
@@ -703,6 +723,7 @@ Nexus-Agent/
 ├── roles.yaml               # 111 curated roles → persona + keywords + agent  (generated)
 ├── roles.d/                 # 852 imported roles (5 packs) - `nexus addagent` writes here
 ├── pipelines.yaml           # multi-role handoff pipelines
+├── teams.yaml               # the 48 teams of docs/teams.md: stages -> role names  (generated)
 ├── pyproject.toml           # `pip install -e .` → `nexus`
 ├── skills/                  # bundled SKILL.md skills (agentskills.io / Hermes format)
 ├── .vscode/                 # tasks.json, launch.json, settings.json, extensions.json
@@ -746,7 +767,7 @@ external-service limitations: [Workbench guide](docs/workbench.md).
 
 ## Configuration
 
-`agents.yaml` + `roles.yaml` + `roles.d/*.yaml` + `pipelines.yaml` are loaded in layers, later wins:
+`agents.yaml` + `roles.yaml` + `roles.d/*.yaml` + `pipelines.yaml` + `teams.yaml` are loaded in layers, later wins:
 
 1. bundled defaults (inside the wheel)
 2. the repo checkout (incl. the committed `roles.d/` import packs)
