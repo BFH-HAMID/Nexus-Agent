@@ -115,11 +115,13 @@
   const actions = document.querySelector('.topbar-actions');
   const divider = actions?.querySelector('.topbar-divider');
   const tools = {
-    wbOpen: { icon: 'i-terminal', label: 'Workbench', hint: 'Ctrl+K' },
-    studioOpen: { icon: 'i-layers', label: 'Studio', hint: 'review · evidence' },
-    guiManagement: { icon: 'i-users', label: 'Roles', hint: 'roles, agents & teams' },
-    guiSettings: { icon: 'i-sliders', label: 'Settings', hint: 'appearance, language, layout, policy' },
+    wbOpen: { icon: 'i-terminal', label: 'Workbench', hint: 'Ctrl+K', key: 'topbar.wb', hintKey: 'topbar.wbHint' },
+    studioOpen: { icon: 'i-layers', label: 'Studio', hint: 'review · evidence', key: 'topbar.studio', hintKey: 'topbar.studioHint' },
+    guiManagement: { icon: 'i-users', label: 'Roles', hint: 'roles, agents & teams', key: 'topbar.roles', hintKey: 'topbar.rolesHint' },
+    guiSettings: { icon: 'i-sliders', label: 'Settings', hint: 'appearance, language, layout, policy', key: 'topbar.settings', hintKey: 'topbar.settingsHint' },
   };
+  const tr = (key, fallback) => { const value = window.nexusI18n?.t?.(key); return value && value !== key ? value : fallback; };
+  const toolButtons = [];
   for (const [id, meta] of Object.entries(tools)) {
     const button = document.getElementById(id);
     if (!button || !actions) continue;
@@ -145,12 +147,29 @@
       label.textContent = text && text.length <= 14 ? text : meta.label;
       button.append(label);
     }
+    label.dataset.i18n = meta.key;
+    button.dataset.hintKey = meta.hintKey;
     button.dataset.hint = meta.hint;
-    button.setAttribute('aria-label', label.textContent + ' — ' + meta.hint);
-    if (!button.title) button.title = label.textContent + ' — ' + meta.hint;
+    toolButtons.push([button, label, meta]);
     if (divider) actions.insertBefore(button, divider);
     else actions.insertBefore(button, document.getElementById('themeToggle'));
   }
+  /* The label is repainted by i18n.apply(); the composed aria-label and title
+     have to follow it, so they are rebuilt from the translated pair. */
+  const paintTools = () => {
+    for (const [button, label, meta] of toolButtons) {
+      const name = label.textContent;
+      const hint = tr(meta.hintKey, meta.hint);
+      button.setAttribute('aria-label', name + ' — ' + hint);
+      button.title = name + ' — ' + hint;
+    }
+  };
+  /* This script is parsed before i18n.js, so the first paint has to wait for it:
+     otherwise the composed "label — hint" title would be built from English
+     fallbacks and never corrected. Later switches arrive as an event. */
+  const paintOwn = () => { window.nexusI18n?.apply?.(actions || document); paintTools(); };
+  if (window.nexusI18n) paintOwn(); else document.addEventListener('DOMContentLoaded', paintOwn);
+  document.addEventListener('nexus:language', paintTools);
   const logout = document.getElementById('guiLogout');
   if (logout && !logout.querySelector('svg')) {
     logout.insertAdjacentHTML('afterbegin', '<svg class="ic" aria-hidden="true"><use href="#i-logout"/></svg>');

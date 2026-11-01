@@ -10,6 +10,27 @@
   "use strict";
 
   const $ = (id) => document.getElementById(id);
+  /* i18n.js loads after this file, so read window.nexusI18n lazily and keep the
+     English text here as the fallback: the dashboard must never render a raw key. */
+  const tr = (key, vars, fallback) => {
+    const translated = window.nexusI18n?.t?.(key, vars);
+    if (translated && translated !== key) return translated;
+    let text = fallback;
+    if (vars) text = text.replace(/\{(\w+)\}/g, (_, name) => (vars[name] ?? ''));
+    return text;
+  };
+  /* Run-state tokens ("idle", "routing", "done" …) are the vocabulary of the
+     phase chip and the status bar. The English table stores the token itself, so
+     English mode renders exactly what the server sent. */
+  const stateLabel = (token) => tr("run.state." + token, {}, token);
+  /* The phase line is the only place where a composed sentence outlives the
+     event that produced it, so remember how to rebuild it after a language
+     switch instead of freezing the previous language on screen. */
+  let lastPhase = null;
+  const phaseSay = (key, vars, fallback) => {
+    lastPhase = { key, vars, fallback };
+    return tr(key, vars, fallback);
+  };
   const token = ''; // Shared HttpOnly GUI session; no URL credentials.
   const REDUCED = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   const MAX_STEPS = 400;
@@ -135,23 +156,26 @@
     $("metaWs").textContent = (s.workspace || "?").split("/").slice(-1)[0] || s.workspace;
     $("metaWs").title = s.workspace || "";
     $("taskWorkspace").textContent = window.nexusGitHubRepository?.()
-      ? "Task target: GitHub " + window.nexusGitHubRepository() + " · new task branch after permission · no clone/local tests"
-      : "Task workspace: " + (s.workspace || "unavailable") + " · select a GitHub repo for direct remote tasks.";
+      ? tr("run.taskTargetGithub", {repo: window.nexusGitHubRepository()},
+           "Task target: GitHub {repo} · new task branch after permission · no clone/local tests")
+      : tr("run.taskWorkspace", {path: s.workspace || tr("run.unavailable", {}, "unavailable")},
+           "Task workspace: {path} · select a GitHub repo for direct remote tasks.");
     $("taskWorkspace").title = $("taskWorkspace").textContent;
     $("metaRoles").textContent = s.roles;
     $("metaAgents").textContent = Object.keys(state.agents).length;
     state.liveReady = !s.demo;
     $("liveNotice").textContent = s.demo
-      ? "Live dashboard disabled: restart Nexus without --demo and unset NEXUS_DEMO. No simulated task will run."
-      : "Live server events only · model availability is not inferred from configuration.";
+      ? tr("run.demoBlocked", {}, "Live dashboard disabled: restart Nexus without --demo and unset NEXUS_DEMO. No simulated task will run.")
+      : tr("run.liveOnly", {}, "Live server events only · model availability is not inferred from configuration.");
     $("runBtn").disabled = state.running || !state.liveReady;
     $("metaMode").textContent = s.demo ? "blocked: demo server" : "live";
     $("chipMode").className = "chip" + (s.demo ? "" : " live");
     $("metaRouting").textContent = s.dashboard_policy?.local_only ? "local-only" : window.nexusLocalModel?.() ? "selected local" : s.prefer_local ? "local-first" : "configured";
     $("metaUptime").textContent = "up " + Math.round(s.uptime_s || 0) + "s";
     $("sbVersion").textContent = "nexus " + (s.version || "?");
-    $("globeNodes").textContent = Object.keys(s.agents || {}).length + " configured agents";
-    $("orchCount").textContent = Object.keys(state.agents).length + " agents";
+    $("globeNodes").textContent = tr("run.configuredAgents", {count: Object.keys(s.agents || {}).length},
+      "{count} configured agents");
+    $("orchCount").textContent = tr("run.agentCount", {count: Object.keys(state.agents).length}, "{count} agents");
     renderOrch();
     renderKeys();
     renderPipelines();
@@ -249,8 +273,8 @@
     state.activeAgent = name;
     $("mapActive").textContent = name ? "active · " + name : "idle";
     $("mapActive").className = "pill" + (name ? " live" : "");
-    $("sbAgent").textContent = "agent " + (name || "—");
-    $("telAgent").textContent = "agent " + (name || "—");
+    $("sbAgent").textContent = tr("run.agentLabel", {name: name || "—"}, "agent {name}");
+    $("telAgent").textContent = $("sbAgent").textContent;
     $("orchList").querySelectorAll(".orch-row").forEach((row) => {
       row.classList.toggle("active", row.dataset.agent === name);
     });
@@ -386,7 +410,7 @@
     svg.querySelectorAll(".node").forEach((n) => n.classList.remove("sel"));
     $("ndName").textContent = "—";
     $("ndProvider").textContent = "—";
-    $("ndBody").textContent = "select a node on the map";
+    $("ndBody").textContent = tr("run.selectNode", {}, "select a node on the map");
   }
 
 
@@ -394,7 +418,7 @@
   function setPhase(phase, text, meta) {
     state.phase = phase;
     const chip = $("phaseChip");
-    chip.textContent = phase;
+    chip.textContent = stateLabel(phase);
     chip.className = "pill phase " + (phase === "thinking" ? "live" : phase === "tool" ? "tool" :
       phase === "waiting" ? "wait" : "");
     const banner = $("phaseBanner");
@@ -402,7 +426,7 @@
       phase === "waiting" ? "wait" : "idle");
     if (text) $("phaseText").textContent = text;
     if (meta !== undefined) $("phaseMeta").textContent = meta || "";
-    $("sbState").textContent = phase;
+    $("sbState").textContent = stateLabel(phase);
   }
 
   /* ── live process stream ──────────────────────────────────────────── */
@@ -515,11 +539,11 @@
           (e.note ? "  ·  " + e.note : "");
         $("sbRole").textContent = "role " + (e.role || "—");
         $("telRole").textContent = e.role || "—";
-        $("telRoute").textContent = "route " + (e.method || "—");
+        $("telRoute").textContent = tr("run.routeLabel", {method: e.method || "—"}, "route {method}");
         addStep("role", "route", "⇄",
           `<b>${esc(e.role)}</b> → <b>${esc(e.agent || "?")}</b>  <span class="pill">${esc(e.method || "")}</span>`,
           ts() + (e.hits && e.hits.length ? "hits: " + e.hits.join(", ") : "router decision"));
-        setPhase("routing", "routing · " + (e.role || ""), e.method || "");
+        setPhase("routing", phaseSay("run.phase.routing", {role: e.role || ""}, "routing · {role}"), e.method || "");
         refreshMemory();
         break;
       }
@@ -553,7 +577,8 @@
         addStep("think", "think", "◉",
           `thinking · <b>${esc(e.agent || "")}</b> <span class="pill">${esc(e.model || "")}</span>`,
           ts() + "turn " + (e.turn || "?") + "/" + (e.max_turns || "?") + " · waiting for model response");
-        setPhase("thinking", "thinking · " + (e.agent || "") + " · " + (e.model || ""),
+        setPhase("thinking", phaseSay("run.phase.thinking", {agent: e.agent || "", model: e.model || ""},
+          "thinking · {agent} · {model}"),
           "turn " + (e.turn || "?") + "/" + (e.max_turns || "?"));
         updateTelemetry();
         break;
@@ -586,7 +611,8 @@
           (preview ? `<span class="cmd">${esc(trunc(preview, 900))}</span>` : "") +
           (e.args ? `<details class="live-output"><summary>Arguments</summary><pre>${esc(trunc(JSON.stringify(e.args, null, 2), 24_000))}</pre></details>` : ""),
           ts() + "executing" + (isCmd ? " shell command" : ""));
-        setPhase("tool", "running " + (e.tool || "tool"), trunc(preview.replace(/\s+/g, " "), 70));
+        setPhase("tool", phaseSay("run.phase.tool", {tool: e.tool || "tool"}, "running {tool}"),
+          trunc(preview.replace(/\s+/g, " "), 70));
         break;
       }
       case "tool_result": {
@@ -603,7 +629,8 @@
           $("secErrors").textContent = state.counters.errors;
           pushSec("bad", "tool error: " + trunc(out, 80));
         }
-        setPhase("thinking", "thinking · " + (state.activeAgent || ""), "");
+        setPhase("thinking", phaseSay("run.phase.thinkingAgent", {agent: state.activeAgent || ""},
+          "thinking · {agent}"), "");
         break;
       }
       case "process":
@@ -668,7 +695,7 @@
         $("secErrors").textContent = state.counters.errors;
         addStep("error", "error", "✗", esc(e.message || JSON.stringify(e)));
         pushSec("bad", trunc(e.message || "error", 90));
-        setPhase("error", "error · " + trunc(e.message || "", 80), "");
+        setPhase("error", phaseSay("run.phase.error", {message: trunc(e.message || "", 80)}, "error · {message}"), "");
         break;
       }
       case "approval_request": {
@@ -681,7 +708,8 @@
         addStep("tool_call", "approval", "⚠",
           `<b>${esc(e.tool)}</b> is waiting for your approval <span class="pill warn">${esc(e.risk || "")}</span>`,
           ts());
-        setPhase("waiting", "waiting for approval · " + (e.tool || ""), "approve or deny above the log");
+        setPhase("waiting", phaseSay("run.phase.waitingApproval", {tool: e.tool || ""}, "waiting for approval · {tool}"),
+          tr("run.phase.waitMeta", {}, "approve or deny above the log"));
         break;
       }
       case "approval_response": {
@@ -766,8 +794,9 @@
     $("cancelBtn").disabled = false;
     $("taskId").textContent = "starting…";
     $("sbTask").textContent = body.pipeline ? body.pipeline + " :: " + trunc(task, 60) : trunc(task, 70);
-    $("telState").textContent = "running";
-    setPhase("routing", "routing · " + (body.role || "auto"), body.pipeline ? "pipeline " + body.pipeline : "");
+    $("telState").textContent = stateLabel("running");
+    setPhase("routing", phaseSay("run.phase.routing", {role: body.role || "auto"}, "routing · {role}"),
+      body.pipeline ? tr("run.phase.pipelineMeta", {name: body.pipeline}, "pipeline {name}") : "");
     addStep("role", "task", "▶", esc(task), body.pipeline ? "pipeline " + body.pipeline : "one-shot run");
     startElapsed();
 
@@ -780,8 +809,8 @@
       actionError(res.error || "Could not start task");
       stopElapsed();
       addStep("error", "error", "✗", esc((res && res.error) || "could not start the task"));
-      setPhase("error", "could not start the task", "");
-      $("telState").textContent = "error";
+      setPhase("error", phaseSay("run.phase.startFailed", {}, "could not start the task"), "");
+      $("telState").textContent = stateLabel("error");
       return;
     }
     state.taskId = res.task_id;
@@ -808,7 +837,7 @@
     $("turnBar").style.width = "0%";
     $("routeRole").textContent = "—";
     $("routeMethod").textContent = "—";
-    $("routeHits").textContent = "waiting for a route decision…";
+    $("routeHits").textContent = tr("run.routeWaiting", {}, "waiting for a route decision…");
     Object.keys(state.agents).forEach((n) => setAgentStatus(n, "idle"));
     setActiveAgent(null);
     drawAllSparks();
@@ -852,11 +881,17 @@
     const r = e.result || {};
     const blocked = r.execution?.state === "blocked";
     const ok = r.ok === true && e.status === "done" && !blocked;
-    const outcome = e.status === "cancelled" ? "run cancelled" : blocked ? "run blocked" : ok ?
-      (r.execution?.required ? "run finished · acceptance unverified" : "run complete") : "run failed";
-    $("telState").textContent = e.status || (ok ? "done" : "error");
-    $("sbState").textContent = e.status || "done";
-    setPhase(e.status === "cancelled" ? "cancelled" : ok ? "done" : "error", outcome + " · " + (r.role || "") + " · " + (r.agent || ""),
+    const outcome = e.status === "cancelled"
+      ? tr("run.outcome.cancelled", {}, "run cancelled")
+      : blocked ? tr("run.outcome.blocked", {}, "run blocked")
+      : ok ? (r.execution?.required
+        ? tr("run.outcome.unverified", {}, "run finished · acceptance unverified")
+        : tr("run.outcome.complete", {}, "run complete"))
+      : tr("run.outcome.failed", {}, "run failed");
+    $("telState").textContent = stateLabel(e.status || (ok ? "done" : "error"));
+    $("sbState").textContent = stateLabel(e.status || "done");
+    setPhase(e.status === "cancelled" ? "cancelled" : ok ? "done" : "error",
+      phaseSay("run.outcome.line", {outcome: outcome, role: r.role || "", agent: r.agent || ""}, "{outcome} · {role} · {agent}"),
       (r.duration_s != null ? r.duration_s + "s" : ""));
     setUplink("online", "ok");
 
@@ -871,7 +906,7 @@
     updateTelemetry();
     $("telTime").textContent = (r.duration_s != null ? r.duration_s.toFixed(1) : "0.0") + "s";
     if (r.role) { $("telRole").textContent = r.role; $("sbRole").textContent = "role " + r.role; }
-    if (r.agent) $("telAgent").textContent = "agent " + r.agent;
+    if (r.agent) $("telAgent").textContent = tr("run.agentLabel", {name: r.agent}, "agent {name}");
 
     const steps = Array.isArray(r.steps) ? r.steps : [];
     const summary = r.error || (blocked ? r.stopped_reason : "") || r.summary || r.text || "";
@@ -905,7 +940,8 @@
     hideApproval();
     actionError("");
     addStep("status", "stop process", "■", "Stop requested for this task; awaiting actual process termination events.", ts());
-    setPhase("waiting", "stop requested · cancelling current operation", "no further tools will start; model/network requests may wait for timeout");
+    setPhase("waiting", phaseSay("run.phase.stopRequested", {}, "stop requested · cancelling current operation"),
+      tr("run.phase.stopMeta", {}, "no further tools will start; model/network requests may wait for timeout"));
     return true;
   }
 
@@ -949,12 +985,19 @@
     $("statToolCalls").textContent = String(state.counters.toolCalls);
     const samples = state.spark.latency.slice(-3);
     const average = samples.length ? Math.round(samples.reduce((a, b) => a + b, 0) / samples.length) + "ms" : null;
-    $("statLatency").textContent = average || "No results yet";
-    $("statLatency").title = average ? "Mean duration of the last three completed tools" : "No tool durations recorded in this run yet";
+    $("statLatency").textContent = average || tr("run.noResults", {}, "No results yet");
+    $("statLatency").title = average
+      ? tr("run.avgToolHint", {}, "Mean duration of the last three completed tools")
+      : tr("run.avgToolEmpty", {}, "No tool durations recorded in this run yet");
     $("monLatency").textContent = average || "—";
     $("liveRunNote").textContent = state.taskId
-      ? "Task " + state.taskId + (state.running ? " · live server events. Tool timing appears after completion." : " · retained run events. Open another run from History to view its metrics.")
-      : "No Nexus task selected. Start a task here or open one from History. These figures follow Nexus run events only.";
+      ? (state.running
+        ? tr("run.noteLive", {id: state.taskId},
+             "Task {id} · live server events. Tool timing appears after completion.")
+        : tr("run.noteRetained", {id: state.taskId},
+             "Task {id} · retained run events. Open another run from History to view its metrics."))
+      : tr("run.noTask", {},
+           "No Nexus task selected. Start a task here or open one from History. These figures follow Nexus run events only.");
   }
 
   const themeVar = (name, fallback) => {
@@ -1025,8 +1068,8 @@
     $("memPath").textContent = body.path || "—";
     const text = String(body.text || "").trim();
     $("memBody").textContent = text || (body.enabled === false
-      ? "memory is disabled (settings.memory_enabled=false)"
-      : "no memory notes for this role yet — the agent writes here with the `remember` tool.");
+      ? tr("run.memoryDisabled", {}, "memory is disabled (settings.memory_enabled=false)")
+      : tr("run.memoryEmpty", {}, "no memory notes for this role yet — the agent writes here with the `remember` tool."));
   }
 
   /* ── learning brain (skills + memory + recall) ───────────────────── */
@@ -1102,7 +1145,8 @@
     $("cancelBtn").addEventListener("click", cancel);
     $("clearBtn").addEventListener("click", () => {
       if (state.running) return;
-      $("stream").innerHTML = '<div class="stream-empty" id="streamEmpty"><span class="big">◈</span><p>Cleared. Describe a task below and press run.</p></div>';
+      $("stream").innerHTML = '<div class="stream-empty" id="streamEmpty"><span class="big">◈</span><p></p></div>';
+      $("streamEmpty").lastElementChild.textContent = tr("run.clearedNote", {}, "Cleared. Describe a task below and press run.");
     });
     $("taskInput").addEventListener("keydown", (e) => {
       if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { e.preventDefault(); run(); }
@@ -1169,7 +1213,9 @@
     }
     hideApproval();
     actionError("");
-    setPhase("thinking", approved ? "approval received · resuming" : "denial received", "");
+    setPhase("thinking", approved
+      ? phaseSay("run.phase.approvalReceived", {}, "approval received · resuming")
+      : phaseSay("run.phase.denialReceived", {}, "denial received"), "");
   }
 
   window.nexusSelectedTask = () => ({id:state.taskId, github_repo:state.githubRepo || null});
@@ -1232,6 +1278,19 @@
   })();
 
   // Theme backgrounds are CSS only; no fabricated traffic or geographic nodes.
+
+  /* A language switch must repaint the strings this script composed itself.
+     Static markup is handled by i18n.apply(); these are rebuilt from the state
+     already in memory, so no request and no simulated value is introduced. */
+  /* i18n.js is parsed after this file, so onLoad handlers registered here would
+     never attach. The language event exists from the first switch onward. */
+  document.addEventListener("nexus:language", () => {
+    if (state.stats) applyStats(state.stats);
+    renderRunMetrics();
+    if (lastPhase) $("phaseText").textContent = tr(lastPhase.key, lastPhase.vars, lastPhase.fallback);
+    refreshMemory($("memRole")?.textContent);
+    refreshBrain();
+  });
 
   window.addEventListener("error", (e) => {
     const stream = $("stream");

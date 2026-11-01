@@ -4,26 +4,28 @@
   const root = document.getElementById("integrations");
   if (!root) return;
   root.innerHTML = `
-    <details open><summary>Local models</summary>
-      <p>Choose a downloaded model, or keep automatic hosted routing.</p>
-      <label for="localModel">Ollama model</label>
-      <select id="localModel"><option value="">Auto · configured agents</option></select>
-      <button type="button" id="refreshLocal">Refresh models</button>
-      <p id="ollamaStatus" role="status">Checking Ollama…</p>
-      <small>Selected local models use text-mode tools, including models without native tool support. No cloud fallback. Ollama must run on the same machine as the Nexus server (not necessarily your browser).</small>
+    <details open><summary data-i18n="models.title">Local models</summary>
+      <p data-i18n="models.note">Choose a downloaded model, or keep automatic hosted routing.</p>
+      <label for="localModel" data-i18n="models.modelLabel">Ollama model</label>
+      <select id="localModel"><option value="" data-i18n="models.autoOption">Auto · configured agents</option></select>
+      <button type="button" id="refreshLocal" data-i18n="models.refresh">Refresh models</button>
+      <p id="ollamaStatus" role="status" data-i18n="models.checking">Checking Ollama…</p>
+      <small data-i18n="models.textModeNote">Selected local models use text-mode tools, including models without native tool support. No cloud fallback. Ollama must run on the same machine as the Nexus server (not necessarily your browser).</small>
     </details>
-    <section id="serverMonitor" aria-label="Server hardware monitoring">
-      <div class="hardware-head"><div class="hardware-title"><span class="hardware-beacon" aria-hidden="true"></span><div><small>RESOURCE TELEMETRY</small><b>SERVER HARDWARE</b></div></div><button type="button" id="refreshHardware" aria-label="Refresh hardware measurements"><span aria-hidden="true">↻</span> Refresh</button></div>
-      <div class="hardware-sample"><span id="hardwareState">READING</span><p id="hardwareStatus" role="status">Reading server measurements…</p></div>
+    <section id="serverMonitor" aria-label="Server hardware monitoring" data-i18n-aria="hw.sectionLabel">
+      <div class="hardware-head"><div class="hardware-title"><span class="hardware-beacon" aria-hidden="true"></span><div><small data-i18n="hw.kicker">RESOURCE TELEMETRY</small><b data-i18n="hw.title">SERVER HARDWARE</b></div></div><button type="button" id="refreshHardware" aria-label="Refresh hardware measurements" data-i18n-aria="hw.refreshAria"><i class="hw-glyph" aria-hidden="true">↻</i> <span data-i18n="hw.refresh">Refresh</span></button></div>
+      <div class="hardware-sample"><span id="hardwareState" data-i18n="hw.reading">READING</span><p id="hardwareStatus" role="status" data-i18n="hw.status">Reading server measurements…</p></div>
       <div class="hardware-grid">
-        <div class="hardware-card hardware-primary hardware-cpu"><div class="hardware-dial no-reading" id="hardwareCpuDial" aria-hidden="true"><span>CPU</span></div><div class="hardware-card-copy"><span class="hardware-label">PROCESSOR LOAD</span><b id="hardwareCpu">Unavailable</b><small>System utilization</small></div><meter id="hardwareCpuMeter" aria-label="CPU utilization" min="0" max="100" value="0" hidden></meter></div>
-        <div class="hardware-card hardware-ram"><div class="hardware-card-top"><span class="hardware-label"><span aria-hidden="true">▥</span> MEMORY</span><span class="hardware-unit">RAM</span></div><b id="hardwareRam">Unavailable</b><div class="hardware-track" aria-hidden="true"><span id="hardwareRamFill"></span></div><meter id="hardwareRamMeter" aria-label="RAM utilization" min="0" max="100" value="0" hidden></meter><small>Used / installed</small></div>
-        <div class="hardware-card hardware-mini"><span class="hardware-label"><span aria-hidden="true">▤</span> WORKSPACE DISK</span><b id="hardwareDisk">Unavailable</b><div class="hardware-track" aria-hidden="true"><span id="hardwareDiskFill"></span></div><small>Used / capacity</small></div>
-        <div class="hardware-card hardware-mini hardware-process"><span class="hardware-label"><span aria-hidden="true">◈</span> NEXUS PROCESS</span><b id="hardwareProcess">Unavailable</b><small>Resident memory · RSS</small></div>
+        <div class="hardware-card hardware-primary hardware-cpu"><div class="hardware-dial no-reading" id="hardwareCpuDial" aria-hidden="true"><span>CPU</span></div><div class="hardware-card-copy"><span class="hardware-label" data-i18n="hw.processor">PROCESSOR LOAD</span><b id="hardwareCpu">Unavailable</b><small data-i18n="hw.utilization">System utilization</small></div><meter id="hardwareCpuMeter" aria-label="CPU utilization" min="0" max="100" value="0" hidden></meter></div>
+        <div class="hardware-card hardware-ram"><div class="hardware-card-top"><span class="hardware-label"><span aria-hidden="true">▥</span> <span data-i18n="hw.memory">MEMORY</span></span><span class="hardware-unit">RAM</span></div><b id="hardwareRam">Unavailable</b><div class="hardware-track" aria-hidden="true"><span id="hardwareRamFill"></span></div><meter id="hardwareRamMeter" aria-label="RAM utilization" min="0" max="100" value="0" hidden></meter><small>Used / installed</small></div>
+        <div class="hardware-card hardware-mini"><span class="hardware-label"><span aria-hidden="true">▤</span> <span data-i18n="hw.disk">WORKSPACE DISK</span></span><b id="hardwareDisk">Unavailable</b><div class="hardware-track" aria-hidden="true"><span id="hardwareDiskFill"></span></div><small data-i18n="hw.usedCapacity">Used / capacity</small></div>
+        <div class="hardware-card hardware-mini hardware-process"><span class="hardware-label"><span aria-hidden="true">◈</span> <span data-i18n="hw.process">NEXUS PROCESS</span></span><b id="hardwareProcess">Unavailable</b><small data-i18n="hw.rss">Resident memory · RSS</small></div>
       </div>
-      <div class="hardware-gpu-panel"><div class="hardware-card-top"><span class="hardware-label"><span aria-hidden="true">▦</span> GPU / VRAM</span><span id="hardwareGpuState">UNAVAILABLE</span></div><div id="hardwareGpu">GPU measurements unavailable</div></div>
-      <details class="hardware-details"><summary>Measurement details <span>5s refresh</span></summary><small id="hardwareNote">Actual server environment, not this browser. Refreshes every 5 seconds while visible.</small></details>
+      <div class="hardware-gpu-panel"><div class="hardware-card-top"><span class="hardware-label"><span aria-hidden="true">▦</span> GPU / VRAM</span><span id="hardwareGpuState" data-i18n="hw.unavailableState">UNAVAILABLE</span></div><div id="hardwareGpu" data-i18n="hw.gpuUnavailable">GPU measurements unavailable</div></div>
+      <details class="hardware-details"><summary><span data-i18n="hw.details">Measurement details</span> <span data-i18n="hw.refresh5s">5s refresh</span></summary><small id="hardwareNote" data-i18n="hw.footNote">Actual server environment, not this browser. Refreshes every 5 seconds while visible.</small></details>
     </section>`;
+  /* i18n.js is parsed after this file, so translate lazily and keep English here. */
+  const tr = (key, fallback) => { const v = window.nexusI18n?.t?.(key); return v && v !== key ? v : fallback; };
   const select = document.getElementById("localModel");
   const token = ''; // Shared HttpOnly GUI session; no URL credentials.
   async function get(path) {
@@ -40,7 +42,7 @@
   async function refreshLocal() {
     const status = document.getElementById("ollamaStatus");
     const previous = select.value;
-    status.textContent = "Checking Ollama…";
+    status.textContent = tr("models.checking", "Checking Ollama…");
     try {
       const data = await get("/api/ollama");
       select.replaceChildren(new Option("Auto · configured agents", ""));
@@ -63,9 +65,9 @@
     $(id).classList.toggle("no-reading", !finite(value));
   }
   function unavailable(message) {
-    ["hardwareCpu", "hardwareRam", "hardwareDisk", "hardwareProcess"].forEach(id => $(id).textContent = "Unavailable");
+    ["hardwareCpu", "hardwareRam", "hardwareDisk", "hardwareProcess"].forEach(id => $(id).textContent = tr("hw.unavailable", "Unavailable"));
     meter("hardwareCpuMeter", null); meter("hardwareRamMeter", null);
-    $("hardwareGpu").textContent = "GPU measurements unavailable";
+    $("hardwareGpu").textContent = tr("hw.gpuUnavailable", "GPU measurements unavailable");
     $("hardwareStatus").textContent = message;
     $("serverMonitor").dataset.state = "unavailable"; $("hardwareState").textContent = "OFFLINE";
     $("hardwareGpuState").textContent = "UNAVAILABLE";
@@ -76,7 +78,7 @@
     if (measuring) return;
     measuring = true; $("refreshHardware").disabled = true;
     $("serverMonitor").dataset.state = "loading"; $("serverMonitor").setAttribute("aria-busy", "true");
-    $("hardwareState").textContent = "READING";
+    $("hardwareState").textContent = tr("hw.reading", "READING");
     try {
       const observed = await get("/api/workbench/metrics"), data = observed.data;
       if (!data || typeof data !== "object") throw new Error("Server measurements unavailable");

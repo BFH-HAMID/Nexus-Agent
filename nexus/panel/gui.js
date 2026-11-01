@@ -106,15 +106,30 @@
 document.addEventListener('DOMContentLoaded', () => {
   'use strict';
   const gui = window.nexusGui;
+  /* English stays the in-markup default; i18n.js answers when it is loaded. */
+  const tr = (key, vars, fallback) => {
+    const value = window.nexusI18n?.t?.(key, vars);
+    if (value && value !== key) return value;
+    return vars ? fallback.replace(/\{(\w+)\}/g, (_, name) => (vars[name] ?? '')) : fallback;
+  };
   const make = (tag, text, cls) => { const node = document.createElement(tag); if (text !== undefined) node.textContent = text; if (cls) node.className = cls; return node; };
-  for (const [view, title, description] of [
-    ['run', 'Run & chat', 'Compose tasks, follow actual tool activity, and review permission requests before actions execute.'],
-    ['operations', 'Your work, in focus', 'Track queued work, inspect stored evidence, and approve only the exact actions you intend.'],
-    ['world', 'A wider perspective', 'Explore the globe, public headlines and weather. Source availability and freshness remain visible.']
+  for (const [view, title, description, titleKey, descKey] of [
+    ['run', 'Run & chat', 'Compose tasks, follow actual tool activity, and review permission requests before actions execute.',
+      'gui.heading.run', 'gui.desc.run'],
+    ['operations', 'Your work, in focus', 'Track queued work, inspect stored evidence, and approve only the exact actions you intend.',
+      'gui.heading.operations', 'gui.desc.operations'],
+    ['world', 'A wider perspective', 'Explore the globe, public headlines and weather. Source availability and freshness remain visible.',
+      'gui.heading.world', 'gui.desc.world']
   ]) {
     const header = make('header', undefined, 'ui-section-heading'), text = make('div');
-    text.append(make('small', view === 'world' ? 'World intelligence' : 'Desktop workspace'), make('h2', title), make('p', description));
-    header.append(text, make('span', 'Ctrl + Shift + P · Find controls', 'ui-shortcut'));
+    const kicker = make('small', view === 'world' ? 'World intelligence' : 'Desktop workspace');
+    kicker.dataset.i18n = view === 'world' ? 'gui.kicker.world' : 'gui.kicker.desktop';
+    const heading = make('h2', title); heading.dataset.i18n = titleKey;
+    const note = make('p', description); note.dataset.i18n = descKey;
+    text.append(kicker, heading, note);
+    const shortcut = make('span', 'Ctrl + Shift + P · Find controls', 'ui-shortcut');
+    shortcut.dataset.i18n = 'gui.shortcut';
+    header.append(text, shortcut);
     document.querySelector(`[data-gui-view="${view}"]`)?.prepend(header);
   }
   const preferences = make('div', undefined, 'ui-preferences'); preferences.setAttribute('role', 'group');
@@ -141,46 +156,69 @@ document.addEventListener('DOMContentLoaded', () => {
   window.nexusI18n?.apply?.(preferences);
   const grid = document.getElementById('dcGrid'), search = document.getElementById('dcSearch');
   if (grid && search) {
-    const cards = [...grid.querySelectorAll('.dc-card')], title = card => card.querySelector('h2').textContent;
-    const categoryOf = card => card.querySelector('.dc-category').textContent.trim();
+    /* `title`/`categoryOf` are the stable English identity used by favourites and
+       filters; `shown` is what the card currently displays, in either language. */
+    const cards = [...grid.querySelectorAll('.dc-card')];
+    const title = card => card.dataset.controlName || card.querySelector('h2').textContent;
+    const shown = card => card.querySelector('h2').textContent;
+    const categoryOf = card => card.dataset.categoryName || card.querySelector('.dc-category').textContent.trim();
     let saved = [];
     try { const data = JSON.parse(localStorage.getItem('nexus.ui.favourites') || '[]'); if (Array.isArray(data)) saved = data.slice(0, 100).filter(value => typeof value === 'string'); } catch { /* Malformed or blocked storage. */ }
     const favourites = new Set(saved.filter(value => cards.some(card => title(card) === value)));
     let category = 'All controls';
     const bar = make('div', undefined, 'ui-filter-bar'), filters = make('div', undefined, 'ui-category-filters');
     filters.setAttribute('role', 'group'); filters.setAttribute('aria-label', 'Filter controls by category');
+    filters.dataset.i18nAria = 'gui.filterLabel';
     const result = make('p', undefined, 'ui-result-count'); result.setAttribute('role', 'status');
-    const clear = make('button', 'Clear filters', 'btn ghost'); clear.type = 'button';
+    const clear = make('button', 'Clear filters', 'btn ghost'); clear.type = 'button'; clear.dataset.i18n = 'gui.clearFilters';
     function filter() {
       let count = 0; const query = search.value.trim().toLowerCase();
       for (const card of cards) {
         const match = category === 'All controls' || (category === 'Favourites' ? favourites.has(title(card)) : categoryOf(card) === category);
-        card.hidden = !match || ![title(card), categoryOf(card), card.querySelector('p').textContent].join(' ').toLowerCase().includes(query);
+        card.hidden = !match || ![title(card), shown(card), categoryOf(card), card.querySelector('p').textContent].join(' ').toLowerCase().includes(query);
         if (!card.hidden) count++;
       }
       filters.querySelectorAll('button').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.category === category)));
-      result.textContent = count + ' of ' + cards.length + ' controls' + (category === 'Favourites' ? ' · saved in this browser' : '');
+      const countText = tr('gui.count', {count, total: cards.length}, '{count} of {total} controls');
+      result.textContent = countText + (category === 'Favourites'
+        ? tr('gui.savedHere', {}, ' · saved in this browser') : '');
       const empty = document.getElementById('dcEmpty'); empty.hidden = count > 0;
-      empty.textContent = category === 'Favourites' && !favourites.size ? 'No favourites yet. Use the star on a control to keep it here.' : 'No controls match these filters. Clear filters or try another feature name.';
+      empty.textContent = category === 'Favourites' && !favourites.size
+        ? tr('gui.emptyFavourites', {}, 'No favourites yet. Use the star on a control to keep it here.')
+        : tr('gui.emptyFilter', {}, 'No controls match these filters. Clear filters or try another feature name.');
       clear.hidden = category === 'All controls' && !query;
     }
+    /* `dataset.category` keeps the English identity; only the label is translated. */
     for (const name of ['All controls', 'Favourites', ...new Set(cards.map(categoryOf))]) {
-      const button = make('button', name); button.type = 'button'; button.dataset.category = name; button.onclick = () => { category = name; filter(); }; filters.append(button);
+      const button = make('button', name); button.type = 'button'; button.dataset.category = name;
+      button.dataset.categoryKey = name === 'All controls' ? 'gui.allControls'
+        : name === 'Favourites' ? 'gui.favourites'
+        : (cards.find(card => categoryOf(card) === name)?.dataset.categoryKey || 'gui.allControls');
+      button.onclick = () => { category = name; filter(); }; filters.append(button);
     }
+    const paintFilterLabels = () => {
+      for (const button of filters.querySelectorAll('button')) button.textContent = tr(button.dataset.categoryKey, {}, button.dataset.category);
+      filter();
+    };
     const icons = {Execution:'M5 4l14 8-14 8z',Intelligence:'M8 3h8v4h4v10h-4v4H8v-4H4V7h4z M9 10h6v4H9z',Security:'M12 3l8 3v6c0 5-8 9-8 9s-8-4-8-9V6z M8 12l3 3 5-6',Privacy:'M7 10V7a5 5 0 0110 0v3 M5 10h14v11H5z M12 14v3',World:'M3 12h18 M12 3c-6 5-6 13 0 18 6-5 6-13 0-18 M3 12a9 9 0 1018 0 9 9 0 10-18 0'};
     for (const card of cards) {
       const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); svg.setAttribute('viewBox', '0 0 24 24'); svg.setAttribute('aria-hidden', 'true'); svg.classList.add('ui-card-icon');
       const path = document.createElementNS(svg.namespaceURI, 'path'); path.setAttribute('d', icons[categoryOf(card)] || 'M3 3h7v7H3z M14 3h7v7h-7z M3 14h7v7H3z M14 14h7v7h-7z'); svg.append(path); card.prepend(svg);
       const star = make('button', undefined, 'ui-favourite'); star.type = 'button';
-      const sync = () => { const active = favourites.has(title(card)); star.textContent = active ? '★' : '☆'; star.setAttribute('aria-label', 'Favourite ' + title(card)); star.setAttribute('aria-pressed', String(active)); card.classList.toggle('ui-saved', active); };
+      const sync = () => { const active = favourites.has(title(card)); star.textContent = active ? '★' : '☆'; star.setAttribute('aria-label', tr('gui.favourite', {title: shown(card)}, 'Favourite {title}')); star.setAttribute('aria-pressed', String(active)); card.classList.toggle('ui-saved', active); };
       star.onclick = () => { const name = title(card); if (favourites.has(name)) favourites.delete(name); else favourites.add(name); sync(); filter(); try { localStorage.setItem('nexus.ui.favourites', JSON.stringify([...favourites])); } catch { /* Session-only fallback. */ } };
       sync(); card.append(star);
     }
     search.oninput = filter; clear.onclick = () => { search.value = ''; category = 'All controls'; filter(); search.focus(); };
-    bar.append(filters, clear); document.querySelector('.dc-toolbar').after(bar, result); filter();
-    const actions = make('div', undefined, 'ui-quick-actions'); actions.setAttribute('role', 'group'); actions.setAttribute('aria-label', 'Quick navigation');
-    for (const [label, view, focus] of [['Compose a task', 'run', 'taskInput'], ['Review approvals', 'operations', 'reviews']]) {
-      const button = make('button', label, 'btn'); button.type = 'button'; button.onclick = () => { gui.show(view); const target = document.getElementById(focus); target?.scrollIntoView({block:'center'}); if (focus === 'taskInput') target?.focus(); }; actions.append(button);
+    bar.append(filters, clear); document.querySelector('.dc-toolbar').after(bar, result);
+    window.nexusI18n?.apply?.(bar); window.nexusI18n?.apply?.(result);
+    paintFilterLabels();
+    document.addEventListener('nexus:language', () => { paintFilterLabels(); for (const card of cards) { const star = card.querySelector('.ui-favourite'); if (star) star.setAttribute('aria-label', tr('gui.favourite', {title: shown(card)}, 'Favourite {title}')); } });
+    const actions = make('div', undefined, 'ui-quick-actions'); actions.setAttribute('role', 'group');
+    actions.setAttribute('aria-label', 'Quick navigation'); actions.dataset.i18nAria = 'gui.quickNav';
+    for (const [label, view, focus, key] of [['Compose a task', 'run', 'taskInput', 'gui.compose'],
+      ['Review approvals', 'operations', 'reviews', 'gui.review']]) {
+      const button = make('button', label, 'btn'); button.type = 'button'; button.dataset.i18n = key; button.onclick = () => { gui.show(view); const target = document.getElementById(focus); target?.scrollIntoView({block:'center'}); if (focus === 'taskInput') target?.focus(); }; actions.append(button);
     }
     document.querySelector('.dc-hero > div')?.append(actions);
   }

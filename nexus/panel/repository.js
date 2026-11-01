@@ -1,6 +1,12 @@
 /* Real repository controls; no mutation on load, selection, refresh, or preview. */
 (() => {
   'use strict';
+  /* English stays in the markup; i18n.js is parsed later, so translate lazily. */
+  const tr = (key, vars, fallback) => {
+    const value = window.nexusI18n?.t?.(key, vars);
+    if (value && value !== key) return value;
+    return vars ? fallback.replace(/\{(\w+)\}/g, (_, name) => (vars[name] ?? '')) : fallback;
+  };
   const token = ''; // Shared HttpOnly GUI session; no URL credentials.
   const bar = document.createElement('section'); bar.id = 'repoBar'; bar.setAttribute('aria-label','Repository controls');
   const branchIcon = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><circle cx="6" cy="5" r="3"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="19" r="3"/><path d="M6 8v8m12-7a9 9 0 0 1-9 9"/></svg>';
@@ -57,13 +63,23 @@
     const current = repositories.find(repo => repo.id === selected);
     if(current && !matches.includes(current)) matches.unshift(current);
     $('repoSelect').replaceChildren();
-    const placeholder = document.createElement('option');placeholder.value='';placeholder.textContent='No repository · GitHub off / local workspace';$('repoSelect').append(placeholder);
+    const placeholder = document.createElement('option');placeholder.value='';placeholder.textContent=tr('repo.none','No repository · GitHub off / local workspace');$('repoSelect').append(placeholder);
     for(const repo of matches){const option=document.createElement('option');option.value=repo.id;option.textContent=repo.name+(repo.private?' · private':'')+(repo.archived?' · archived':'');option.dataset.agentWorkspace=String(Boolean(repo.agent_workspace));option.title='GitHub: '+repo.name;$('repoSelect').append(option);}
     if(!matches.length && repositories.length){const option=document.createElement('option');option.disabled=true;option.textContent='No matching repositories';$('repoSelect').append(option);}
     $('repoSelect').value=current?current.id:'';
   }
+  document.addEventListener('nexus:language', () => {
+    const workspace = document.getElementById('taskWorkspace');
+    if (!workspace) return;
+    const id = $('repoSelect').value;
+    workspace.textContent = id
+      ? tr('run.taskTargetGithub', {repo: id}, 'Task target: GitHub {repo} · new task branch after permission · no clone/local tests')
+      : tr('repo.taskLocal', {path: document.getElementById('metaWs').title}, 'Task workspace: {path} · no GitHub repository attached. Existing runs keep their original target.');
+    workspace.title = workspace.textContent;
+  });
+
   async function refresh() {
-    const id=$('repoSelect').value; if(!id){const workspace=document.getElementById('taskWorkspace');if(workspace){workspace.textContent='Task workspace: '+document.getElementById('metaWs').title+' · no GitHub repository attached. Existing runs keep their original target.';workspace.title=workspace.textContent;}status=null;$('repoBranch').textContent=detached?'GitHub off · new tasks local':'No repository attached';$('repoAdded').textContent='Local diff unavailable';$('repoDeleted').textContent='';$('repoBinary').textContent='';$('repoScope').hidden=true;controls();return;}
+    const id=$('repoSelect').value; if(!id){const workspace=document.getElementById('taskWorkspace');if(workspace){workspace.textContent=tr('repo.taskLocal',{path:document.getElementById('metaWs').title},'Task workspace: {path} · no GitHub repository attached. Existing runs keep their original target.');workspace.title=workspace.textContent;}status=null;$('repoBranch').textContent=detached?'GitHub off · new tasks local':'No repository attached';$('repoAdded').textContent='Local diff unavailable';$('repoDeleted').textContent='';$('repoBinary').textContent='';$('repoScope').hidden=true;controls();return;}
     const epoch=++statusGeneration;
     const measured=await api('status?repo='+encodeURIComponent(id));
     if(id!==$('repoSelect').value||epoch!==statusGeneration)return;status=measured;
@@ -75,7 +91,7 @@
     $('repoScope').textContent=task?'Direct GitHub task · '+task.branch+' · commits on GitHub; no local tests':'Selected repo is the next task target · new GitHub branch after permission · no clone/local tests';
     if(task)$('repoBranch').textContent=task.branch+' · GitHub task';
     const workspace = document.getElementById('taskWorkspace');
-    if(workspace){workspace.textContent='Task target: GitHub '+id+' · new task branch after permission · no clone/local tests';workspace.title=workspace.textContent;}
+    if(workspace){workspace.textContent=tr('run.taskTargetGithub',{repo:id},'Task target: GitHub {repo} · new task branch after permission · no clone/local tests');workspace.title=workspace.textContent;}
     $('repoAdded').textContent=task?((task.files||[]).length+' remote files'):(local?'+'+status.additions:'Local diff unavailable');$('repoDeleted').textContent=local?'−'+status.deletions:'';$('repoBinary').textContent=status.binary_changes?' · binary changes':'';
     $('repoCounts').title=local?'Actual changes in the matching server workspace':'No matching server workspace. Remote PRs are available; local commit/push are disabled.';
     $('repoBarError').textContent='';controls();

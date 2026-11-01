@@ -14,8 +14,21 @@ function controlState() {
 function changed(key, value) { const next = JSON.stringify(value); if (rendered[key] === next) return false; rendered[key] = next; return true; }
 function access(connected) {
   for (const n of document.querySelectorAll('[data-control], #autonomy, #quiet, #dnd, #dnd-off, #runtime-enable, #runtime-disable, #delegate button, #jobs button, #approvals button, #allow, #deny')) n.disabled = !connected;
-  $('connection-help').textContent = window.nexusGui ? (connected ? 'Connected through the same Nexus GUI session. Control background tasks here; World, news and weather use the World tab.' : 'Connecting through your existing Nexus GUI session…') : connected ? 'Connected. Queue a task, review approvals and control the worker here. World and weather are further down on this same page.' : 'Connect with your private token to enable controls. Remember this browser to reconnect automatically.';
+  $('connection-help').textContent = window.nexusGui
+    ? (connected
+      ? tr('ops.helpShared', {}, 'Connected through the same Nexus GUI session. Control background tasks here; World, news and weather use the World tab.')
+      : tr('ops.helpConnecting', {}, 'Connecting through your existing Nexus GUI session…'))
+    : connected
+      ? tr('ops.helpOpen', {}, 'Connected. Queue a task, review approvals and control the worker here. World and weather are further down on this same page.')
+      : tr('ops.helpToken', {}, 'Connect with your private token to enable controls. Remember this browser to reconnect automatically.');
 }
+/** Operations view text. English here is the fallback and byte-matches the old
+ *  wording, so English mode is unchanged; i18n.js owns the Bangla table. */
+const tr = (key, vars, fallback) => {
+  const value = window.nexusI18n?.t?.(key, vars);
+  if (value && value !== key) return value;
+  return vars ? fallback.replace(/\{(\w+)\}/g, (_, name) => (vars[name] ?? '')) : fallback;
+};
 const message = text => { $('error').textContent = text; };
 async function api(path, body) {
   if (window.nexusGui) return window.nexusGui.api('/api/operations/' + path, body);
@@ -29,7 +42,9 @@ async function perform(operation, body) {
   const value = await api('action/' + operation, body);
   pendingControl = operation === 'control' ? {action: body.action, expected: {start:'running',resume:'running',pause:'paused',stop:'stopped',kill:'killed'}[body.action]} : null;
   $('detail').textContent = JSON.stringify(value, null, 2);
-  $('action-status').textContent = value.confirmed === false ? 'Request saved. Waiting for the worker to acknowledge; check Worker status above.' : 'Action saved. Current state is refreshed below.';
+  $('action-status').textContent = value.confirmed === false
+    ? tr('ops.savedWaiting', {}, 'Request saved. Waiting for the worker to acknowledge; check Worker status above.')
+    : tr('ops.savedCurrent', {}, 'Action saved. Current state is refreshed below.');
   paint(await api('state'));
   return value;
 }
@@ -54,35 +69,60 @@ async function inspect(kind, id) {
   pendingControl = null;
   const value = await api(kind + '/' + encodeURIComponent(id));
   $('detail').textContent = JSON.stringify(value, null, 2);
-  $('action-status').textContent = kind === 'approval' ? 'Review the exact arguments below before allowing or denying this action.' : (value.task || 'Recorded details loaded.');
+  $('action-status').textContent = kind === 'approval'
+    ? tr('ops.reviewArguments', {}, 'Review the exact arguments below before allowing or denying this action.')
+    : (value.task || tr('ops.recordedDetails', {}, 'Recorded details loaded.'));
   $('evidence').querySelector('details').open = true;
   $('evidence').scrollIntoView({block: 'nearest'});
   selectedAction = kind === 'approval' ? value : null;
   $('action-review').hidden = !selectedAction;
   return value;
 }
+document.addEventListener('nexus:language', () => { if (latest) paint(latest); });
+
 function paint(state) {
   window.dispatchEvent(new CustomEvent('hud:world-update', {detail: state.world}));
   latest = state; controlState();
   if (pendingControl && state.daemon.state === pendingControl.expected) {
-    $('action-status').textContent = pendingControl.action + ' acknowledged: worker is ' + state.daemon.state + (state.daemon.execution_enabled ? '. Local dispatch enabled; approvals still apply.' : '. Task dispatch is not enabled.');
+    $('action-status').textContent = tr('ops.ack', {action: pendingControl.action, state: state.daemon.state},
+      '{action} acknowledged: worker is {state}') + (state.daemon.execution_enabled
+      ? tr('ops.ackEnabled', {}, '. Local dispatch enabled; approvals still apply.')
+      : tr('ops.ackDisabled', {}, '. Task dispatch is not enabled.'));
     pendingControl = null;
   }
-  $('dnd').textContent = state.delivery.dnd_until > Date.now()/1000 ? 'DND active · extend 60m' : 'DND 60m';
+  $('dnd').textContent = state.delivery.dnd_until > Date.now()/1000
+    ? tr('ops.dndActive', {}, 'DND active · extend 60m') : tr('ops.dnd', {}, 'DND 60m');
   $('review-count').textContent = String(state.pending_actions_total);
-  $('quiet').textContent = state.delivery.quiet ? 'Quiet: on — turn off' : 'Quiet: off — turn on';
-  $('runtime-help').textContent = state.policy.error || (state.policy.runtime_enabled ? 'Local execution is enabled. Worker: ' + state.daemon.state + '. Tasks and tool actions still need their own approvals.' : 'Local execution is OFF. Starting the worker alone will not execute tasks. Open Local execution setup to configure an installed model.');
+  $('quiet').textContent = state.delivery.quiet
+    ? tr('ops.quietOn', {}, 'Quiet: on — turn off') : tr('ops.quietOff', {}, 'Quiet: off — turn on');
+  $('runtime-help').textContent = state.policy.error || (state.policy.runtime_enabled
+    ? tr('ops.runtimeOn', {state: state.daemon.state},
+      'Local execution is enabled. Worker: {state}. Tasks and tool actions still need their own approvals.')
+    : tr('ops.runtimeOff', {},
+      'Local execution is OFF. Starting the worker alone will not execute tasks. Open Local execution setup to configure an installed model.'));
   if (!runtimeModelDirty && document.activeElement !== $('runtime-model')) $('runtime-model').value = state.policy.local_model || '';
   if (changed('policyLevel', state.policy.level) && document.activeElement !== $('level')) $('level').value = state.policy.level || 'L1';
-  $('context-state').textContent = state.context.enabled === true ? 'CONTEXT OPT-IN / ON DEMAND' : state.context.enabled === false ? 'CONTEXT OFF' : 'CONTEXT UNKNOWN / REFUSED';
-  $('privacy-state').textContent = (state.context.error || (state.context.enabled ? 'Context explicitly opted in; collection on demand' : 'Context collection OFF')) + ' · local state · no implicit model execution';
-  $('observed').textContent = 'Observed ' + new Date(state.observed_at * 1000).toLocaleTimeString() + ' · ' + state.source;
-  $('daemon').textContent = state.daemon.state + (state.daemon.execution_enabled ? ' / enabled' : ' / no dispatch');
+  $('context-state').textContent = state.context.enabled === true
+    ? tr('ops.contextOn', {}, 'CONTEXT OPT-IN / ON DEMAND')
+    : state.context.enabled === false ? tr('ops.contextOff', {}, 'CONTEXT OFF')
+    : tr('ops.contextUnknown', {}, 'CONTEXT UNKNOWN / REFUSED');
+  $('privacy-state').textContent = (state.context.error || (state.context.enabled
+    ? tr('ops.privacyOn', {}, 'Context explicitly opted in; collection on demand')
+    : tr('ops.privacyOff', {}, 'Context collection OFF'))) + tr('ops.privacySuffix', {}, ' · local state · no implicit model execution');
+  $('observed').textContent = tr('ops.observedAt', {at: new Date(state.observed_at * 1000).toLocaleTimeString(), source: state.source},
+    'Observed {at} · {source}');
+  $('daemon').textContent = state.daemon.execution_enabled
+    ? tr('ops.daemonEnabled', {state: state.daemon.state}, '{state} / enabled')
+    : tr('ops.daemonIdle', {state: state.daemon.state}, '{state} / no dispatch');
   $('hardware').textContent = state.hardware.cpu_percent.toFixed(1) + '% / ' + state.hardware.memory_percent.toFixed(1) + '%';
-  $('counts').textContent = state.jobs_total + ' jobs / ' + state.pending_actions_total + ' reviews';
-  $('usage').textContent = (state.usage.day.actual_input_tokens || 0) + ' in · ' + (state.usage.day.actual_output_tokens || 0) + ' out / unknown';
+  $('counts').textContent = tr('ops.counts', {jobs: state.jobs_total, reviews: state.pending_actions_total},
+    '{jobs} jobs / {reviews} reviews');
+  $('usage').textContent = tr('ops.usage',
+    {input: state.usage.day.actual_input_tokens || 0, output: state.usage.day.actual_output_tokens || 0},
+    '{input} in · {output} out / unknown');
   $('policy').textContent = state.policy.error || state.policy.level + ' · ' + state.policy.mode + ' · ' + state.policy.connectivity;
-  $('job-count').textContent = 'Latest ' + state.jobs.length + ' of ' + state.jobs_total;
+  $('job-count').textContent = tr('ops.jobCount', {shown: state.jobs.length, total: state.jobs_total},
+    'Latest {shown} of {total}');
   if (changed('traces', state.traces.items)) {
   $('traces').replaceChildren();
   for (const trace of state.traces.items) {
@@ -143,7 +183,7 @@ function paint(state) {
 async function connect(restore = false) {
   window.dispatchEvent(new Event('hud:disconnected'));
   generation++; const version = generation;
-  $('connection').textContent = 'Connecting…';
+  $('connection').textContent = tr('ops.connectionConnecting', {}, 'Connecting…');
   if (socket) socket.close();
   token = restore ? '' : $('token').value; $('token').value = '';
   authenticated = false;
@@ -159,13 +199,13 @@ async function connect(restore = false) {
     if (version !== generation) return;
     authenticated = true; access(true); paint(state);
   }
-  catch (error) { if (version !== generation) return; authenticated = false; access(false); token = ''; $('connection').textContent = 'Disconnected · authentication failed'; throw error; }
+  catch (error) { if (version !== generation) return; authenticated = false; access(false); token = ''; $('connection').textContent = tr('ops.connectionFailed', {}, 'Disconnected · authentication failed'); throw error; }
   if (version !== generation) return;
   window.dispatchEvent(new CustomEvent('hud:connected', {detail: {api}}));
   socket = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws');
   socket.onopen = () => { if (version === generation) socket.send(JSON.stringify({token})); };
-  socket.onmessage = event => { if (version === generation) { paint(JSON.parse(event.data)); $('connection').textContent = 'LIVE · authenticated'; } };
-  socket.onclose = () => { if (version === generation) $('connection').textContent = 'Disconnected · reconnect to refresh'; };
+  socket.onmessage = event => { if (version === generation) { paint(JSON.parse(event.data)); $('connection').textContent = tr('ops.connectionLive', {}, 'LIVE · authenticated'); } };
+  socket.onclose = () => { if (version === generation) $('connection').textContent = tr('ops.connectionDropped', {}, 'Disconnected · reconnect to refresh'); };
   socket.onerror = () => { if (version === generation) message('Live connection failed. Reconnect; no fabricated updates.'); };
 }
 if ($('connect')) bind($('connect'), () => connect());
@@ -174,7 +214,7 @@ if ($('disconnect')) bind($('disconnect'), async () => {
   authenticated = false; access(false);
   window.dispatchEvent(new Event('hud:disconnected'));
   generation++; if (socket) socket.close(); token = ''; selectedAction = null;
-  $('action-review').hidden = true; $('connection').textContent = 'Disconnected';
+  $('action-review').hidden = true; $('connection').textContent = tr('ops.connectionDisconnected', {}, 'Disconnected');
   const response = await fetch('/api/session', {method: 'DELETE', headers, keepalive: true});
   if (!response.ok && response.status !== 401) throw Error('Could not forget browser; retry logout before closing.');
 });
@@ -222,7 +262,7 @@ if (window.nexusGui) {
   async function refresh() {
     if (refreshing || document.hidden || window.nexusGui.view !== 'operations') return;
     refreshing = true;
-    try { await window.nexusGui.ready; const state = await api('state'); authenticated=true; access(true); paint(state); $('connection').textContent='Connected · same Nexus GUI'; }
+    try { await window.nexusGui.ready; const state = await api('state'); authenticated=true; access(true); paint(state); $('connection').textContent=tr('ops.connectionShared', {}, 'Connected · same Nexus GUI'); }
     catch (e) {message(e.message); $('connection').textContent='Operations unavailable';}
     finally {refreshing=false;}
   }

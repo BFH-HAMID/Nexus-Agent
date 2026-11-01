@@ -130,13 +130,20 @@ simply start from the defaults, exactly as they did before this round.
 
 ## Known limits
 
-* **Bangla coverage is not yet complete.** The shell, the newer module pages
-  (Mission, World, Security, Cost, Memory, Channels, Workflows, Approvals) and
-  this page switch language; the original **Run & chat**, **Operations** and
-  **All controls** screens are still English-only. Their labels double as the
-  accessible names that ~30 browser tests pin, so they need their own reviewed
-  pass rather than a bulk replacement. The Language card says so on screen
-  instead of promising a fully translated dashboard.
+* **Bangla coverage covers the interface, not the data.** Every screen switches
+  language, including **Run & chat**, **Operations** and **All controls**; the
+  English table stores the exact original wording, so English mode and the
+  accessible names the browser tests pin are byte-identical. What stays English
+  on purpose: model and agent names, role and pipeline ids, file paths, tokens
+  and costs, task text, trace ids, and the raw JSON receipts in Diagnostics.
+  A few dynamic details keep their measured vocabulary too — the phase chip
+  shows the server's own state tokens when it reports one this build has no
+  translation for, rather than inventing wording.
+* **A script that measured a value keeps it.** `nexusI18n.apply()` only repaints
+  a `data-i18n` node whose text still equals the English or Bangla default; once
+  a script wrote a count, a path or a live status into it, that node belongs to
+  the script, which repaints itself on `nexus:language`. Without that rule a
+  late apply could overwrite a measurement that had just arrived.
 * Display preferences are per browser by design. A second device starts from the
   defaults; the page says so instead of pretending to sync them.
 * The `nexus.ui.lang` mirror writes the workspace copy only when the page is
