@@ -60,9 +60,15 @@
 
   /* ── localisation of the static shell ──────────────────────────────── */
   function paintLabels() {
-    document.querySelectorAll('[data-i18n]').forEach((node) => { node.textContent = t(node.dataset.i18n); });
-    document.querySelectorAll('[data-i18n-aria]').forEach((node) => { node.setAttribute('aria-label', t(node.dataset.i18nAria)); });
-    document.querySelectorAll('[data-i18n-title]').forEach((node) => { node.setAttribute('title', t(node.dataset.i18nTitle)); });
+    /* i18n.apply() is guarded: it leaves nodes that a script has already filled
+       with a measured value alone. Sweeping here by hand used to overwrite those
+       nodes back to the table default on every language switch. */
+    if (window.nexusI18n?.apply) window.nexusI18n.apply(document);
+    else {
+      document.querySelectorAll('[data-i18n]').forEach((node) => { node.textContent = t(node.dataset.i18n); });
+      document.querySelectorAll('[data-i18n-aria]').forEach((node) => { node.setAttribute('aria-label', t(node.dataset.i18nAria)); });
+      document.querySelectorAll('[data-i18n-title]').forEach((node) => { node.setAttribute('title', t(node.dataset.i18nTitle)); });
+    }
     for (const section of SECTIONS) {
       const item = document.querySelector(`.sidebar-nav [data-nav-id="${section.id}"]`);
       if (item) {

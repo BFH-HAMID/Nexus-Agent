@@ -68,7 +68,7 @@
     </svg>
     <div class="brand-txt">
       <h1>NEXUS<span>AGENT</span></h1>
-      <p class="tagline">AI workspace</p>
+      <p class="tagline" data-i18n="shell.tagline">AI workspace</p>
     </div>
   </div>
 
@@ -146,9 +146,9 @@
 
   <div class="sidebar-foot">
     <button class="btn" id="guiLogout">
-      <svg class="ic" aria-hidden="true"><use href="#i-logout"/></svg>Forget login
+      <svg class="ic" aria-hidden="true"><use href="#i-logout"/></svg><span data-i18n="shell.logout">Forget login</span>
     </button>
-    <p class="sidebar-note">Sensitive actions always require your explicit approval.</p>
+    <p class="sidebar-note" data-i18n="shell.approvalNote">Sensitive actions always require your explicit approval.</p>
   </div>
 </aside>
 <div class="nav-scrim" id="navScrim" hidden></div>
@@ -266,20 +266,20 @@
 
       <section class="card run-summary-card">
         <div class="card-head">
-          <span class="sq" aria-hidden="true"></span>Run summary
-          <span class="micro" id="globeNodes" title="Configured agent entries; endpoints may be shared. Not an online health check.">Loading configuration…</span>
+          <span class="sq" aria-hidden="true"></span><span data-i18n="run.cardSummary">Run summary</span>
+          <span class="micro" id="globeNodes" data-i18n-title="run.globeNodesTitle" title="Configured agent entries; endpoints may be shared. Not an online health check." data-i18n="run.loadingConfiguration">Loading configuration…</span>
         </div>
-        <p class="mem-body" id="liveRunNote" role="status">No Nexus task selected. Start a task here or open one from History. These figures follow Nexus run events only.</p>
+        <p class="mem-body" id="liveRunNote" role="status" data-i18n="run.noTask">No Nexus task selected. Start a task here or open one from History. These figures follow Nexus run events only.</p>
         <div class="stat-row">
-          <div class="stat" title="Mean duration of the last three completed tools"><span class="stat-k">Avg tool</span><b id="statLatency">No results yet</b></div>
-          <div class="stat"><span class="stat-k">Turns</span><b id="statCalls">0</b></div>
-          <div class="stat"><span class="stat-k">Tools</span><b id="statToolCalls">0</b></div>
+          <div class="stat" data-i18n-title="run.avgToolHint" title="Mean duration of the last three completed tools"><span class="stat-k" data-i18n="run.avgTool">Avg tool</span><b id="statLatency" data-i18n="run.noResults">No results yet</b></div>
+          <div class="stat"><span class="stat-k" data-i18n="run.turns">Turns</span><b id="statCalls">0</b></div>
+          <div class="stat"><span class="stat-k" data-i18n="run.tools">Tools</span><b id="statToolCalls">0</b></div>
         </div>
       </section>
 
       <section class="card orch-card">
         <div class="card-head">
-          <span class="sq" aria-hidden="true"></span>AI agents
+          <span class="sq" aria-hidden="true"></span><span data-i18n="run.cardAgents">AI agents</span>
           <span class="spacer"></span><span class="micro" id="orchCount">0 agents</span>
         </div>
         <div class="orch-list" id="orchList"></div>
@@ -291,23 +291,23 @@
 
       <section class="card map-card">
         <div class="card-head">
-          <span class="sq" aria-hidden="true"></span>Agent topology
-          <span class="pill" id="mapActive">idle</span>
+          <span class="sq" aria-hidden="true"></span><span data-i18n="run.cardTopology">Agent topology</span>
+          <span class="pill" id="mapActive" data-i18n="run.idle">idle</span>
         </div>
         <div class="map-wrap">
-          <button class="btn ghost small map-reset" id="resetMap" type="button"><span class="btn-label">Reset view</span></button>
+          <button class="btn ghost small map-reset" id="resetMap" type="button"><span class="btn-label" data-i18n="run.resetView">Reset view</span></button>
           <svg id="map" viewBox="0 0 920 440" preserveAspectRatio="xMidYMid meet" role="img"
                aria-label="Map of the model agents connected to the Nexus core"></svg>
           <div class="map-foot">
             <div class="route-box">
-              <span class="micro">Router prediction</span>
+              <span class="micro" data-i18n="run.routerPrediction">Router prediction</span>
               <div class="route-main"><b id="routeRole">—</b><span class="pill" id="routeMethod">—</span></div>
-              <div class="route-hits" id="routeHits">waiting for a task…</div>
+              <div class="route-hits" id="routeHits" data-i18n="run.waitingForTask">waiting for a task…</div>
             </div>
             <div class="route-box" id="nodeDetail">
-              <span class="micro">Selected node</span>
+              <span class="micro" data-i18n="run.selectedNode">Selected node</span>
               <div class="route-main"><b id="ndName">—</b><span class="pill" id="ndProvider">—</span></div>
-              <div class="route-hits" id="ndBody">hover or select a node to inspect it</div>
+              <div class="route-hits" id="ndBody" data-i18n="run.hoverNode">hover or select a node to inspect it</div>
             </div>
           </div>
         </div>
@@ -315,14 +315,14 @@
 
       <section class="card sec-card">
         <div class="card-head">
-          <span class="sq" aria-hidden="true"></span>Tool activity
-          <span class="spacer"></span><span class="micro" id="secLevel">tool audit</span>
+          <span class="sq" aria-hidden="true"></span><span data-i18n="run.cardTools">Tool activity</span>
+          <span class="spacer"></span><span class="micro" id="secLevel" data-i18n="run.toolAudit">tool audit</span>
         </div>
         <div class="sec-grid">
-          <div class="sec-stat"><b id="secToolCalls">0</b><span>Tool calls</span></div>
-          <div class="sec-stat"><b id="secDanger">0</b><span>Danger risk</span></div>
-          <div class="sec-stat"><b id="secDenied">0</b><span>Denied</span></div>
-          <div class="sec-stat"><b id="secErrors">0</b><span>Errors</span></div>
+          <div class="sec-stat"><b id="secToolCalls">0</b><span data-i18n="run.toolCalls">Tool calls</span></div>
+          <div class="sec-stat"><b id="secDanger">0</b><span data-i18n="run.dangerRisk">Danger risk</span></div>
+          <div class="sec-stat"><b id="secDenied">0</b><span data-i18n="run.denied">Denied</span></div>
+          <div class="sec-stat"><b id="secErrors">0</b><span data-i18n="run.errorCount">Errors</span></div>
         </div>
         <div class="sec-log" id="secLog"></div>
       </section>
@@ -330,34 +330,34 @@
 
     <!-- center: live console -->
     <section class="col col-center">
-      <div id="liveNotice" role="status">Connecting to live server…</div>
+      <div id="liveNotice" role="status" data-i18n="run.connecting">Connecting to live server…</div>
 
       <section class="card approval-card hidden" id="approvalCard" aria-label="Tool approval" role="region" tabindex="-1">
         <div class="card-head warn">
-          <span class="sq" aria-hidden="true"></span>Approval required
+          <span class="sq" aria-hidden="true"></span><span data-i18n="run.cardApproval">Approval required</span>
           <span class="pill danger" id="apRisk">write</span>
           <span class="spacer"></span>
-          <span class="micro">Nothing runs until you decide</span>
+          <span class="micro" data-i18n="run.approvalNote">Nothing runs until you decide</span>
         </div>
         <div class="ap-tool"><b id="apTool">—</b></div>
         <pre class="ap-preview" id="apPreview"></pre>
         <div class="ap-actions">
-          <button class="btn primary" id="apYes"><span class="btn-label">Approve</span></button>
-          <button class="btn" id="apAlways" title="Approve this tool for the current run only"><span class="btn-label">Allow for this run</span></button>
-          <button class="btn danger" id="apNo"><span class="btn-label">Deny</span></button>
+          <button class="btn primary" id="apYes"><span class="btn-label" data-i18n="run.approve">Approve</span></button>
+          <button class="btn" id="apAlways" title="Approve this tool for the current run only"><span class="btn-label" data-i18n="run.allowRun">Allow for this run</span></button>
+          <button class="btn danger" id="apNo"><span class="btn-label" data-i18n="run.deny">Deny</span></button>
         </div>
       </section>
 
       <section class="card process-card">
         <div class="card-head">
-          <span class="sq" aria-hidden="true"></span>Live activity
-          <span class="pill phase" id="phaseChip">idle</span>
+          <span class="sq" aria-hidden="true"></span><span data-i18n="run.cardLive">Live activity</span>
+          <span class="pill phase" id="phaseChip" data-i18n="run.idle">idle</span>
           <span class="spacer"></span>
           <div class="filters" id="filters">
-            <button class="filter on" data-f="all">All</button>
-            <button class="filter" data-f="model">Model</button>
-            <button class="filter" data-f="tools">Tools</button>
-            <button class="filter" data-f="system">System</button>
+            <button class="filter on" data-f="all" data-i18n="run.filterAll">All</button>
+            <button class="filter" data-f="model" data-i18n="run.filterModel">Model</button>
+            <button class="filter" data-f="tools" data-i18n="run.filterTools">Tools</button>
+            <button class="filter" data-f="system" data-i18n="run.filterSystem">System</button>
           </div>
         </div>
 
@@ -365,31 +365,31 @@
 
         <div class="phase-banner idle" id="phaseBanner">
           <span class="pulse" aria-hidden="true"><i></i><i></i><i></i></span>
-          <span class="phase-text" id="phaseText">idle · describe a task below and press run</span>
+          <span class="phase-text" id="phaseText" data-i18n="run.idlePhase">idle · describe a task below and press run</span>
           <span class="phase-meta" id="phaseMeta"></span>
         </div>
 
         <div class="stream" id="stream" aria-live="polite">
           <div class="stream-empty" id="streamEmpty">
             <span class="big" aria-hidden="true">◈</span>
-            <p>No run yet. The agent's process — routing, thinking, exploring and tool calls — streams here live.</p>
+            <p data-i18n="run.emptyStream">No run yet. The agent's process — routing, thinking, exploring and tool calls — streams here live.</p>
           </div>
         </div>
 
         <div class="composer">
           <p class="task-workspace-line">
-            <span id="taskWorkspace" class="task-workspace" role="status">Task workspace: loading…</span>
+            <span id="taskWorkspace" class="task-workspace" role="status" data-i18n="run.taskWorkspaceLoading">Task workspace: loading…</span>
             <span class="task-id" id="taskId">—</span>
           </p>
           <div class="composer-row">
-            <label class="field"><span>Role</span>
-              <select id="roleSelect"><option value="">auto-route</option></select>
+            <label class="field"><span data-i18n="run.role">Role</span>
+              <select id="roleSelect"><option value="" data-i18n="run.autoRoute">auto-route</option></select>
             </label>
-            <label class="field"><span>Pipeline</span>
-              <select id="pipelineSelect"><option value="">none</option></select>
+            <label class="field"><span data-i18n="run.pipeline">Pipeline</span>
+              <select id="pipelineSelect"><option value="" data-i18n="run.none">none</option></select>
             </label>
-            <label class="toggle"><input type="checkbox" id="readOnly" /><i></i><span>Read-only</span></label>
-            <label class="toggle"><input type="checkbox" id="autoYes" /><i></i><span>Auto-approve</span></label>
+            <label class="toggle"><input type="checkbox" id="readOnly" /><i></i><span data-i18n="run.readOnly">Read-only</span></label>
+            <label class="toggle"><input type="checkbox" id="autoYes" /><i></i><span data-i18n="run.autoApprove">Auto-approve</span></label>
             <button class="btn ghost" type="button" id="routePreviewBtn" title="Offline route preview; nothing runs"
               data-i18n-title="router.previewHint"><svg class="ic" aria-hidden="true"><use href="#i-route"/></svg><span class="btn-label" data-i18n="router.preview">Preview route</span></button>
             <button class="route-preview" type="button" id="routePreview" aria-live="polite" data-i18n-title="router.previewOpen"></button>
@@ -397,11 +397,11 @@
           </div>
           <div class="composer-row main-row">
             <textarea id="taskInput" rows="2" spellcheck="false"
-              placeholder="Describe the task…  e.g. add cursor pagination to /api/users and cover it with tests   (Ctrl+Enter to run)"></textarea>
+              placeholder="Describe the task… e.g. add cursor pagination to /api/users and cover it with tests (Ctrl+Enter to run)" data-i18n-ph="run.taskPlaceholder"></textarea>
             <div class="composer-actions">
-              <button class="btn primary" id="runBtn"><svg class="ic" aria-hidden="true"><use href="#i-play"/></svg><span class="btn-label">Run</span></button>
-              <button class="btn danger" id="cancelBtn" disabled><svg class="ic" aria-hidden="true"><use href="#i-stop"/></svg><span class="btn-label">Stop</span></button>
-              <button class="btn ghost" id="clearBtn" title="Clear the log"><svg class="ic" aria-hidden="true"><use href="#i-trash"/></svg><span class="btn-label">Clear</span></button>
+              <button class="btn primary" id="runBtn"><svg class="ic" aria-hidden="true"><use href="#i-play"/></svg><span class="btn-label" data-i18n="run.run">Run</span></button>
+              <button class="btn danger" id="cancelBtn" disabled><svg class="ic" aria-hidden="true"><use href="#i-stop"/></svg><span class="btn-label" data-i18n="run.stop">Stop</span></button>
+              <button class="btn ghost" id="clearBtn" title="Clear the log" data-i18n-title="run.clearHint"><svg class="ic" aria-hidden="true"><use href="#i-trash"/></svg><span class="btn-label" data-i18n="run.clear">Clear</span></button>
             </div>
           </div>
         </div>
@@ -413,71 +413,71 @@
 
       <section class="card telemetry-card">
         <div class="card-head">
-          <span class="sq" aria-hidden="true"></span>Run telemetry
-          <span class="spacer"></span><span class="pill" id="telState">idle</span>
+          <span class="sq" aria-hidden="true"></span><span data-i18n="run.cardTelemetry">Run telemetry</span>
+          <span class="spacer"></span><span class="pill" id="telState" data-i18n="run.idle">idle</span>
         </div>
         <div class="tel-grid">
-          <div class="tel"><b id="telTurns">0</b><span>Turns</span></div>
-          <div class="tel"><b id="telTools">0</b><span>Tools</span></div>
-          <div class="tel"><b id="telIn">0</b><span>Tokens in</span></div>
-          <div class="tel"><b id="telOut">0</b><span>Tokens out</span></div>
-          <div class="tel"><b id="telTime">0.0s</b><span>Elapsed</span></div>
-          <div class="tel"><b id="telRole">—</b><span>Role</span></div>
+          <div class="tel"><b id="telTurns">0</b><span data-i18n="run.turns">Turns</span></div>
+          <div class="tel"><b id="telTools">0</b><span data-i18n="run.tools">Tools</span></div>
+          <div class="tel"><b id="telIn">0</b><span data-i18n="run.tokensIn">Tokens in</span></div>
+          <div class="tel"><b id="telOut">0</b><span data-i18n="run.tokensOut">Tokens out</span></div>
+          <div class="tel"><b id="telTime">0.0s</b><span data-i18n="run.elapsed">Elapsed</span></div>
+          <div class="tel"><b id="telRole">—</b><span data-i18n="run.role">Role</span></div>
         </div>
         <div class="bar"><i id="turnBar"></i></div>
-        <div class="tel-foot"><span id="telAgent">agent —</span><span id="telRoute">route —</span></div>
+        <div class="tel-foot"><span id="telAgent" data-i18n="run.agentDash">agent —</span><span id="telRoute" data-i18n="run.routeDash">route —</span></div>
       </section>
 
       <section class="card monitor-card">
-        <div class="card-head"><span class="sq" aria-hidden="true"></span>Throughput<span class="spacer"></span><span class="micro">live</span></div>
+        <div class="card-head"><span class="sq" aria-hidden="true"></span><span data-i18n="run.cardThroughput">Throughput</span><span class="spacer"></span><span class="micro" data-i18n="common.live">live</span></div>
         <div class="mon">
-          <div class="mon-head"><span>Events / sec</span><b id="monEvents">0</b></div>
+          <div class="mon-head"><span data-i18n="run.eventsPerSec">Events / sec</span><b id="monEvents">0</b></div>
           <canvas class="spark" id="sparkEvents" height="46"></canvas>
         </div>
         <div class="mon">
-          <div class="mon-head"><span>Tokens in / out</span><b id="monTokens">0 / 0</b></div>
+          <div class="mon-head"><span data-i18n="run.tokensInOut">Tokens in / out</span><b id="monTokens">0 / 0</b></div>
           <canvas class="spark" id="sparkTokens" height="46"></canvas>
         </div>
         <div class="mon">
-          <div class="mon-head"><span>Tool duration</span><b id="monLatency">—</b></div>
+          <div class="mon-head"><span data-i18n="run.toolDuration">Tool duration</span><b id="monLatency">—</b></div>
           <canvas class="spark" id="sparkLatency" height="46"></canvas>
         </div>
       </section>
 
       <section class="card pipes-card">
-        <div class="card-head"><span class="sq" aria-hidden="true"></span>Pipelines<span class="spacer"></span><span class="micro" id="pipeCount">0</span></div>
+        <div class="card-head"><span class="sq" aria-hidden="true"></span><span data-i18n="run.cardPipelines">Pipelines</span><span class="spacer"></span><span class="micro" id="pipeCount">0</span></div>
         <div class="pipes" id="pipeList"></div>
       </section>
 
       <section class="card mem-card" id="memCard">
-        <div class="card-head"><span class="sq" aria-hidden="true"></span>Role memory<span class="spacer"></span><span class="micro" id="memRole">general</span></div>
-        <div class="mem-body" id="memBody">no memory notes for this role yet.</div>
+        <div class="card-head"><span class="sq" aria-hidden="true"></span><span data-i18n="run.cardMemory">Role memory</span><span class="spacer"></span><span class="micro" id="memRole">general</span></div>
+        <div class="mem-body" id="memBody" data-i18n="run.noMemory">no memory notes for this role yet.</div>
         <div class="mem-foot" id="memPath">—</div>
       </section>
 
       <section class="card brain-card">
         <div class="card-head">
-          <span class="sq" aria-hidden="true"></span>LEARNING BRAIN
+          <span class="sq" aria-hidden="true"></span><span data-i18n="run.cardBrain">LEARNING BRAIN</span>
           <span class="pill" id="brainPill">—</span>
           <span class="spacer"></span>
-          <span class="micro" id="brainMeta">skills · runs · memories</span>
+          <span class="micro" id="brainMeta" data-i18n="run.brainMeta">skills · runs · memories</span>
         </div>
         <div class="brain-grid">
-          <div class="brain-stat"><b id="brainSkills">0</b><span>Skills</span></div>
-          <div class="brain-stat"><b id="brainRuns">0</b><span>Runs</span></div>
-          <div class="brain-stat"><b id="brainMemo">0</b><span>Memories</span></div>
+          <div class="brain-stat"><b id="brainSkills">0</b><span data-i18n="run.skills">Skills</span></div>
+          <div class="brain-stat"><b id="brainRuns">0</b><span data-i18n="run.runs">Runs</span></div>
+          <div class="brain-stat"><b id="brainMemo">0</b><span data-i18n="run.memories">Memories</span></div>
         </div>
         <div class="brain-search">
-          <input id="brainQuery" placeholder="Recall a past run…" spellcheck="false" />
-          <button class="btn small" id="brainGo">Recall</button>
+          <input id="brainQuery" placeholder="Recall a past run…" spellcheck="false" data-i18n-ph="run.recallPlaceholder" />
+          <button class="btn small" id="brainGo" data-i18n="run.recall">Recall</button>
         </div>
-        <div class="brain-list" id="brainList"><div class="brain-empty">loading…</div></div>
+        <div class="brain-list" id="brainList"><div class="brain-empty" data-i18n="run.brainLoading">loading…</div></div>
       </section>
 
       <section class="card integration-setup" id="integrations"></section>
 
       <section class="card keys-card">
-        <div class="card-head"><span class="sq" aria-hidden="true"></span>API keys<span class="spacer"></span><span class="micro">~/.config/nexus/keys.json</span></div>
+        <div class="card-head"><span class="sq" aria-hidden="true"></span><span data-i18n="run.cardKeys">API keys</span><span class="spacer"></span><span class="micro">~/.config/nexus/keys.json</span></div>
         <div class="keys" id="keyList"></div>
       </section>
     </aside>
@@ -486,29 +486,29 @@
   <!-- ══ operations view ════════════════════════════════════════════ -->
   <section class="gui-modules ops-page" id="view-operations" data-gui-view="operations" hidden>
     <div class="ops-status">
-      <span id="connection">Loading operations</span>
+      <span id="connection" data-i18n="ops.loading">Loading operations</span>
       <span id="context-state"></span>
-      <span id="connection-help" class="muted">Loading operations through the same Nexus GUI session.</span>
+      <span id="connection-help" class="muted" data-i18n="ops.loadingHelp">Loading operations through the same Nexus GUI session.</span>
       <span id="privacy-state" class="muted"></span>
     </div>
     <p id="error" role="alert"></p>
-    <p id="observed" class="muted">Waiting for authenticated state. No sample data.</p>
+    <p id="observed" class="muted" data-i18n="ops.waiting">Waiting for authenticated state. No sample data.</p>
 
-    <nav class="dashboard-nav" aria-label="Operations sections">
-      <a href="#overview">Overview</a>
-      <a href="#execution">Controls</a>
-      <a href="#new-task">New task</a>
-      <a href="#task-list">Tasks</a>
-      <a href="#reviews">Approvals <span id="review-count">0</span></a>
-      <a href="#world-widget">World &amp; weather</a>
-      <a href="#diagnostics">Diagnostics</a>
+    <nav class="dashboard-nav" aria-label="Operations sections" data-i18n-aria="ops.navLabel">
+      <a href="#overview" data-i18n="ops.navOverview">Overview</a>
+      <a href="#execution" data-i18n="ops.navControls">Controls</a>
+      <a href="#new-task" data-i18n="ops.navNewTask">New task</a>
+      <a href="#task-list" data-i18n="ops.navTasks">Tasks</a>
+      <a href="#reviews"><span data-i18n="ops.navApprovals">Approvals</span> <span id="review-count">0</span></a>
+      <a href="#world-widget" data-i18n="ops.navWorld">World &amp; weather</a>
+      <a href="#diagnostics" data-i18n="ops.navDiagnostics">Diagnostics</a>
     </nav>
 
-    <section class="metrics" id="overview" aria-label="Live overview">
-      <article><span>Daemon / heartbeat</span><strong id="daemon">—</strong></article>
-      <article><span>CPU / memory</span><strong id="hardware">—</strong></article>
-      <article><span>Queue / action reviews</span><strong id="counts">—</strong></article>
-      <article><span>Reported usage</span><strong id="usage">—</strong></article>
+    <section class="metrics" id="overview" aria-label="Live overview" data-i18n-aria="ops.overviewLabel">
+      <article><span data-i18n="ops.metricDaemon">Daemon / heartbeat</span><strong id="daemon">—</strong></article>
+      <article><span data-i18n="ops.metricHardware">CPU / memory</span><strong id="hardware">—</strong></article>
+      <article><span data-i18n="ops.metricQueue">Queue / action reviews</span><strong id="counts">—</strong></article>
+      <article><span data-i18n="ops.metricUsage">Reported usage</span><strong id="usage">—</strong></article>
     </section>
 
     <div class="layout" id="operations">
@@ -516,64 +516,64 @@
 
         <section id="execution" class="ops-card">
           <div class="section-title">
-            <h2>Execution controls</h2>
+            <h2 data-i18n="ops.execution">Execution controls</h2>
             <span id="policy" class="muted">—</span>
           </div>
           <div class="inline" id="controls">
-            <button data-control="start" class="primary">Start</button>
-            <button data-control="pause">Pause</button>
-            <button data-control="resume">Resume</button>
-            <button data-control="stop">Stop</button>
-            <button data-control="kill" class="danger">Kill</button>
+            <button data-control="start" class="primary" data-i18n="ops.start">Start</button>
+            <button data-control="pause" data-i18n="ops.pause">Pause</button>
+            <button data-control="resume" data-i18n="ops.resume">Resume</button>
+            <button data-control="stop" data-i18n="ops.stop">Stop</button>
+            <button data-control="kill" class="danger" data-i18n="ops.kill">Kill</button>
           </div>
-          <p id="runtime-help" class="muted">Worker status and execution policy appear after the shared GUI session connects.</p>
+          <p id="runtime-help" class="muted" data-i18n="ops.runtimeHelp">Worker status and execution policy appear after the shared GUI session connects.</p>
           <details>
-            <summary>Local execution setup</summary>
-            <p class="muted">Jarvis runs an installed local Ollama model only. Enabling execution does not approve queued tasks or tool actions.</p>
-            <label for="runtime-model">Installed local model name</label>
+            <summary data-i18n="ops.localSetup">Local execution setup</summary>
+            <p class="muted" data-i18n="ops.localSetupNote">Jarvis runs an installed local Ollama model only. Enabling execution does not approve queued tasks or tool actions.</p>
+            <label for="runtime-model" data-i18n="ops.localModelLabel">Installed local model name</label>
             <div class="inline">
-              <input id="runtime-model" maxlength="120" placeholder="Your installed Ollama model">
-              <button id="runtime-enable">Enable local execution</button>
-              <button id="runtime-disable">Disable execution</button>
+              <input id="runtime-model" maxlength="120" placeholder="Your installed Ollama model" data-i18n-ph="ops.localModelPlaceholder">
+              <button id="runtime-enable" data-i18n="ops.enableExecution">Enable local execution</button>
+              <button id="runtime-disable" data-i18n="ops.disableExecution">Disable execution</button>
             </div>
           </details>
           <div class="inline">
-            <label for="level">Autonomy</label>
+            <label for="level" data-i18n="ops.autonomy">Autonomy</label>
             <select id="level">
               <option>L0</option><option selected>L1</option><option>L2</option><option>L3</option>
             </select>
-            <button id="autonomy">Review change</button>
-            <button id="quiet">Quiet on/off</button>
-            <button id="dnd">DND 60m</button>
-            <button id="dnd-off">End DND</button>
+            <button id="autonomy" data-i18n="ops.reviewChange">Review change</button>
+            <button id="quiet" data-i18n="ops.quiet">Quiet on/off</button>
+            <button id="dnd" data-i18n="ops.dnd">DND 60m</button>
+            <button id="dnd-off" data-i18n="ops.endDnd">End DND</button>
           </div>
-          <p class="muted">Lifecycle requests are not readiness acknowledgements. Dangerous or external actions still require fresh approval.</p>
+          <p class="muted" data-i18n="ops.lifecycleNote">Lifecycle requests are not readiness acknowledgements. Dangerous or external actions still require fresh approval.</p>
         </section>
 
         <section id="new-task" class="ops-card">
-          <div class="section-title"><h2>New task</h2></div>
-          <p class="muted">Describe a task, queue it, then review and approve it below. Tool actions keep their own approval gates.</p>
+          <div class="section-title"><h2 data-i18n="ops.newTask">New task</h2></div>
+          <p class="muted" data-i18n="ops.newTaskNote">Describe a task, queue it, then review and approve it below. Tool actions keep their own approval gates.</p>
           <form id="delegate">
-            <label for="task">Task · queued for your approval</label>
-            <textarea id="task" required maxlength="8000" placeholder="Describe work in this workspace"></textarea>
+            <label for="task" data-i18n="ops.taskLabel">Task · queued for your approval</label>
+            <textarea id="task" required maxlength="8000" placeholder="Describe work in this workspace" data-i18n-ph="ops.taskPlaceholder"></textarea>
             <div class="inline">
-              <label for="seconds">Deadline (seconds)</label>
+              <label for="seconds" data-i18n="ops.deadline">Deadline (seconds)</label>
               <input id="seconds" type="number" min="5" max="600" value="120">
-              <button type="submit">Queue task</button>
+              <button type="submit" data-i18n="ops.queueTask">Queue task</button>
             </div>
           </form>
         </section>
 
         <section id="task-list" class="ops-card">
           <div class="section-title">
-            <h2>Tasks &amp; delegations</h2>
+            <h2 data-i18n="ops.tasksTitle">Tasks &amp; delegations</h2>
             <span id="job-count" class="muted"></span>
           </div>
           <div id="jobs" class="list" data-empty="No background tasks. Queue a bounded task above.">
-            <p class="muted">No authenticated state yet.</p>
+            <p class="muted" data-i18n="ops.noState">No authenticated state yet.</p>
           </div>
           <details>
-            <summary>Workflow runs</summary>
+            <summary data-i18n="ops.workflowRuns">Workflow runs</summary>
             <div id="workflows" class="list"></div>
           </details>
         </section>
@@ -581,21 +581,21 @@
 
       <aside class="ops-col">
         <section id="reviews" class="ops-card">
-          <div class="section-title"><h2>Pending action reviews</h2></div>
+          <div class="section-title"><h2 data-i18n="ops.pendingReviews">Pending action reviews</h2></div>
           <div id="approvals" class="list" data-empty="No tool actions awaiting approval."></div>
         </section>
 
         <section id="evidence" class="ops-card">
-          <div class="section-title"><h2>Selected task / action</h2></div>
-          <p id="action-status" role="status">No action selected yet.</p>
+          <div class="section-title"><h2 data-i18n="ops.selected">Selected task / action</h2></div>
+          <p id="action-status" role="status" data-i18n="ops.noAction">No action selected yet.</p>
           <details>
-            <summary>Exact evidence / technical receipt</summary>
-            <p class="muted">Tool outcomes and agent reports are not independent acceptance proof. Uncertain calls are never replay commands.</p>
-            <pre id="detail">Select a task or action to inspect its actual stored record.</pre>
+            <summary data-i18n="ops.evidence">Exact evidence / technical receipt</summary>
+            <p class="muted" data-i18n="ops.evidenceNote">Tool outcomes and agent reports are not independent acceptance proof. Uncertain calls are never replay commands.</p>
+            <pre id="detail" data-i18n="ops.detail">Select a task or action to inspect its actual stored record.</pre>
           </details>
           <div id="action-review" class="inline" hidden>
-            <button id="allow">Allow exact action</button>
-            <button id="deny" class="danger">Deny</button>
+            <button id="allow" data-i18n="ops.allowExact">Allow exact action</button>
+            <button id="deny" class="danger" data-i18n="ops.denyExact">Deny</button>
           </div>
         </section>
       </aside>
@@ -603,14 +603,14 @@
 
     <section id="diagnostics" class="ops-card">
       <details>
-        <summary>Diagnostics &amp; usage reports <span class="muted">— optional technical details</span></summary>
-        <div class="section-title"><h2>Trace · why · no-effects step inspection</h2></div>
+        <summary><span data-i18n="ops.diagnostics">Diagnostics &amp; usage reports</span> <span class="muted" data-i18n="ops.diagnosticsOptional">— optional technical details</span></summary>
+        <div class="section-title"><h2 data-i18n="ops.trace">Trace · why · no-effects step inspection</h2></div>
         <div id="traces" class="list"></div>
-        <h3>Weekly evaluation · observed, not verified</h3>
-        <pre id="evaluation">Waiting for authenticated session observations.</pre>
-        <h3>Permission audit</h3>
-        <pre id="audit">Waiting for authenticated state.</pre>
-        <h3>Inbox &amp; budget reservations</h3>
+        <h3 data-i18n="ops.evaluation">Weekly evaluation · observed, not verified</h3>
+        <pre id="evaluation" data-i18n="ops.evaluationEmpty">Waiting for authenticated session observations.</pre>
+        <h3 data-i18n="ops.permissionAudit">Permission audit</h3>
+        <pre id="audit" data-i18n="ops.auditEmpty">Waiting for authenticated state.</pre>
+        <h3 data-i18n="ops.budgetTitle">Inbox &amp; budget reservations</h3>
         <pre id="budget">—</pre>
       </details>
     </section>

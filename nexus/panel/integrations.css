@@ -79,7 +79,7 @@
   height: 28px; margin: 0; padding: 0 10px; font-size: 11.5px;
   white-space: nowrap;
 }
-#refreshHardware span { display: inline-block; vertical-align: middle; }
+#refreshHardware .hw-glyph, #refreshHardware span { display: inline-block; vertical-align: middle; font-style: normal; }
 .hardware-sample { align-items: flex-start; margin: 12px 0; }
 #hardwareState, #hardwareGpuState {
   flex-shrink: 0; padding: 2px 7px; border-radius: 5px;
@@ -172,7 +172,7 @@
 .hardware-details summary span { font-size: 10px; color: var(--faint); letter-spacing: .06em; text-transform: uppercase; }
 #hardwareNote { margin-top: 6px; font-size: 11px; line-height: 1.6; }
 
-#serverMonitor[data-state="loading"] #refreshHardware span { animation: hardware-spin 1s linear infinite; }
+#serverMonitor[data-state="loading"] #refreshHardware .hw-glyph { animation: hardware-spin 1s linear infinite; }
 #serverMonitor[data-state="loading"] .hardware-beacon { animation: pulse 1s ease-in-out infinite; }
 @keyframes hardware-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) {

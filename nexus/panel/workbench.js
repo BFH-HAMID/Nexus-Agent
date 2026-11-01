@@ -64,7 +64,7 @@
     const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
     let node;
     while ((node = walker.nextNode())) {
-      if (node.parentElement?.closest('script,style,pre,textarea,[data-wb-i18n]')) continue;
+      if (node.parentElement?.closest('script,style,pre,textarea,[data-wb-i18n],[data-i18n],[data-i18n-ph],[data-i18n-aria],[data-i18n-title]')) continue;
       const original = node.wbEnglishText || node.nodeValue;
       const text = original.trim();
       if (labels[text]) {
@@ -73,18 +73,9 @@
       }
     }
     dialog.querySelectorAll('[data-wb-i18n]').forEach(el => { el.textContent = strings[el.dataset.wbI18n]; });
-    (window.nexusGui?.label || ((n, t) => { n.textContent = t; }))(open, prefs.language === 'bn' ? 'ওয়ার্কবেঞ্চ' : 'Workbench');
-    open.title = prefs.language === 'bn' ? 'ওয়ার্কবেঞ্চ · Ctrl+K' : 'Workbench · Ctrl+K';
-    // Core dashboard action labels also follow the chosen language.
-    const core = prefs.language === 'bn'
-      ? {runBtn:'চালান', cancelBtn:'থামান', clearBtn:'লগ মুছুন', apYes:'অনুমোদন', apNo:'প্রত্যাখ্যান', apAlways:'এই রান-এর জন্য অনুমতি', resetMap:'দৃশ্য রিসেট', brainGo:'খুঁজুন'}
-      : {runBtn:'Run', cancelBtn:'Stop', clearBtn:'Clear', apYes:'Approve', apNo:'Deny', apAlways:'Allow for this run', resetMap:'Reset view', brainGo:'Recall'};
-    Object.entries(core).forEach(([id, text]) => {
-      const node = $(id);
-      if (!node) return;
-      const label = node.querySelector('.btn-label');
-      if (label) label.textContent = text; else node.textContent = text;
-    });
+    /* Dashboard action labels belong to i18n.js only: a second writer here made
+       the Run view flip back to English whenever the Workbench preferences
+       loaded after a language switch. */
   }
   function fill(select, items, empty = null) {
     const previous = select.value; select.replaceChildren();
