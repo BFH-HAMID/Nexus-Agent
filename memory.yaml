@@ -1,0 +1,31 @@
+# Operator-owned long-term memory and personalization policy.
+# Every new capability is OFF by default; agent tools cannot edit this file.
+schema: 1
+enabled: false
+
+vector_memory:
+  enabled: false
+  max_entries: 500
+  max_chars: 200000
+  compaction_threshold: 250
+  compaction_keep_recent: 50
+  embedding_provider: local-hashed   # local-hashed | local-ollama
+  embedding_dimensions: 256
+  top_k: 5
+
+profile:
+  enabled: false
+  require_confirmation_for_inferred: true
+  block_sensitive_categories: true   # health, finance, credentials blocked unless explicitly requested
+
+context_awareness:
+  enabled: false
+  include_project: true
+  include_mission: true
+  include_recent_turns: 10
+  include_time_of_day: true
+  include_active_window: false       # opt-in ONLY; also filtered against private/blocked windows
+
+privacy:
+  encrypt_at_rest: false             # uses nexus[secure-state] AES-GCM + OS keyring
+  voice_privacy_mode: false          # never speak stored memory contents aloud

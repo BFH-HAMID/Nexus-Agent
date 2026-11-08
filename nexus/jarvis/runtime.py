@@ -123,6 +123,11 @@ class Runtime:
             rates = price(self.studio, cfg['local_model']) if (row.get('delegation_spec') or {}).get('max_cost_usd') is not None else None
             if (row.get('delegation_spec') or {}).get('max_cost_usd') is not None and rates is None:
                 return None  # No reservation/inference until explicit operator price exists.
+            from ..limits import LimitExceeded, check_daily_caps
+            try:
+                check_daily_caps(self.queue.root)
+            except LimitExceeded:
+                return None
             from ..github_safety import scan_text
             scan_text(row['task'], workspace=self.queue.root)
             stamp = datetime.now(timezone.utc)
@@ -158,6 +163,8 @@ class Runtime:
             from ..delegation.core import append
             append(row, 'claimed')
             row['delegation_alerts'] = []
+            from ..audit import record as record_audit
+            record_audit(self.queue.root, 'jarvis.claim', who='jarvis', target=row['id'], detail={'source': row.get('source', '')})
             return self.studio.put('jarvis-job', row, row['id'])
 
     def finish(self, row, state, result):
@@ -190,6 +197,8 @@ class Runtime:
                 self.studio.put('jarvis-budget', budget, identifier)
             self.studio.put('jarvis-notice', {'job_id': row['id'], 'state': state, 'created': time.time(),
                                            'summary': safe.get('summary', '')[:2000], 'read': False})
+            from ..audit import record as record_audit
+            record_audit(self.queue.root, 'jarvis.finish', who='jarvis', target=row['id'], detail={'state': state})
             return saved
 
     def tick(self, permitted=True):

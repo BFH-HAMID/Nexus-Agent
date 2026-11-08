@@ -130,9 +130,16 @@ class Bot:
             raise ValueError('Challenge history quota full; archive trusted state')
         identifier = secrets.token_hex(8)
         cfg_digest = hashlib.sha256(json.dumps(self.cfg, sort_keys=True).encode()).hexdigest()
-        binding = signature(row) if kind == 'job' else row.get('args_digest') if kind == 'action' else 'kill'
+        binding = (
+            row.get('args_digest')
+            if kind in {'action', 'action_2fa'}
+            else signature(row)
+            if kind == 'job'
+            else 'kill'
+        )
         self.studio.put('telegram-challenge', {'user': user, 'kind': kind, 'target': row.get('id'), 'binding': binding,
-                        'cfg_digest': cfg_digest, 'expires': time.time() + self.cfg['challenge_seconds'], 'tries': 0, 'consumed': False}, identifier)
+                        'cfg_digest': cfg_digest, 'expires': time.time() + self.cfg['challenge_seconds'],
+                        'tries': 0, 'consumed': False, 'approved': False}, identifier)
         return f'Review actual task/diff in local HUD. Target {row.get("id", "daemon")}, digest {binding[:12]}. Confirm once: /confirm {identifier} YOUR_PIN. Expires shortly; no arguments/code uploaded.'
 
     def confirm(self, user, identifier, supplied):
@@ -153,11 +160,14 @@ class Bot:
             if not correct:
                 self.studio.put('telegram-pin-budget', {'hour': hour, 'failures': failures + 1}, pin_key)
             row['consumed'] = correct or row['tries'] >= 3
+            row['approved'] = bool(correct)
             self.studio.put('telegram-challenge', row, row['id'])
             if not correct:
                 raise ValueError('PIN refused')
         if row['kind'] == 'kill':
             return Daemon(self.studio).request('kill')
+        if row['kind'] == 'action_2fa':
+            return {'status': 'approved', 'target': row.get('target'), 'binding': row.get('binding')}
         if row['kind'] == 'job':
             current = self.studio.find('jarvis-job', row['target'])
             if signature(current) != row['binding']:
@@ -167,6 +177,61 @@ class Bot:
         if current['args_digest'] != row['binding']:
             raise ValueError('Action changed after challenge')
         return Approvals(self.studio).decide(row['target'], True, current['confirmation'])
+
+    def request_second_factor(self, tool_name, args, *, preview='', timeout=60):
+        """Send a one-time PIN challenge to whitelisted Telegram users and await confirmation."""
+        with self.authority_lock:
+            self.cfg = self.check_active()
+            args_digest = hashlib.sha256(
+                json.dumps(args or {}, sort_keys=True, default=str).encode('utf-8')
+            ).hexdigest()
+            challenge_ids = []
+            expires_in = min(int(timeout), int(self.cfg['challenge_seconds']))
+            for user in self.cfg['user_ids']:
+                text = self.challenge(user, 'action_2fa', {'id': tool_name, 'args_digest': args_digest})
+                ident = text.split('/confirm ')[1].split()[0]
+                challenge_ids.append(ident)
+                msg = (
+                    f'Nexus 2FA check for `{tool_name}` (digest {args_digest[:12]}). '
+                    f'{self.clean(preview)[:220]} Reply: /confirm {ident} YOUR_PIN'
+                )
+                self.api('sendMessage', {'chat_id': user, 'text': self.clean(msg)})
+
+        deadline = time.monotonic() + max(1, expires_in)
+        while time.monotonic() < deadline and not self.stop_event.is_set():
+            state = next((r for r in self.studio.items('telegram-state') if r['id'] == self.key), {'offset': 0})
+            poll_wait = min(self.cfg['poll_seconds'], max(1, int(deadline - time.monotonic())))
+            updates = self.api(
+                'getUpdates',
+                {'offset': state['offset'], 'timeout': poll_wait, 'limit': 50, 'allowed_updates': ['message']},
+            )
+            if isinstance(updates, list):
+                for update in updates[:50]:
+                    identifier = update.get('update_id')
+                    if type(identifier) is not int or not 0 <= identifier < 2**53 or identifier < state['offset']:
+                        continue
+                    state['offset'] = identifier + 1
+                    self.studio.put('telegram-state', state, self.key)
+                    message = update.get('message', {})
+                    try:
+                        with self.authority_lock:
+                            self.cfg = self.check_active()
+                            reply = self.handle(message)
+                    except (ValueError, OSError, KeyError, TypeError):
+                        user = message.get('from', {}).get('id')
+                        if type(user) is not int or user not in self.cfg['user_ids'] or message.get('chat', {}).get('id') != user:
+                            continue
+                        reply = '2FA confirmation refused.'
+                    if reply:
+                        self.api('sendMessage', {'chat_id': message['chat']['id'], 'text': self.clean(reply)})
+
+            rows = [self.studio.find('telegram-challenge', cid) for cid in challenge_ids]
+            if any(row.get('approved') for row in rows):
+                return True, 'second factor verified via Telegram'
+            if all(row.get('consumed') and not row.get('approved') for row in rows):
+                return False, 'Telegram second-factor PIN refused'
+            self.stop_event.wait(0.1)
+        return False, 'Telegram second-factor timed out'
 
     def handle(self, message):
         self.cfg = settings(self.root)

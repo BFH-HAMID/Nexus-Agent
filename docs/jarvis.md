@@ -79,7 +79,7 @@ maximum input bytes plus maximum output tokens; they are not invoiced usage. Dai
 captured once; active deadlines use monotonic time. Tokens are actual reported
 usage; local inference's USD/electricity cost is **unknown**, not fake zero billing.
 
-### L0–L3 semantics
+### L0–L3 semantics & `risk_classes` / `status_narration` / `notifications`
 
 | Level | Admission and writes |
 |---|---|
@@ -87,6 +87,30 @@ usage; local inference's USD/electricity cost is **unknown**, not fake zero bill
 | L1 (default) | Exact human task approval. Mutations separately reviewed. |
 | L2 | Only explicitly listed `runtime.auto_sources` can auto-admit, with runtime enabled. Scoped mutations still separately reviewed. |
 | L3 | Same scoped admission; optional non-destructive new-file/append auto-writes only with `allow_safe_writes: true`, `mode: reviewed_write`, explicit `write_roots`, and explicit per-tool `AUTO_ALLOW` in `permissions.yaml`. |
+
+In addition to L0–L3 mission admission, `autonomy.yaml` declares operator-owned tool risk classes, live narration verbosity, and notification routing (`nexus/autonomy.py`, `nexus/notifications.py`):
+
+```yaml
+risk_classes:
+  SAFE: automatic          # read/search/draft/summarise
+  MEDIUM: automatic_notify # bounded edits, local tests, git branches, draft PRs
+  DANGEROUS: fresh_approval # push main, deploy, send, delete, spend, change permissions, unknown tools
+
+status_narration:
+  enabled: false           # opt-in step-boundary narration
+  verbosity: milestones    # silent | milestones | chatty
+  cooldown_seconds: 0.0
+  max_chars: 180
+
+notifications:
+  enabled: false           # opt-in routing by importance & presence
+  presence: auto           # auto | present | away
+  present_ttl_seconds: 300
+  voice_when_present: true
+  away_channel: auto       # auto | telegram | desktop | none
+```
+
+Unknown or undeclared tools ALWAYS classify as `DANGEROUS` (`fresh_approval`), and `DANGEROUS` cannot be downgraded by `autonomy.yaml` or bypassed with `--yes` / `AUTO_ALLOW`. Both `status_narration` and `notifications` are **off by default**.
 
 Removing a source or downgrading L2/L3 revokes unclaimed autonomous admission;
 the job becomes approval-pending. Already-running jobs are revoked on policy change.
@@ -262,3 +286,40 @@ notification display; systemd user startup; authorized live GitHub CI/PR flow.
 Module 3's pre-existing native GUI/Docker/Office acceptance limitations still apply.
 Module 5 HUD/MCP/Telegram/context and Module 6 evaluation remain separate;
 context collection stays OFF and is implemented last.
+
+## Long-running missions, timezone scheduling, watchdogs & self-monitoring
+
+`autonomy.yaml` keeps `level: L1`, `runtime.enabled: false`, `scheduler.enabled: false`,
+and `watchdog.enabled: false` by default.
+
+- **Timezone-aware scheduler (`nexus/scheduler.py`)**: supports standard 5-field cron (`0 7 * * *`, `@daily`, `@hourly`) plus English and Bangla natural-language schedules (e.g., `"every day at 7 run the market report"`, `"next Friday remind me"`, `"প্রতিদিন সকাল ৭টায় রিপোর্ট চালাও"`, `"আগামী শুক্রবার বিকাল ৩টায় মনে করিয়ে দিও"`). Resolves user timezone via `zoneinfo.ZoneInfo` from `autonomy.yaml` (`scheduler.timezone` / `timezone`), `agents.yaml` (`settings.timezone`), or `NEXUS_TIMEZONE`. Persists schedules under `$NEXUS_HOME/scheduler/` and integrates with `Daemon.run()` while still obeying `L1` approval gates.
+- **Watchdogs (`nexus/watchdog.py`)**: when enabled (`watchdog.enabled: true` in `autonomy.yaml`), detects stuck steps (`step_timeout_seconds` with no progress), repeated identical `(tool, args)` infinite loops (`max_identical_tool_calls`), and runaway cost (`cost_cap_usd`), stops the mission immediately, logs `watchdog.triggered`, and alerts via `NotificationRouter`.
+- **Self-monitoring (`nexus/monitoring.py`)**: computes real `queue_depth`, `running_missions`, `cost_today`, and 24h `error_rate` exposed at `/api/monitoring`, `HUD.snapshot()["monitoring"]`, `GET /api/mission/summary`, `nexus jarvis monitoring`, and `nexus chief monitoring`.
+
+## Opt-in Proactive Engine (`proactive.yaml`)
+
+`proactive.yaml` ships **disabled by default** (`enabled: false`, every subsection and monitor off) and is operator-owned (`Permissions.operator_control()` and `autonomy._PROTECTED_POLICY_NAMES` refuse agent file edits).
+
+When explicitly enabled by the operator in `proactive.yaml`:
+
+- **Morning brief (`morning_brief.enabled: true`)**: aggregates up to 6 real local/configured sources (weather via `nexus.hud.world`, Google Calendar, Gmail unread count, pending tasks/schedules/reminders, system/CI/server health, and curated RSS news topics). Generates a short spoken digest plus full HUD text, delivering once per local day (or on voice greeting) via voice when the user is present or Telegram/desktop when away.
+- **Voice reminders & recurring tasks (`voice_reminders.enabled: true`)**: parses English and Bangla spoken utterances (`"remind me at 5 to call Mom"`, `"remind me in 10 minutes to stretch"`, `"schedule a recurring task every day at 9am to run tests"`, `"আমাকে বিকাল ৫টায় মনে করিয়ে দিও"`) into `ReminderStore` reminders or `Scheduler` tasks (recurring schedules still obey `L1` approval before executing tools).
+- **Opt-in monitors (`monitors.enabled: true`)**: evaluates explicit rules (`website`, `server`, `github_ci`, `disk`/`cpu`/`memory`, `price`/`market`, `log_pattern` guarded by `Permissions.path()`, and `rss_keyword`) with per-monitor `threshold`, `cooldown_seconds`, and `severity` (`info`, `warning`, `urgent`).
+- **Rate-limited suggestions (`suggestions.enabled: true`)**: proposes one bounded action at a time (failing build, meeting starting soon, deadline tomorrow), caps proactive speech at `max_speech_per_hour`, and remembers `"stop suggesting this"` across restarts in `$NEXUS_HOME/proactive/<workspace-hash>/state.json`. Accepted suggestions enter the `Queue` as `awaiting_approval` under `L1`.
+- **DND, focus mode & channel routing**: enforces scheduled DND windows (including overnight windows like `22:00`–`07:00`) and spoken `"focus mode"` (`nexus jarvis proactive focus --minutes 60`), blocking `info`/`warning` interruptions unless `allow_urgent_override: true` and `severity == "urgent"`. Routes `info` → HUD toast (`#toasts` via `alert.new` SSE), `warning` → HUD + desktop/voice (if present) or Telegram (if away), and `urgent` → voice + HUD + Telegram.
+
+CLI & HTTP routes:
+
+```powershell
+nexus jarvis -C . proactive status
+nexus jarvis -C . proactive tick
+nexus jarvis -C . proactive brief --present --greeting
+nexus jarvis -C . proactive remind "remind me at 5 to call Mom"
+nexus jarvis -C . proactive focus --minutes 60
+nexus jarvis -C . proactive suggest
+nexus jarvis -C . proactive stop-suggesting
+nexus jarvis -C . proactive accept [SUGGESTION_ID]
+```
+
+Authenticated endpoints: `GET /api/proactive/status` and `POST /api/proactive/action` (plus `HUD.snapshot()["proactive"]`).
+

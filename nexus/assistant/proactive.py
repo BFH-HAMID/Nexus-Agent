@@ -58,15 +58,16 @@ class ReminderStore:
         return hour, minute
 
     def add(self, text: str, *, run_at: float | None = None, every_minutes: int | None = None,
-            daily: str = "", weekly: str = "", timezone: str = "Asia/Dhaka") -> dict[str, Any]:
+            daily: str = "", weekly: str = "", timezone: str = "Asia/Dhaka",
+            now: float | None = None) -> dict[str, Any]:
         text = clean_text(text, 1000)
         selected = sum(value is not None for value in (run_at, every_minutes)) + bool(daily) + bool(weekly)
         if selected != 1:
             raise AssistantError("Choose exactly one: run_at, every_minutes, daily, or weekly")
         zone = self._zone(timezone)
-        now = time.time()
+        now_ts = time.time() if now is None else float(now)
         if run_at is not None:
-            if isinstance(run_at, bool) or not isinstance(run_at, (int, float)) or not 0 < run_at <= now + 366 * 86400:
+            if isinstance(run_at, bool) or not isinstance(run_at, (int, float)) or not 0 < run_at <= now_ts + 366 * 86400:
                 raise AssistantError("One-time reminder timestamp is outside the supported window")
             rule = {"kind": "once"}
             next_run = float(run_at)
@@ -74,7 +75,7 @@ class ReminderStore:
             if type(every_minutes) is not int or not 1 <= every_minutes <= 10_080:
                 raise AssistantError("Recurring interval must be 1–10080 minutes")
             rule = {"kind": "interval", "minutes": every_minutes}
-            next_run = now + every_minutes * 60
+            next_run = now_ts + every_minutes * 60
         else:
             value = daily or weekly
             parts = value.split(":")
@@ -88,7 +89,7 @@ class ReminderStore:
             hour, minute = self._clock(clock)
             rule = {"kind": "weekly" if weekly else "daily", "hour": hour, "minute": minute,
                     "weekday": weekday, "timezone": timezone}
-            next_run = self._next(rule, now, zone)
+            next_run = self._next(rule, now_ts, zone)
         ident = uuid.uuid4().hex[:16]
         connection = self._connect()
         try:
@@ -96,10 +97,10 @@ class ReminderStore:
                 if connection.execute("SELECT COUNT(*) FROM reminder").fetchone()[0] >= 1000:
                     raise AssistantError("At most 1000 reminders are kept")
                 connection.execute("INSERT INTO reminder(id,text,rule,next_run,enabled,created) VALUES(?,?,?,?,1,?)",
-                                   (ident, text, json.dumps(rule, sort_keys=True), next_run, now))
+                                   (ident, text, json.dumps(rule, sort_keys=True), next_run, now_ts))
         finally:
             connection.close()
-        return {"id": ident, "text": text, "rule": rule, "next_run": next_run, "enabled": True, "created": now}
+        return {"id": ident, "text": text, "rule": rule, "next_run": next_run, "enabled": True, "created": now_ts}
 
     @staticmethod
     def _next(rule: dict[str, Any], after: float, zone=None) -> float:

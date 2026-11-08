@@ -18,7 +18,7 @@ import yaml
 MODES = {'READ_ONLY', 'ASK_EVERY_TIME', 'AUTO_ALLOW'}
 # Tool families that always take a fresh decision, whatever the mode says.
 FORCED_REVIEW = frozenset({'run_command', 'git', 'gh', 'git_prepare', 'office_file',
-                           'vscode_open', 'browser_action'})
+                           'vscode_open', 'browser_action', 'integration_gmail_send'})
 
 
 class Permissions:
@@ -33,7 +33,8 @@ class Permissions:
             data = yaml.safe_load(path.read_text(encoding='utf-8')) if path.exists() else {}
         except yaml.YAMLError:
             raise ValueError('Malformed permission YAML') from None
-        if (not isinstance(data, dict) or set(data) - {'schema', 'default', 'tools', 'computer'} or type(data.get('schema', 1)) is not int or data.get('schema', 1) != 1
+        if (not isinstance(data, dict) or set(data) - {'schema', 'default', 'tools', 'computer', 'sandbox', 'second_factor', 'limits'}
+                or type(data.get('schema', 1)) is not int or data.get('schema', 1) != 1
                 or not isinstance(data.get('default', 'ASK_EVERY_TIME'), str) or data.get('default', 'ASK_EVERY_TIME') not in MODES):
             raise ValueError('Invalid permissions schema/default')
         rules = data.get('tools', {})
@@ -41,7 +42,17 @@ class Permissions:
                 or not re.fullmatch(r'[a-z][a-z0-9_]{0,79}', k) or not isinstance(v, str) or v not in MODES for k, v in rules.items())):
             raise ValueError('Invalid per-tool permission modes')
         from .computer import settings
-        return {'default': data.get('default', 'ASK_EVERY_TIME'), 'tools': rules, 'computer': settings(data.get('computer', {}))}
+        from .limits import parse_limits_policy
+        from .sandbox import parse_sandbox_policy
+        from .second_factor import parse_second_factor_policy
+        return {
+            'default': data.get('default', 'ASK_EVERY_TIME'),
+            'tools': rules,
+            'computer': settings(data.get('computer', {})),
+            'sandbox': parse_sandbox_policy(data.get('sandbox')),
+            'second_factor': parse_second_factor_policy(data.get('second_factor')),
+            'limits': parse_limits_policy(data.get('limits')),
+        }
 
     @staticmethod
     def readonly(spec, args):
@@ -78,8 +89,9 @@ class Permissions:
         return path
 
     def operator_control(self, path):
-        controls = [self.root / name for name in ('permissions.yaml', 'autonomy.yaml', 'context.yaml', 'mcp.yaml', 'telegram.yaml', 'hud.yaml', 'widget.yaml')]
-        if any(path == p or (path.exists() and p.exists() and os.path.samefile(path, p)) for p in controls):
+        target = (self.root / path).resolve() if isinstance(path, str) and not Path(path).is_absolute() else Path(path)
+        controls = [self.root / name for name in ('permissions.yaml', 'autonomy.yaml', 'context.yaml', 'memory.yaml', 'mcp.yaml', 'telegram.yaml', 'hud.yaml', 'widget.yaml', 'voice.yaml', 'persona.yaml', 'chief.yaml', 'proactive.yaml')]
+        if any(target == p or (target.exists() and p.exists() and os.path.samefile(target, p)) for p in controls):
             return True
         # Plugin code/manifests are operator-owned, even before enable. File tools
         # must not turn an approved plugin into new code under an unchanged name.
@@ -117,15 +129,21 @@ class Permissions:
                     if not readonly and self.operator_control(path):
                         raise ValueError('Permission policy is operator-owned; agent edits are forbidden')
         forced = not readonly and spec.name in FORCED_REVIEW
-        return {'mode': mode, 'readonly': readonly, 'forced': forced}
+        return {'mode': mode, 'readonly': readonly, 'forced': forced,
+                'second_factor': config['second_factor'], 'limits': config['limits']}
 
     def audit(self, spec, args, rule, decision):
         """One hash-linked line in the shared trail (see securitycenter.append_event)."""
+        from . import audit as auditlog
         from . import securitycenter
-        event = {'at': round(time.time(), 3), 'tool': spec.name, 'mode': rule['mode'],
+        now = round(time.time(), 3)
+        event = {'at': now, 'when': auditlog.utc_iso(now), 'who': 'agent',
+                 'what': 'permission.decision', 'tool': spec.name, 'mode': rule['mode'],
                  'approved': bool(decision.approved), 'reason': decision.reason[:500],
                  'args_sha256': hashlib.sha256(json.dumps(args, sort_keys=True).encode()).hexdigest(),
                  'action': 'permission.decision', 'target': spec.name,
                  'result': 'approved' if decision.approved else 'denied',
-                 'risk': 'low', 'actor': 'agent', 'detail': {'mode': rule['mode']}}
+                 'risk': getattr(getattr(spec, 'risk', None), 'value', 'low'),
+                 'actor': 'agent',
+                 'detail': {'mode': rule['mode'], 'redacted_args': auditlog.redact_args(args, self.root)}}
         securitycenter.append_event(self.root, event)

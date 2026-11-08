@@ -482,6 +482,7 @@ class Settings:
     always_allow_tools: list[str] = field(default_factory=list)
     never_allow_tools: list[str] = field(default_factory=list)
     blocked_command_patterns: list[str] = field(default_factory=list)
+    timezone: str = ""
     workspace: Path = field(default_factory=Path.cwd)
 
     @classmethod
@@ -532,6 +533,8 @@ class Settings:
                     pass
         if os.environ.get("NEXUS_ROUTER_AGENT"):
             self.router_agent = os.environ["NEXUS_ROUTER_AGENT"]
+        if os.environ.get("NEXUS_TIMEZONE"):
+            self.timezone = os.environ["NEXUS_TIMEZONE"].strip()
 
 
 @dataclass

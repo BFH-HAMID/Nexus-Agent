@@ -47,6 +47,13 @@ ANTHROPIC_VERSION = "2023-06-01"
 ANTHROPIC_DEFAULT_BASE_URL = "https://api.anthropic.com"
 TRANSIENT_STATUS_CODES = {408, 409, 425, 429, 500, 502, 503, 504, 529}
 
+
+class StreamCancelled(ProviderError):
+    """Raised when an active streaming response is cancelled mid-flight (e.g. voice barge-in)."""
+
+    def __init__(self, message: str = "stream cancelled") -> None:
+        super().__init__(message, retryable=False)
+
 # `provider:` values in agents.yaml that mean "OpenAI chat-completions dialect"
 OPENAI_COMPAT_KINDS = {
     "openai",
@@ -971,6 +978,8 @@ class ProviderRegistry:
                 if self.response_observer:
                     self.response_observer(current, completion)
                 return provider, completion
+            except StreamCancelled:
+                raise
             except ProviderError as exc:
                 if self.error_observer:
                     self.error_observer(current, exc)

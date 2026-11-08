@@ -1049,3 +1049,474 @@ def overview(state) -> dict[str, Any]:
         "tokens": view["tokens"], "limits": view["limits"],
         "notes": ["retrieval_off", "index_is_local", "excerpts_are_data", "memory_files"],
     }
+
+
+# ── personal integrations knowledge search & citations ─────────────────── #
+
+
+def search_personal_sources(
+    workspace: Path | str,
+    query: str,
+    *,
+    sources: tuple[str, ...] = ("drive", "docs", "notes"),
+    limit: int = 10,
+    keyring_module: Any = None,
+) -> dict[str, Any]:
+    """Search enabled Drive, Docs, and local Obsidian/Notion folders with source citations."""
+    from .personal_integrations import IntegrationError, PersonalIntegrations, load_integrations_policy
+    from .untrusted import flag_names
+
+    root = Path(workspace).resolve()
+    clean_q = _clean_text(query, MAX_QUERY_CHARS)
+    if not clean_q:
+        raise ValueError("Enter a search query")
+    pol = load_integrations_policy(root)
+    client = PersonalIntegrations(root, keyring_module=keyring_module, policy=pol)
+    if not pol["enabled"]:
+        return {
+            "schema": SCHEMA,
+            "observed_at": time.time(),
+            "query": clean_q,
+            "enabled": False,
+            "results": [],
+            "errors": [],
+            "injection_flags": [],
+            "note": "Personal integrations are disabled in mcp.yaml.",
+        }
+
+    results: list[dict[str, Any]] = []
+    errors: list[dict[str, str]] = []
+    flags: set[str] = set()
+    max_n = max(1, min(int(limit), MAX_TOP_K))
+
+    if "drive" in sources and pol["drive"]["enabled"] and pol["drive"]["allow_read"]:
+        try:
+            drive_res = client.drive_search(clean_q, max_results=max_n)
+            flags.update(drive_res.get("injection_flags") or [])
+            for item in drive_res.get("files") or []:
+                fid = str(item.get("id") or "")
+                title = str(item.get("name") or fid)
+                snippet = str(item.get("snippet") or "")
+                from .untrusted import wrap as wrap_untrusted
+
+                wrapped, w_flags = wrap_untrusted(snippet or title, source=f"drive:{fid}", kind="drive")
+                flags.update(w_flags)
+                results.append({
+                    "source": "drive",
+                    "source_id": fid,
+                    "title": title,
+                    "path": str(item.get("url") or f"drive:{fid}"),
+                    "citation": f"drive:{fid} ({title})",
+                    "excerpt": wrapped,
+                    "untrusted": True,
+                    "injection_flags": sorted({*flag_names(snippet), *w_flags}),
+                })
+        except (IntegrationError, ValueError) as exc:
+            errors.append({"source": "drive", "error": str(exc)})
+
+    if "docs" in sources and pol["docs"]["enabled"] and pol["docs"]["allow_read"]:
+        # Docs lookup can match either explicit doc ID or Drive search results typed as Google Docs.
+        if re.fullmatch(r"[A-Za-z0-9._:-]{3,200}", clean_q):
+            try:
+                doc = client.docs_read(clean_q)
+                flags.update(doc.get("injection_flags") or [])
+                results.append({
+                    "source": "docs",
+                    "source_id": doc["document_id"],
+                    "title": doc["title"],
+                    "path": doc.get("url") or f"docs:{doc['document_id']}",
+                    "citation": doc["source_citation"],
+                    "excerpt": doc["content"],
+                    "untrusted": True,
+                    "injection_flags": list(doc.get("injection_flags") or []),
+                })
+            except (IntegrationError, ValueError) as exc:
+                errors.append({"source": "docs", "error": str(exc)})
+
+    if "notes" in sources and pol["notes"]["enabled"] and pol["notes"]["allow_read"]:
+        try:
+            notes_res = client.notes_search(clean_q, limit=max_n)
+            flags.update(notes_res.get("injection_flags") or [])
+            for item in notes_res.get("results") or []:
+                results.append({
+                    "source": item["source_type"],
+                    "source_id": item["relative_path"],
+                    "title": item["relative_path"],
+                    "path": item["path"],
+                    "start_line": item["start_line"],
+                    "end_line": item["end_line"],
+                    "citation": item["source_citation"],
+                    "excerpt": item["excerpt"],
+                    "untrusted": True,
+                    "injection_flags": list(item.get("injection_flags") or []),
+                })
+        except (IntegrationError, ValueError) as exc:
+            errors.append({"source": "notes", "error": str(exc)})
+
+    numbered = [
+        {"rank": idx, "citation_tag": f"[{idx}] {row['citation']}", **row}
+        for idx, row in enumerate(results[:max_n], start=1)
+    ]
+    return {
+        "schema": SCHEMA,
+        "observed_at": time.time(),
+        "query": clean_q,
+        "enabled": True,
+        "results": numbered,
+        "errors": errors,
+        "injection_flags": sorted(flags),
+    }
+
+
+def read_personal_source(
+    workspace: Path | str,
+    source: str,
+    target: str,
+    *,
+    keyring_module: Any = None,
+) -> dict[str, Any]:
+    """Read one Drive file, Google Doc, or Obsidian/Notion note with source citation & untrusted framing."""
+    from .personal_integrations import PersonalIntegrations
+
+    kind = str(source or "").strip().lower()
+    client = PersonalIntegrations(workspace, keyring_module=keyring_module)
+    if kind == "drive":
+        data = client.drive_read(target)
+        return {**data, "citation": data["source_citation"]}
+    if kind == "docs":
+        data = client.docs_read(target)
+        return {**data, "citation": data["source_citation"]}
+    if kind in {"notes", "obsidian", "notion"}:
+        data = client.notes_read(target)
+        return {**data, "citation": data["source_citation"]}
+    raise ValueError(f"Unsupported personal knowledge source: {source!r}")
+
+
+def index_personal_notes(state, *, collection: str = "personal_notes", confirmation: str = "") -> dict[str, Any]:
+    """Index configured local Obsidian & Notion export folders into nexus/knowledge.py with citations."""
+    from . import securitycenter
+    from .personal_integrations import PersonalIntegrations, load_integrations_policy
+
+    workspace = Path(state.workspace).resolve()
+    name = str(collection or "personal_notes").strip().lower()
+    if not COLLECTION_NAME.fullmatch(name):
+        raise ValueError("Invalid collection name")
+    if confirmation != f"{INDEX_TOKEN} {name}":
+        raise ValueError(f"Type {INDEX_TOKEN} {name} exactly to confirm")
+    policy = load_policy(workspace)
+    if not policy["rag"]:
+        raise ValueError("Turn document retrieval on before indexing; it stays off by default")
+    int_pol = load_integrations_policy(workspace)
+    if not (int_pol["enabled"] and int_pol["notes"]["enabled"] and int_pol["notes"]["allow_read"]):
+        raise ValueError("Enable integrations.notes in mcp.yaml before indexing local notes")
+
+    pi = PersonalIntegrations(workspace, policy=int_pol)
+    folders = pi._iter_note_folders(int_pol["notes"])
+    if not folders:
+        raise ValueError("No readable Obsidian or Notion export folders configured in mcp.yaml")
+
+    now = time.time()
+    total_chunks = 0
+    rows: list[dict[str, Any]] = []
+    connection = _connect(workspace)
+    try:
+        fts = fts_enabled(connection)
+        encoder = "fts5" if fts else "like"
+        with connection:
+            for kind, folder in folders:
+                for path in pi._iter_note_files(folder):
+                    try:
+                        text = read_document(path)
+                    except (OSError, ValueError):
+                        continue
+                    rel = f"{kind}:{path.relative_to(folder)}"
+                    ident = _document_id(name, rel)
+                    pieces = chunk_lines(text.split("\n"), policy["chunk_chars"])
+                    if not pieces:
+                        continue
+                    if fts:
+                        connection.execute(
+                            "DELETE FROM chunk_fts WHERE rowid IN (SELECT id FROM chunk WHERE document_id = ?)",
+                            (ident,),
+                        )
+                    connection.execute("DELETE FROM chunk WHERE document_id = ?", (ident,))
+                    connection.execute(
+                        "INSERT INTO document(id, collection, path, sha256, bytes, lines, chunks, indexed_at)"
+                        " VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET"
+                        " sha256=excluded.sha256, bytes=excluded.bytes, lines=excluded.lines,"
+                        " chunks=excluded.chunks, indexed_at=excluded.indexed_at",
+                        (ident, name, rel, hashlib.sha256(text.encode()).hexdigest(),
+                         len(text.encode()), text.count("\n") + 1, len(pieces), now),
+                    )
+                    for order, (begin, end, body) in enumerate(pieces, start=1):
+                        cursor = connection.execute(
+                            "INSERT INTO chunk(document_id, collection, ord, start_line, end_line, chars, text)"
+                            " VALUES(?,?,?,?,?,?,?)",
+                            (ident, name, order, begin, end, len(body), body),
+                        )
+                        if fts:
+                            connection.execute("INSERT INTO chunk_fts(rowid, text) VALUES(?, ?)", (cursor.lastrowid, body))
+                    total_chunks += len(pieces)
+                    rows.append({"path": rel, "id": ident, "chunks": len(pieces)})
+            stats = _collection_stats(connection, name)
+            connection.execute(
+                "INSERT INTO collection(name, patterns, encoder, created, updated) VALUES(?,?,?,?,?)"
+                " ON CONFLICT(name) DO UPDATE SET patterns=excluded.patterns, updated=excluded.updated,"
+                " encoder=excluded.encoder",
+                (name, json.dumps([f"{k}:{f}" for k, f in folders]), encoder, stats.get("created") or now, now),
+            )
+    finally:
+        connection.close()
+    securitycenter.audit_action(
+        state,
+        "knowledge.notes.index",
+        "user",
+        {"name": name, "scope": f"{len(rows)} note(s), {total_chunks} chunk(s)"},
+        risk="medium",
+        target="knowledge",
+    )
+    return {"schema": SCHEMA, "collection": name, "indexed": rows, "chunks": total_chunks, "encoder": encoder}
+
+
+def search_with_integrations(
+    state,
+    query: str,
+    *,
+    collection: str = "",
+    limit: int = 0,
+    include_personal: bool = True,
+    client: str = "",
+    keyring_module: Any = None,
+) -> dict[str, Any]:
+    """Combined search over local knowledge collections plus enabled Drive, Docs, and local notes with citations."""
+    from .untrusted import wrap as wrap_untrusted
+
+    workspace = Path(state.workspace)
+    local = _search(workspace, query, collection, limit)
+    if local["rag"]:
+        audit_read(state, "search", client, every=60)
+
+    combined: list[dict[str, Any]] = []
+    for row in local.get("results") or []:
+        citation = f"{row['path']}:{row['start_line']}-{row['end_line']}"
+        wrapped, w_flags = wrap_untrusted(row["text"], source=row["path"], kind="knowledge")
+        combined.append({
+            "source": "knowledge",
+            "citation": citation,
+            "path": row["path"],
+            "collection": row["collection"],
+            "start_line": row["start_line"],
+            "end_line": row["end_line"],
+            "score": row["score"],
+            "excerpt": wrapped,
+            "flag": row.get("flag") or (w_flags[0] if w_flags else ""),
+            "untrusted": True,
+        })
+
+    personal_errors: list[dict[str, str]] = []
+    if include_personal:
+        personal = search_personal_sources(
+            workspace,
+            query,
+            limit=limit or DEFAULT_POLICY["top_k"],
+            keyring_module=keyring_module,
+        )
+        personal_errors = list(personal.get("errors") or [])
+        for row in personal.get("results") or []:
+            combined.append({
+                "source": row["source"],
+                "citation": row["citation"],
+                "path": row.get("path", ""),
+                "title": row.get("title", ""),
+                "excerpt": row["excerpt"],
+                "injection_flags": row.get("injection_flags", []),
+                "untrusted": True,
+            })
+
+    ranked = [{"rank": idx, "citation_tag": f"[{idx}] {row['citation']}", **row} for idx, row in enumerate(combined, start=1)]
+    return {
+        "schema": SCHEMA,
+        "observed_at": time.time(),
+        "query": _clean_text(query, MAX_QUERY_CHARS),
+        "rag": local.get("rag", False),
+        "results": ranked,
+        "citations": [row["citation_tag"] for row in ranked],
+        "errors": personal_errors,
+    }
+
+
+# ── Long-term personal profile & vector memory dashboard helpers ───────── #
+
+PERSONAL_ADD_TOKEN = "ADD PERSONAL MEMORY"
+PERSONAL_CONFIRM_TOKEN = "CONFIRM PROFILE FACT"
+PERSONAL_EDIT_TOKEN = "EDIT PERSONAL MEMORY"
+PERSONAL_DELETE_TOKEN = "DELETE PERSONAL MEMORY"
+
+
+def personal_list(state, *, query: str = "", status: str = "") -> dict[str, Any]:
+    """List personal profile facts & vector memories with source and timestamps."""
+    from .memory import PROFILE_CATEGORIES, LongTermMemory
+
+    ltm = LongTermMemory(Path(state.workspace))
+    pol = ltm.policy
+    entries = ltm.list_entries(query=query, include_suggested=True)
+    if status in {"confirmed", "suggested"}:
+        entries = [row for row in entries if row.get("status") == status]
+    return {
+        "schema": SCHEMA,
+        "observed_at": time.time(),
+        "enabled": bool(pol.get("enabled")),
+        "vector_enabled": ltm.vector_enabled,
+        "profile_enabled": ltm.profile_enabled,
+        "encrypted": ltm.encrypted,
+        "voice_privacy_mode": ltm.voice_privacy_mode,
+        "vector_count": ltm.vector_count if ltm.enabled else 0,
+        "categories": list(PROFILE_CATEGORIES),
+        "entries": entries,
+        "tokens": {
+            "add": PERSONAL_ADD_TOKEN,
+            "confirm": PERSONAL_CONFIRM_TOKEN,
+            "edit": PERSONAL_EDIT_TOKEN,
+            "delete": PERSONAL_DELETE_TOKEN,
+        },
+    }
+
+
+def personal_add(state, payload: dict[str, Any]) -> dict[str, Any]:
+    """Add a user-stated profile fact or vector memory entry from the dashboard."""
+    from . import securitycenter
+    from .memory import LongTermMemory
+
+    if payload.get("confirmation") != PERSONAL_ADD_TOKEN:
+        raise ValueError(f"Type {PERSONAL_ADD_TOKEN} exactly to confirm")
+    text = _clean_text(payload.get("text"), 1500)
+    if not text:
+        raise ValueError("Write something to remember first")
+    store_kind = str(payload.get("store") or "profile").strip().lower()
+    category = str(payload.get("category") or "").strip().lower()
+    explicit_sensitive = bool(payload.get("explicit_sensitive", False))
+    ltm = LongTermMemory(Path(state.workspace))
+    if store_kind == "vector":
+        entry = ltm.remember(
+            text,
+            kind="note",
+            source="dashboard",
+            explicit_sensitive=explicit_sensitive,
+        )
+    else:
+        entry = ltm.state_fact(
+            text,
+            category=category,
+            source="dashboard",
+            explicit_sensitive=explicit_sensitive,
+        )
+    securitycenter.audit_action(
+        state,
+        "knowledge.personal.add",
+        "user",
+        {"id": entry["id"], "store": store_kind},
+        risk="low",
+        target="memory",
+    )
+    return {**personal_list(state), "entry": entry}
+
+
+def personal_confirm(state, payload: dict[str, Any]) -> dict[str, Any]:
+    """Confirm or reject an inferred 'suggested' profile fact."""
+    from . import securitycenter
+    from .memory import LongTermMemory
+
+    ident = str(payload.get("id") or "").strip()
+    action = str(payload.get("action") or "confirm").strip().lower()
+    if not ident or not re.fullmatch(r"[a-z]{2,4}_[a-f0-9]{8,16}", ident):
+        raise ValueError("Invalid personal memory entry id")
+    if payload.get("confirmation") != f"{PERSONAL_CONFIRM_TOKEN} {ident}":
+        raise ValueError(f"Type {PERSONAL_CONFIRM_TOKEN} {ident} exactly to confirm")
+    ltm = LongTermMemory(Path(state.workspace))
+    if action == "reject":
+        ok = ltm.reject_fact(ident)
+        if not ok:
+            raise ValueError(f"Profile fact '{ident}' not found")
+        securitycenter.audit_action(
+            state, "knowledge.personal.reject", "user", {"id": ident}, risk="medium", target="memory"
+        )
+        return personal_list(state)
+    entry = ltm.confirm_fact(ident)
+    securitycenter.audit_action(
+        state, "knowledge.personal.confirm", "user", {"id": ident}, risk="low", target="memory"
+    )
+    return {**personal_list(state), "entry": entry}
+
+
+def personal_edit(state, payload: dict[str, Any]) -> dict[str, Any]:
+    """Edit a personal profile fact or vector memory entry and re-index it."""
+    from . import securitycenter
+    from .memory import LongTermMemory
+
+    ident = str(payload.get("id") or "").strip()
+    if not ident or not re.fullmatch(r"[a-z]{2,4}_[a-f0-9]{8,16}", ident):
+        raise ValueError("Invalid personal memory entry id")
+    if payload.get("confirmation") != f"{PERSONAL_EDIT_TOKEN} {ident}":
+        raise ValueError(f"Type {PERSONAL_EDIT_TOKEN} {ident} exactly to confirm")
+    text = _clean_text(payload.get("text"), 1500)
+    if not text:
+        raise ValueError("Updated entry text cannot be empty")
+    category = str(payload.get("category") or "").strip().lower() or None
+    explicit_sensitive = bool(payload.get("explicit_sensitive", False))
+    ltm = LongTermMemory(Path(state.workspace))
+    entry = ltm.edit_entry(
+        ident,
+        text,
+        category=category,
+        explicit_sensitive=explicit_sensitive,
+    )
+    securitycenter.audit_action(
+        state, "knowledge.personal.edit", "user", {"id": ident}, risk="medium", target="memory"
+    )
+    return {**personal_list(state), "entry": entry}
+
+
+def personal_delete(state, payload: dict[str, Any]) -> dict[str, Any]:
+    """Delete a personal entry (or topic) from files AND vector index."""
+    from . import securitycenter
+    from .memory import LongTermMemory
+
+    ltm = LongTermMemory(Path(state.workspace))
+    topic = str(payload.get("topic") or "").strip()
+    if topic:
+        expected = f"FORGET TOPIC {topic}"
+        if payload.get("confirmation") != expected:
+            raise ValueError(f"Type {expected} exactly to confirm")
+        res = ltm.forget_topic(topic, confirm=True)
+        securitycenter.audit_action(
+            state,
+            "knowledge.personal.delete_topic",
+            "user",
+            {"topic": topic[:80], "removed": res["total_removed"]},
+            risk="high",
+            target="memory",
+        )
+        return {**personal_list(state), "deleted": res}
+
+    ident = str(payload.get("id") or "").strip()
+    if not ident or not re.fullmatch(r"[a-z]{2,4}_[a-f0-9]{8,16}", ident):
+        raise ValueError("Invalid personal memory entry id")
+    if payload.get("confirmation") != f"{PERSONAL_DELETE_TOKEN} {ident}":
+        raise ValueError(f"Type {PERSONAL_DELETE_TOKEN} {ident} exactly to confirm")
+    res = ltm.forget(ident)
+    if res["total_removed"] == 0:
+        raise ValueError(f"Memory entry '{ident}' was not found")
+    securitycenter.audit_action(
+        state, "knowledge.personal.delete", "user", {"id": ident}, risk="medium", target="memory"
+    )
+    return {**personal_list(state), "deleted": res}
+
+
+def personal_export(state) -> dict[str, Any]:
+    """Export personal memory and profile entries as structured JSON."""
+    from .memory import LongTermMemory
+
+    ltm = LongTermMemory(Path(state.workspace))
+    return ltm.export_json()
+
+

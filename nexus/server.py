@@ -34,6 +34,8 @@ from __future__ import annotations
 
 import json
 import os
+import select
+import socket
 import threading
 import time
 import uuid
@@ -115,6 +117,8 @@ class ServerState:
     def __init__(self, workspace: Path, *, token: str = "", auto_yes: bool = False, quiet: bool = False,
                  demo: bool = False):
         self.workspace = Path(workspace).resolve()
+        from .redaction import install_log_redaction
+        install_log_redaction(self.workspace)
         self.token = token or os.environ.get("NEXUS_SERVE_TOKEN", "")
         self.auto_yes = auto_yes
         self.quiet = quiet
@@ -569,6 +573,48 @@ class ServerState:
 # --------------------------------------------------------------------------- #
 
 
+def _client_disconnected(connection: Any) -> bool:
+    """Return True when the peer has closed or reset its TCP connection."""
+    if connection is None or not hasattr(connection, "recv"):
+        return False
+    try:
+        fileno = connection.fileno()
+    except (AttributeError, OSError, ValueError):
+        return True
+    if not isinstance(fileno, int) or fileno < 0:
+        return True
+    try:
+        if hasattr(select, "poll"):
+            poller = select.poll()
+            rdhup = getattr(select, "POLLRDHUP", 0)
+            poller.register(fileno, select.POLLIN | select.POLLERR | select.POLLHUP | rdhup)
+            events = poller.poll(0)
+            if not events:
+                return False
+            mask = events[0][1]
+            if mask & (select.POLLERR | select.POLLHUP | select.POLLNVAL | rdhup):
+                return True
+            if not (mask & select.POLLIN):
+                return False
+        else:
+            readable, _, errored = select.select([connection], [], [connection], 0)
+            if errored:
+                return True
+            if not readable:
+                return False
+        peek_flag = getattr(socket, "MSG_PEEK", 0)
+        if not peek_flag:
+            return False
+        try:
+            return connection.recv(1, peek_flag) == b""
+        except (BlockingIOError, InterruptedError):
+            return False
+        except OSError:
+            return True
+    except (OSError, ValueError):
+        return True
+
+
 def make_handler(state: ServerState):
     class Handler(BaseHTTPRequestHandler):
         protocol_version = "HTTP/1.1"
@@ -857,10 +903,23 @@ def make_handler(state: ServerState):
             if path.startswith("/api/knowledge/"):
                 query = parse_qs(parsed.query)
                 if path not in {"/api/knowledge/policy", "/api/knowledge/memory", "/api/knowledge/collections",
-                                "/api/knowledge/collection", "/api/knowledge/search", "/api/knowledge/context"}:
+                                "/api/knowledge/collection", "/api/knowledge/search", "/api/knowledge/context",
+                                "/api/knowledge/personal/list", "/api/knowledge/personal/export"}:
                     return self._send_json({"error": f"no route for {path}"}, 404)
                 from . import knowledge
 
+                if path == "/api/knowledge/personal/list":
+                    q = (query.get("q") or [""])[0][:400]
+                    status_filter = (query.get("status") or [""])[0][:40]
+                    return self._knowledge_read(
+                        "knowledge.personal.list",
+                        lambda module: module.personal_list(state, query=q, status=status_filter),
+                    )
+                if path == "/api/knowledge/personal/export":
+                    return self._knowledge_read(
+                        "knowledge.personal.export",
+                        lambda module: module.personal_export(state),
+                    )
                 if path == "/api/knowledge/policy":
                     return self._knowledge_read("knowledge.policy",
                                                 lambda module: module.policy_view(state.workspace))
@@ -1052,6 +1111,81 @@ def make_handler(state: ServerState):
             if path == "/api/tasks":
                 with state.lock:
                     return self._send_json([s.snapshot() for s in state.sessions.values()])
+            if path == "/api/monitoring":
+                from .monitoring import collect_self_monitoring
+                from .redaction import mask
+                from .redaction import secrets as known_secrets
+                from .studio import redact
+
+                data = redact(collect_self_monitoring(state.workspace, studio=state.workbench.studio))
+                cleaned = json.loads(mask(json.dumps(data, allow_nan=False), known_secrets(state.workspace)))
+                return self._send_json(cleaned)
+            if path == "/api/schedules":
+                from .redaction import mask
+                from .redaction import secrets as known_secrets
+                from .scheduler import Scheduler, scheduler_summary
+                from .studio import redact
+
+                sched = Scheduler(state.workspace, studio=state.workbench.studio)
+                data = redact({"summary": scheduler_summary(state.workspace), "items": [e.to_dict() for e in sched.list()]})
+                cleaned = json.loads(mask(json.dumps(data, allow_nan=False), known_secrets(state.workspace)))
+                return self._send_json(cleaned)
+            if path == "/api/chief/history":
+                from .chief import ChiefOfStaff
+                from .redaction import mask
+                from .redaction import secrets as known_secrets
+                from .studio import redact
+
+                query = parse_qs(parsed.query)
+                status_filter = (query.get("status") or [None])[0]
+                limit_val = int((query.get("limit") or ["50"])[0])
+                data = redact({"items": ChiefOfStaff(state.workspace, studio=state.workbench.studio).history(status=status_filter, limit=limit_val)})
+                cleaned = json.loads(mask(json.dumps(data, allow_nan=False), known_secrets(state.workspace)))
+                return self._send_json(cleaned)
+            if path == "/api/proactive/status":
+                from .jarvis.proactive import ProactiveEngine
+                from .redaction import mask
+                from .redaction import secrets as known_secrets
+                from .studio import redact
+
+                data = redact(ProactiveEngine(state.workspace, studio=state.workbench.studio, server_state=state).status())
+                cleaned = json.loads(mask(json.dumps(data, allow_nan=False), known_secrets(state.workspace)))
+                return self._send_json(cleaned)
+            if path == "/api/chief/missions":
+                from .chief import chief_hud_summary
+
+                return self._send_json(chief_hud_summary(state.workspace))
+            if path.startswith("/api/chief/missions/"):
+                from .chief import ChiefError, ChiefOfStaff, load_mission
+                from .redaction import mask
+                from .redaction import secrets as known_secrets
+                from .studio import redact
+
+                tail = unquote(path.removeprefix("/api/chief/missions/"))
+                if tail.endswith("/replay"):
+                    mission_id = tail.removesuffix("/replay")
+                    query = parse_qs(parsed.query)
+                    mode = (query.get("mode") or ["inspect"])[0]
+                    if mode not in {"inspect", "why"}:
+                        return self._send_json({"error": "HTTP replay supports read-only inspect or why"}, 400)
+                    step_id = (query.get("step_id") or [None])[0]
+                    raw_trace_step = (query.get("trace_step") or [None])[0]
+                    trace_step = int(raw_trace_step) if raw_trace_step is not None and raw_trace_step != "" else None
+                    try:
+                        chief = ChiefOfStaff(state.workspace, studio=state.workbench.studio)
+                        data = redact(chief.replay(mission_id, step_id=step_id, trace_step=trace_step, mode=mode))
+                        cleaned = json.loads(mask(json.dumps(data, allow_nan=False), known_secrets(state.workspace)))
+                        return self._send_json(cleaned)
+                    except ChiefError:
+                        return self._send_json({"error": f"unknown mission: {mission_id}"}, 404)
+
+                mission_id = unquote(path.rsplit("/", 1)[-1])
+                try:
+                    data = redact(load_mission(state.workspace, mission_id).to_dict())
+                    cleaned = json.loads(mask(json.dumps(data, allow_nan=False), known_secrets(state.workspace)))
+                    return self._send_json(cleaned)
+                except ChiefError:
+                    return self._send_json({"error": f"unknown mission: {mission_id}"}, 404)
             if path.startswith("/api/events/"):
                 return self._sse(path.rsplit("/", 1)[-1])
             if path.startswith("/api/task/"):
@@ -1208,7 +1342,8 @@ def make_handler(state: ServerState):
             if path.startswith("/api/knowledge/"):
                 action = path.removeprefix("/api/knowledge/")
                 if action not in {"policy/save", "index", "collection/delete", "document/delete",
-                                  "entry/add", "entry/remove", "cleanup"}:
+                                  "entry/add", "entry/remove", "cleanup",
+                                  "personal/add", "personal/confirm", "personal/edit", "personal/delete"}:
                     return self._send_json({"error": f"no route for {path}"}, 404)
                 return self._knowledge_action(action, payload)
 
@@ -1218,6 +1353,48 @@ def make_handler(state: ServerState):
                                   "schedule/toggle", "schedule/remove", "schedule/run", "trigger/preview"}:
                     return self._send_json({"error": f"no route for {path}"}, 404)
                 return self._workflow_action(action, payload)
+
+            if path == "/api/proactive/action":
+                if state.demo:
+                    return self._send_json({"error": "Dashboard requires live mode. Restart Nexus without --demo and unset NEXUS_DEMO."}, 409)
+                from .jarvis.proactive import ProactiveDisabledError, ProactiveEngine
+                from .redaction import mask
+                from .redaction import secrets as known_secrets
+                from .studio import redact
+
+                action = str(payload.get("action") or "").strip()
+                engine = ProactiveEngine(state.workspace, studio=state.workbench.studio, server_state=state)
+                try:
+                    if action == "tick":
+                        res = engine.tick_once()
+                    elif action == "brief":
+                        res = engine.run_morning_brief(
+                            trigger="greeting" if payload.get("greeting") else "manual",
+                            present=bool(payload.get("present", True)),
+                            force=bool(payload.get("force", True)),
+                        )
+                    elif action == "focus":
+                        res = engine.set_focus_mode(
+                            bool(payload.get("enabled", True)),
+                            minutes=int(payload.get("minutes", 60)),
+                            reason=str(payload.get("reason") or ""),
+                        )
+                    elif action == "remind":
+                        res = engine.create_from_voice(str(payload.get("text") or ""))
+                    elif action == "stop_suggesting":
+                        res = engine.learn_stop_suggesting(str(payload.get("topic") or ""))
+                    elif action == "unmute":
+                        res = engine.unmute_suggestion(str(payload.get("target") or ""))
+                    elif action == "accept_suggestion":
+                        res = engine.accept_suggestion(payload.get("id") or None)
+                    elif action == "ack_toast":
+                        res = engine.ack_hud_toast(str(payload.get("id") or ""))
+                    else:
+                        return self._send_json({"error": "Unsupported proactive action"}, 400)
+                except (ProactiveDisabledError, ValueError, TypeError) as exc:
+                    return self._send_json({"error": str(exc)[:500]}, 400)
+                cleaned = json.loads(mask(json.dumps(redact(res), allow_nan=False), known_secrets(state.workspace)))
+                return self._send_json(cleaned)
 
             if path == "/api/approvals/decide":
                 return self._approvals_action(payload)
@@ -1278,6 +1455,91 @@ def make_handler(state: ServerState):
                     return self._send_json(state.create_skill(payload), 201)
                 except (ValueError, FileExistsError, OSError) as exc:
                     return self._send_json({"error": str(exc)}, 400)
+            if path == "/api/schedules":
+                if state.demo:
+                    return self._send_json({"error": "Scheduling requires live mode."}, 409)
+                from .scheduler import Scheduler
+
+                try:
+                    sched = Scheduler(state.workspace, studio=state.workbench.studio)
+                    action_name = str(payload.get("action") or "add")
+                    if action_name == "add":
+                        entry = sched.add(
+                            str(payload.get("expression") or ""),
+                            task=str(payload.get("task") or ""),
+                            timezone=payload.get("timezone") or None,
+                            target=payload.get("target") or None,
+                            priority=int(payload.get("priority", 5)),
+                        )
+                        return self._send_json(entry.to_dict(), 201)
+                    if action_name in {"pause", "resume"}:
+                        entry = sched.set_enabled(str(payload.get("id") or ""), action_name == "resume")
+                        return self._send_json(entry.to_dict(), 200)
+                    if action_name == "remove":
+                        removed = sched.remove(str(payload.get("id") or ""))
+                        return self._send_json({"removed": removed, "id": str(payload.get("id") or "")}, 200)
+                    return self._send_json({"error": f"unsupported schedule action: {action_name}"}, 400)
+                except (ValueError, TypeError) as exc:
+                    return self._send_json({"error": str(exc)}, 400)
+            if path == "/api/chief/missions":
+                if state.demo:
+                    return self._send_json({"error": "Chief-of-Staff requires live mode."}, 409)
+                from .chief import ChiefDisabledError, ChiefError, ChiefOfStaff, save_mission
+
+                try:
+                    chief = ChiefOfStaff(state.workspace, studio=state.workbench.studio)
+                    mission = chief.plan(
+                        str(payload.get("goal") or ""),
+                        pipeline=payload.get("pipeline") or None,
+                        cost_cap_usd=payload.get("cost_cap_usd"),
+                        concurrency=payload.get("concurrency"),
+                        max_retries=payload.get("max_retries"),
+                        critic_enabled=payload.get("critic_enabled"),
+                        source="hud",
+                    )
+                    auto_ok = ChiefOfStaff.can_auto_start(mission, chief.chief_config(), chief.autonomy_policy())
+                    if payload.get("start") and (auto_ok or str(payload.get("confirm") or "").strip().upper() == "GO"):
+                        mission = chief.start_background(mission.id, auto_approve=True)
+                        return self._send_json(mission.to_dict(), 202)
+                    if not auto_ok:
+                        mission.status = "awaiting_approval"
+                        save_mission(state.workspace, mission)
+                    return self._send_json(mission.to_dict(), 201)
+                except ChiefDisabledError as exc:
+                    return self._send_json({"error": str(exc)}, 403)
+                except (ChiefError, ValueError, TypeError) as exc:
+                    return self._send_json({"error": str(exc)}, 400)
+            if path.startswith("/api/chief/missions/"):
+                if state.demo:
+                    return self._send_json({"error": "Chief-of-Staff requires live mode."}, 409)
+                from .chief import ChiefDisabledError, ChiefError, ChiefOfStaff
+
+                tail = path.removeprefix("/api/chief/missions/")
+                if "/" not in tail:
+                    return self._send_json({"error": f"no route for {path}"}, 404)
+                mission_id, verb = tail.split("/", 1)
+                if verb not in {"approve", "pause", "resume", "cancel"}:
+                    return self._send_json({"error": f"no route for {path}"}, 404)
+                try:
+                    chief = ChiefOfStaff(state.workspace, studio=state.workbench.studio)
+                    if verb == "approve":
+                        mission = chief.approve(
+                            mission_id,
+                            approved=bool(payload.get("approved", True)),
+                            confirm=str(payload.get("confirm") or ""),
+                            background=bool(payload.get("background", True)),
+                        )
+                    elif verb == "pause":
+                        mission = chief.pause(mission_id)
+                    elif verb == "resume":
+                        mission = chief.resume(mission_id, background=bool(payload.get("background", True)))
+                    else:
+                        mission = chief.cancel(mission_id)
+                    return self._send_json(mission.to_dict(), 200)
+                except ChiefDisabledError as exc:
+                    return self._send_json({"error": str(exc)}, 403)
+                except ChiefError as exc:
+                    return self._send_json({"error": str(exc)}, 409)
             if path == "/api/recall":
                 query = str(payload.get("query") or "")
                 try:
@@ -1564,6 +1826,14 @@ def make_handler(state: ServerState):
                     data = knowledge.add_entry(state, payload)
                 elif action == "entry/remove":
                     data = knowledge.remove_entry(state, payload)
+                elif action == "personal/add":
+                    data = knowledge.personal_add(state, payload)
+                elif action == "personal/confirm":
+                    data = knowledge.personal_confirm(state, payload)
+                elif action == "personal/edit":
+                    data = knowledge.personal_edit(state, payload)
+                elif action == "personal/delete":
+                    data = knowledge.personal_delete(state, payload)
                 else:
                     data = knowledge.cleanup(state, payload)
             except ValueError as exc:
@@ -1964,9 +2234,18 @@ def make_handler(state: ServerState):
                     self.wfile.flush()
                 except (BrokenPipeError, ConnectionResetError, OSError):
                     return
+                last_write = time.monotonic()
+                poll_interval = 0.25
+                keepalive_interval = 5.0
                 while not state.mission.stopped:
-                    item = subscriber.next(timeout=5.0)
+                    if _client_disconnected(getattr(self, "connection", None)):
+                        return
+                    item = subscriber.next(timeout=poll_interval)
                     if item is None:
+                        if state.mission.stopped or _client_disconnected(getattr(self, "connection", None)):
+                            return
+                        if time.monotonic() - last_write < keepalive_interval:
+                            continue
                         frame = mission_module.keepalive()
                     else:
                         name, payload = item
@@ -1976,6 +2255,7 @@ def make_handler(state: ServerState):
                     try:
                         self.wfile.write(frame)
                         self.wfile.flush()
+                        last_write = time.monotonic()
                     except (BrokenPipeError, ConnectionResetError, OSError):
                         return
             finally:

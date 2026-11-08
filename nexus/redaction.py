@@ -1,8 +1,11 @@
-"""Literal credential masking across stream boundaries, with bounded retained prefixes."""
+"""Literal credential masking across stream boundaries, logs, and OS keyring helpers."""
 from __future__ import annotations
 
+import logging
 import os
 import re
+from pathlib import Path
+from typing import Any
 
 
 def secrets(workspace=None, env=None):
@@ -10,7 +13,7 @@ def secrets(workspace=None, env=None):
     for source in (os.environ, env or {}):
         for name, value in source.items():
             if (re.search(r'(?i)(?:TOKEN|API_KEY|SECRET|PASSWORD|AUTHORIZATION|_PIN)$', name)
-                    and isinstance(value, str) and 8 <= len(value) <= 4096):
+                    and isinstance(value, str) and 6 <= len(value) <= 4096):
                 values.add(value)
     if workspace is not None:
         from .github_safety import GitHubSafetyError, token_from_environment
@@ -21,11 +24,89 @@ def secrets(workspace=None, env=None):
     return sorted(values, key=len, reverse=True)
 
 
-def mask(text, values):
+def mask(text, values=()):
     from .studio import redact
+    text = str(text)
     for value in values:
-        text = text.replace(value, '[REDACTED_SECRET]')
+        if value:
+            text = text.replace(value, '[REDACTED_SECRET]')
     return redact(text)
+
+
+def redact_text(text: Any, workspace: Path | str | None = None) -> str:
+    """Mask environment secrets and known token/key patterns in *text*."""
+    return str(mask(str(text), secrets(workspace)))
+
+
+def get_secret(name: str, *, service: str = 'nexus-agent', env_name: str = '') -> str:
+    """Resolve a secret from environment/.env first, then native OS keyring (no repo plaintext)."""
+    if env_name:
+        env_val = os.environ.get(env_name, '').strip()
+        if env_val:
+            return env_val
+    try:
+        import keyring
+        backend = keyring.get_keyring()
+        if type(backend).__module__ in {
+            'keyring.backends.SecretService',
+            'keyring.backends.macOS',
+            'keyring.backends.Windows',
+        }:
+            return str(keyring.get_password(service, name) or '')
+    except Exception:  # noqa: BLE001 - optional/headless fallback is empty string, never plaintext file
+        return ''
+    return ''
+
+
+def set_secret(name: str, value: str, *, service: str = 'nexus-agent') -> bool:
+    """Store a secret exclusively in the unlocked native OS keyring (never plaintext in repo/YAML)."""
+    clean = str(value or '').strip()
+    if not clean:
+        raise ValueError('Secret value must not be empty')
+    try:
+        import keyring
+    except ImportError as exc:
+        raise ValueError('Install secret storage: pip install -e ".[secure-state]"') from exc
+    backend = keyring.get_keyring()
+    if type(backend).__module__ not in {
+        'keyring.backends.SecretService',
+        'keyring.backends.macOS',
+        'keyring.backends.Windows',
+    }:
+        raise ValueError('A native unlocked OS credential vault is required; no plaintext fallback')
+    keyring.set_password(service, name, clean)
+    return True
+
+
+class RedactingLogFilter(logging.Filter):
+    """Logging filter that strips literal secrets and token patterns from log records."""
+
+    def __init__(self, workspace: Path | str | None = None) -> None:
+        super().__init__()
+        self.workspace = workspace
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        try:
+            message = record.getMessage()
+        except Exception:  # noqa: BLE001
+            message = str(record.msg)
+        record.msg = redact_text(message, self.workspace)
+        record.args = ()
+        return True
+
+
+def install_log_redaction(
+    workspace: Path | str | None = None,
+    *,
+    logger_names: tuple[str, ...] = ('', 'nexus', 'httpx', 'uvicorn'),
+) -> RedactingLogFilter:
+    """Attach a deduplicated :class:`RedactingLogFilter` to application/HTTP loggers."""
+    filt = RedactingLogFilter(workspace)
+    for name in logger_names:
+        logger = logging.getLogger(name)
+        if not any(isinstance(existing, RedactingLogFilter) for existing in logger.filters):
+            logger.addFilter(filt)
+    return filt
 
 
 class StreamMask:

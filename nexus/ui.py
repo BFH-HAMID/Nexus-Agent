@@ -236,6 +236,11 @@ class TerminalUI:
     def _on_approval(self, d: dict[str, Any]) -> None:  # handled by the prompt
         self.stop_spinner()
 
+    def _on_voice_state(self, d: dict[str, Any]) -> None:
+        self.stop_spinner()
+        state = str(d.get("state") or "idle")
+        print(self.c.dim(f"🎙 voice -> {state}"))
+
     def _on_done(self, d: dict[str, Any]) -> None:
         self.stop_spinner()
 

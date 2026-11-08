@@ -8,6 +8,8 @@ tiny SSE reader.
 from __future__ import annotations
 
 import json
+import select
+import socket
 import threading
 import time
 import urllib.error
@@ -19,7 +21,7 @@ import pytest
 
 from nexus import mission as mission_module
 from nexus.mission import EVENTS, Mission, encode
-from nexus.server import ServerState, make_handler
+from nexus.server import ServerState, _client_disconnected, make_handler
 from nexus.webapi import Limiter
 
 TOKEN = "mission-test-token"
@@ -269,9 +271,9 @@ def test_stream_pushes_the_four_opening_events_then_an_alert(live):
         assert live["mission"].subscribers == 1
     finally:
         reader.close()
-    # TCP close is observed on a failed write, and the first post-close write
-    # can succeed. Allow two five-second keepalive rounds plus scheduling slack.
-    deadline = time.monotonic() + 12
+    # _mission_stream detects closed sockets between short queue waits (~0.25s)
+    # rather than waiting for failed keepalive writes.
+    deadline = time.monotonic() + 2.0
     while live["mission"].subscribers and time.monotonic() < deadline:
         time.sleep(0.05)
     assert live["mission"].subscribers == 0, "a dropped client must free its slot"
@@ -294,6 +296,38 @@ def test_stream_reports_too_many_subscribers(live, monkeypatch):
     status, body = _get(live["base"] + "/api/mission/stream")
     assert status == 503
     assert body["error"]["code"] == "too_many_streams"
+
+
+def test_dropped_stream_frees_max_subscribers_slot_promptly(live, monkeypatch):
+    monkeypatch.setattr(mission_module, "MAX_SUBSCRIBERS", 1)
+    url = live["base"] + "/api/mission/stream"
+    first = Reader(url)
+    try:
+        first.read({"heartbeat"})
+        assert live["mission"].subscribers == 1
+        status, body = _get(url)
+        assert status == 503
+        assert body["error"]["code"] == "too_many_streams"
+    finally:
+        first.close()
+
+    deadline = time.monotonic() + 2.0
+    while live["mission"].subscribers and time.monotonic() < deadline:
+        time.sleep(0.05)
+    assert live["mission"].subscribers == 0
+
+    second = Reader(url)
+    try:
+        frames = second.read({"heartbeat"})
+        assert any(name == "heartbeat" for name, _ in frames)
+        assert live["mission"].subscribers == 1
+    finally:
+        second.close()
+
+    deadline = time.monotonic() + 2.0
+    while live["mission"].subscribers and time.monotonic() < deadline:
+        time.sleep(0.05)
+    assert live["mission"].subscribers == 0
 
 
 def test_the_sampler_only_runs_while_somebody_listens(repo: Path, monkeypatch):
@@ -363,3 +397,17 @@ def test_close_tells_open_streams_to_finish():
     assert item[1].get("shutdown") is True
     assert hub.subscribers == 0
 
+
+def test_client_disconnected_checks_poll_and_select_fallback(monkeypatch):
+    assert _client_disconnected(None) is False
+    server_sock, client_sock = socket.socketpair()
+    try:
+        assert _client_disconnected(server_sock) is False
+        client_sock.close()
+        assert _client_disconnected(server_sock) is True
+        monkeypatch.delattr(select, "poll", raising=False)
+        assert _client_disconnected(server_sock) is True
+    finally:
+        client_sock.close()
+        server_sock.close()
+    assert _client_disconnected(server_sock) is True

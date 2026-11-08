@@ -15,10 +15,52 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from nexus.providers import ProviderRegistry  # noqa: E402
 from nexus.types import Completion, Provider, TextBlock, ToolCall, ToolSpec  # noqa: E402
 
 GIT = shutil.which("git")
+
+
+def _check_editable_install(repo_root: Path = REPO_ROOT) -> None:
+    """Verify isolated `python -I -m nexus` subprocesses import this checkout."""
+    expected = (repo_root / "nexus" / "__init__.py").resolve()
+    code = (
+        "import pathlib, nexus; "
+        "p = getattr(nexus, '__file__', None); "
+        "print(pathlib.Path(p).resolve() if p else '')"
+    )
+    try:
+        proc = subprocess.run(
+            [sys.executable, "-I", "-c", code],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=15,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise pytest.UsageError(
+            f"Unable to verify editable install of {repo_root} via `{sys.executable} -I`: {exc}. "
+            'Run: python -m pip install -e ".[dev]"'
+        ) from exc
+    actual_raw = proc.stdout.strip()
+    actual = Path(actual_raw).resolve() if actual_raw else None
+    if proc.returncode != 0 or actual != expected:
+        if actual is not None:
+            detail = f"resolved to {actual}"
+        elif proc.stderr.strip():
+            detail = proc.stderr.strip().splitlines()[-1]
+        else:
+            detail = "nexus is not importable under `python -I`"
+        raise pytest.UsageError(
+            f"Nexus-Agent must be installed in editable mode from {repo_root} before running pytest "
+            f"(integration tests launch `python -I -m nexus`; {detail}). "
+            'Run: python -m pip install -e ".[dev]"'
+        )
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    if getattr(config.option, "help", False) or getattr(config.option, "version", False):
+        return
+    _check_editable_install()
 
 
 @pytest.fixture(autouse=True)
@@ -133,7 +175,7 @@ def finish_completion(summary: str = "done", followups: Sequence[str] = ()) -> C
 ROUTER_AGENT = "gemini-flash"
 
 
-def fake_registry(*providers: FakeProvider, config=None, router_script: Sequence[Any] = ()) -> ProviderRegistry:
+def fake_registry(*providers: FakeProvider, config=None, router_script: Sequence[Any] = ()) -> Any:
     """A provider registry for tests.
 
     * every agent named in ``config`` (or the bundled agents.yaml) gets a
@@ -143,6 +185,7 @@ def fake_registry(*providers: FakeProvider, config=None, router_script: Sequence
       item meant for the worker provider.
     """
     from nexus.config import AgentConfig, load_config
+    from nexus.providers import ProviderRegistry
 
     cfg = config or load_config()
     agents: dict[str, AgentConfig] = dict(cfg.agents)

@@ -144,7 +144,8 @@ nexus orchestrate --encoder lexical-hash plan "Build an e-commerce website with 
 default semantic encoder requires your existing local Ollama embedding model.
 Planning calls configured models and respects persisted Workbench local-only
 policy. This is a tested **first Module 1 slice**, not a completed six-module
-extension. See [usage, boundaries and verification](docs/orchestration.md) and the
+extension. See [usage, boundaries and verification](docs/orchestration.md), the
+[Chief-of-Staff multi-agent orchestrator](docs/chief.md), and the
 [full rollout/acceptance ledger](docs/agent-extension-plan.md).
 
 
@@ -837,8 +838,8 @@ ruff check nexus tests
 ```
 
 The editable install is required because the Jarvis integration tests launch isolated
-`python -I -m nexus` subprocesses. The `dev` extra also includes the screenshot and OCR packages
-used by the context tests, so a separate `context` install is not needed.
+`python -I -m nexus` subprocesses. The `dev` extra also includes the screenshot, OCR, and FAISS
+packages used by the context and orchestration tests, so a separate install is not needed.
 
 Nothing in the test suite touches the network: providers are scripted, the server tests run
 against a real socket on an ephemeral port, and `--demo` covers the loop end to end.

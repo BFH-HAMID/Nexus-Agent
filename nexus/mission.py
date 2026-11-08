@@ -152,8 +152,8 @@ class Mission:
             self._next_ident += 1
             subscriber = Subscriber(ident)
             self._subscribers[ident] = subscriber
+            self._stop.clear()
             if self._thread is None or not self._thread.is_alive():
-                self._stop.clear()
                 self._thread = threading.Thread(target=self._run, name=f"nexus-mission-{id(self):x}", daemon=True)
                 self._thread.start()
             self._wake.set()
@@ -249,6 +249,7 @@ class Mission:
             "activity": self._activity(snapshot, observed),
             "health": self._health_section(),
             "alerts": self._alerts(),
+            "monitoring": snapshot.get("monitoring") if isinstance(snapshot, dict) else None,
             "stream": {"subscribers": self.subscribers, "schema": SCHEMA, "started_at": self.started_at},
         }
         summary["build_ms"] = round((time.perf_counter() - started) * 1000, 1)
@@ -439,7 +440,12 @@ class Mission:
         next_tick = time.monotonic()
         next_heartbeat = 0.0
         next_slow = 0.0
-        while not self._stop.is_set():
+        while True:
+            with self._lock:
+                if self._stop.is_set() or not self._subscribers:
+                    if self._thread is threading.current_thread():
+                        self._thread = None
+                    return
             now = time.monotonic()
             if now >= next_slow:
                 next_slow = now + self.slow_every

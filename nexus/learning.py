@@ -59,12 +59,13 @@ class LearningOutcome:
     patched: str = ""
     memory: list[str] = field(default_factory=list)
     profile: list[str] = field(default_factory=list)
+    suggested_profile: list[str] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
     raw: str = ""
 
     @property
     def changed(self) -> bool:
-        return bool(self.skill or self.patched or self.memory or self.profile)
+        return bool(self.skill or self.patched or self.memory or self.profile or self.suggested_profile)
 
     def summary(self) -> str:
         bits: list[str] = []
@@ -76,12 +77,19 @@ class LearningOutcome:
             bits.append(f"{len(self.memory)} memory entr{'y' if len(self.memory) == 1 else 'ies'}")
         if self.profile:
             bits.append(f"{len(self.profile)} profile entr{'y' if len(self.profile) == 1 else 'ies'}")
+        if self.suggested_profile:
+            bits.append(
+                f"{len(self.suggested_profile)} suggested profile fact"
+                f"{'' if len(self.suggested_profile) == 1 else 's'}"
+            )
         return ", ".join(bits) or "nothing to save"
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "skill": self.skill, "skill_path": self.skill_path, "patched": self.patched,
-            "memory": self.memory, "profile": self.profile, "notes": self.notes,
+            "memory": self.memory, "profile": self.profile,
+            "suggested_profile": self.suggested_profile,
+            "notes": self.notes,
             "changed": self.changed,
         }
 
@@ -203,6 +211,24 @@ class LearningLoop:
             outcome.notes.append("learning is off (settings.learning / NEXUS_LEARNING=0)")
             return outcome
 
+        tainted = bool(getattr(getattr(self.agent, "gate", None), "tainted", False))
+        if tainted:
+            outcome.notes.append("learning skipped: session tainted by untrusted data")
+            return outcome
+
+        ltm = getattr(self.agent, "long_term_memory", None)
+        if apply and ltm is not None and getattr(ltm, "vector_enabled", False):
+            try:
+                ltm.record_mission_outcome(
+                    task,
+                    getattr(result, "summary", "") or getattr(result, "text", ""),
+                    role=str(getattr(result, "role", "") or ""),
+                    ok=bool(getattr(result, "ok", True)),
+                    tainted=tainted,
+                )
+            except Exception as exc:  # noqa: BLE001
+                outcome.notes.append(f"vector mission outcome skipped: {exc}")
+
         provider_name = agent_name or getattr(self.settings, "learning_agent", "") \
             or getattr(self.settings, "router_agent", "") or self.agent.config.default_agent
         agent_cfg = self.agent.config.agents.get(provider_name) or self.agent.config.agent_for_role(
@@ -230,6 +256,8 @@ class LearningLoop:
         if not data:
             outcome.notes.append("review returned no JSON")
             return outcome
+        data["_task"] = task
+        data["_tainted"] = tainted
         if apply:
             self.apply(data, outcome)
         else:
@@ -238,12 +266,22 @@ class LearningLoop:
 
     # -- apply ----------------------------------------------------------- #
     def apply(self, data: dict[str, Any], outcome: LearningOutcome) -> LearningOutcome:
+        from .memory import MemoryPolicyError, assert_trusted_memory_write, detect_sensitive_category
+
+        is_tainted = bool(
+            data.get("_tainted") or getattr(getattr(self.agent, "gate", None), "tainted", False)
+        )
+        if is_tainted:
+            outcome.notes.append("learning skipped: untrusted/tainted data cannot write to memory")
+            return outcome
+
         sink = getattr(self, "review_sink", None)
         if sink:
             sink(data)
             outcome.notes.append("Learning staged in Studio review inbox; no active memory/skill changed")
             return outcome
         memory = getattr(self.agent, "memory_store", None)
+        ltm = getattr(self.agent, "long_term_memory", None)
 
         patch = data.get("patch")
         if isinstance(patch, dict) and patch.get("name"):
@@ -292,21 +330,54 @@ class LearningLoop:
                 except (ValueError, OSError, FileExistsError) as exc:
                     outcome.notes.append(f"skill write failed: {exc}")
 
-        if memory is not None:
+        if memory is not None or ltm is not None:
             for text in _as_list(data.get("memory"), 3):
-                ok, note = memory.add(text, "memory")
-                if ok:
-                    outcome.memory.append(text)
-                    self.agent.event(EventType.MEMORY, role="memory", path=str(memory.memory.path),
-                                     text=text)
-                else:
-                    outcome.notes.append(f"memory: {note}")
+                try:
+                    assert_trusted_memory_write(text, tainted=is_tainted, source="learning")
+                except MemoryPolicyError as exc:
+                    outcome.notes.append(f"memory blocked: {exc}")
+                    continue
+                if detect_sensitive_category(text):
+                    outcome.notes.append("memory blocked: sensitive category")
+                    continue
+                if memory is not None:
+                    ok, note = memory.add(text, "memory", source="learning", tainted=is_tainted)
+                    if ok:
+                        outcome.memory.append(text)
+                        self.agent.event(EventType.MEMORY, role="memory", path=str(memory.memory.path),
+                                         text=text)
+                    else:
+                        outcome.notes.append(f"memory: {note}")
+                if ltm is not None and getattr(ltm, "vector_enabled", False):
+                    try:
+                        ltm.remember(text, kind="conversation", source="learning", tainted=is_tainted)
+                        if text not in outcome.memory:
+                            outcome.memory.append(text)
+                    except MemoryPolicyError as exc:
+                        outcome.notes.append(f"vector memory: {exc}")
+
             for text in _as_list(data.get("profile"), 3):
-                ok, note = memory.add(text, "user")
-                if ok:
-                    outcome.profile.append(text)
-                else:
-                    outcome.notes.append(f"profile: {note}")
+                try:
+                    assert_trusted_memory_write(text, tainted=is_tainted, source="learning:inferred")
+                except MemoryPolicyError as exc:
+                    outcome.notes.append(f"profile blocked: {exc}")
+                    continue
+                if detect_sensitive_category(text):
+                    outcome.notes.append("profile blocked: sensitive category")
+                    continue
+                if ltm is not None and getattr(ltm, "profile_enabled", False):
+                    try:
+                        ltm.suggest_fact(text, source="learning:inferred", tainted=is_tainted)
+                        outcome.suggested_profile.append(text)
+                        outcome.notes.append("profile fact staged as 'suggested' (awaiting confirmation)")
+                    except MemoryPolicyError as exc:
+                        outcome.notes.append(f"profile: {exc}")
+                elif memory is not None:
+                    ok, note = memory.add(text, "user", source="learning", tainted=is_tainted)
+                    if ok:
+                        outcome.profile.append(text)
+                    else:
+                        outcome.notes.append(f"profile: {note}")
         return outcome
 
     # -- on demand ------------------------------------------------------- #

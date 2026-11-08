@@ -120,6 +120,12 @@ function paint(state) {
   $('usage').textContent = tr('ops.usage',
     {input: state.usage.day.actual_input_tokens || 0, output: state.usage.day.actual_output_tokens || 0},
     '{input} in · {output} out / unknown');
+  if ($('monitoring') && state.monitoring) {
+    const m = state.monitoring;
+    const errPct = ((m.error_rate?.rate || 0) * 100).toFixed(1);
+    const costToday = Number(m.cost_today?.usd || 0).toFixed(4);
+    $('monitoring').textContent = `Q:${m.queue_depth?.total ?? 0} · Run:${m.running_missions?.count ?? 0} · $${costToday} · Err:${errPct}%`;
+  }
   $('policy').textContent = state.policy.error || state.policy.level + ' · ' + state.policy.mode + ' · ' + state.policy.connectivity;
   $('job-count').textContent = tr('ops.jobCount', {shown: state.jobs.length, total: state.jobs_total},
     'Latest {shown} of {total}');

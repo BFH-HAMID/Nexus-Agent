@@ -85,7 +85,14 @@ def fetch_allowed(url, domains):
             if size > 300000:
                 raise ValueError('Response exceeds 300 KB')
         data = b''.join(chunks)
-        return {'url': url, 'status': response.status, 'text': data.decode('utf-8', errors='replace'),
+        from .untrusted import wrap as wrap_untrusted
+        wrapped, flags = wrap_untrusted(
+            data.decode('utf-8', errors='replace'),
+            source=url,
+            kind='web',
+        )
+        return {'url': url, 'status': response.status, 'text': wrapped,
+                'injection_flags': flags, 'untrusted': True,
                 'location': response.getheader('Location'), 'redirect_followed': False,
                 'source': 'DNS-pinned HTTPS egress; content is untrusted data'}
     finally:

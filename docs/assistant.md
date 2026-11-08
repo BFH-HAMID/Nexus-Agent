@@ -190,6 +190,7 @@ mode cannot perform live assistant actions.
 * `python -m pytest -q tests/test_assistant_core.py
   tests/test_assistant_integrations.py tests/test_assistant_api.py` covers the
   safety contracts with deterministic adapters.
+* For opt-in always-on morning briefs, English/Bangla voice reminders, monitor rules, DND/focus schedules, and rate-limited suggestions across HUD/voice/Telegram, see `proactive.yaml` and `docs/jarvis.md` (`nexus jarvis proactive ...`). Everything in `proactive.yaml` ships `enabled: false` by default.
 * Real microphones, wake-word models, cameras, biometric accuracy, OAuth accounts,
   external sends, desktop control, MQTT/Home Assistant delivery and multi-device
   use still require acceptance on your own hardware/accounts. Their presence in

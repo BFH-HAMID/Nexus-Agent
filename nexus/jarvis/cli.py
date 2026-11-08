@@ -54,6 +54,69 @@ def command(args):
             result = ({'notices': inbox.items(), 'pending': inbox.pending()} if args.operation == 'inbox' else inbox.digest() if args.operation == 'digest'
                       else inbox.acknowledge(args.identifier) if args.operation == 'acknowledge'
                       else inbox.explain(args.identifier) if args.operation == 'explain' else {'day': Runtime(queue.studio).budget(), 'hour': Runtime(queue.studio).budget(Runtime(queue.studio).budget_id(hourly=True))})
+        elif args.operation == 'proactive':
+            from .proactive import ProactiveEngine
+            engine = ProactiveEngine(queue.root, studio=queue.studio)
+            op = args.pro_op
+            if op == 'status':
+                result = engine.status()
+            elif op == 'tick':
+                result = engine.tick_once()
+            elif op == 'brief':
+                result = engine.run_morning_brief(
+                    trigger='greeting' if args.greeting else 'manual',
+                    present=bool(args.present),
+                    force=True,
+                )
+            elif op == 'remind':
+                phrase = ' '.join(args.phrase).strip()
+                if args.task and not phrase.lower().startswith(('schedule ', 'create a recurring', 'every ')):
+                    phrase = f'schedule a recurring task {phrase}'
+                result = engine.create_from_voice(phrase)
+            elif op == 'focus':
+                if args.off:
+                    result = engine.set_focus_mode(False)
+                else:
+                    result = engine.set_focus_mode(True, minutes=args.minutes)
+            elif op == 'suggest':
+                result = engine.evaluate_suggestions(present=True)
+            elif op == 'stop-suggesting':
+                topic = ' '.join(args.topic).strip()
+                result = engine.learn_stop_suggesting(topic)
+            elif op == 'unmute':
+                result = engine.unmute_suggestion(args.identifier)
+            elif op == 'accept':
+                result = engine.accept_suggestion(args.identifier or None)
+            elif op == 'toasts':
+                if args.ack:
+                    result = engine.ack_hud_toast(args.ack)
+                else:
+                    result = {'items': engine.status().get('hud_toasts', [])}
+            else:
+                raise ValueError('Unknown proactive action')
+        elif args.operation == 'monitoring':
+            from ..monitoring import collect_self_monitoring
+            result = collect_self_monitoring(queue.root, studio=queue.studio)
+        elif args.operation == 'schedule':
+            from ..scheduler import Scheduler
+            sched = Scheduler(queue.root, studio=queue.studio)
+            op = args.sched_op
+            if op == 'list':
+                result = {'items': [e.to_dict() for e in sched.list()]}
+            elif op == 'add':
+                result = sched.add(
+                    args.expression,
+                    task=args.task or '',
+                    timezone=args.timezone or None,
+                    target=args.target or None,
+                    priority=args.priority,
+                ).to_dict()
+            elif op in {'pause', 'resume'}:
+                result = sched.set_enabled(args.identifier, op == 'resume').to_dict()
+            elif op == 'remove':
+                result = {'removed': sched.remove(args.identifier), 'id': args.identifier}
+            else:
+                result = {'dispatched': sched.tick()}
         elif args.operation == 'event':
             from .events import Events
             result = Events(queue).publish(args.source, args.task, parent=args.parent)
@@ -79,6 +142,42 @@ def add_parser(sub):
     parser.add_argument('--workspace', '-C')
     actions = parser.add_subparsers(dest='operation', required=True)
     actions.add_parser('status')
+    actions.add_parser('monitoring', help='self-monitoring telemetry (queue depth, running missions, cost today, error rate)')
+    proactive = actions.add_parser('proactive', help='opt-in proactive engine (proactive.yaml): brief, voice reminders, monitors, suggestions, DND')
+    pro_sub = proactive.add_subparsers(dest='pro_op', required=True)
+    pro_sub.add_parser('status')
+    pro_sub.add_parser('tick')
+    pro_brief = pro_sub.add_parser('brief')
+    pro_brief.add_argument('--present', action='store_true')
+    pro_brief.add_argument('--greeting', action='store_true')
+    pro_remind = pro_sub.add_parser('remind')
+    pro_remind.add_argument('phrase', nargs='+')
+    pro_remind.add_argument('--task', action='store_true')
+    pro_focus = pro_sub.add_parser('focus')
+    pro_focus.add_argument('--off', action='store_true')
+    pro_focus.add_argument('--minutes', type=int, default=60)
+    pro_sub.add_parser('suggest')
+    pro_stop = pro_sub.add_parser('stop-suggesting')
+    pro_stop.add_argument('topic', nargs='*')
+    pro_unmute = pro_sub.add_parser('unmute')
+    pro_unmute.add_argument('identifier')
+    pro_accept = pro_sub.add_parser('accept')
+    pro_accept.add_argument('identifier', nargs='?', default='')
+    pro_toasts = pro_sub.add_parser('toasts')
+    pro_toasts.add_argument('--ack', default='')
+    sched = actions.add_parser('schedule', help='timezone-aware recurring & delayed schedules (requires scheduler.enabled in autonomy.yaml)')
+    sched_sub = sched.add_subparsers(dest='sched_op', required=True)
+    sched_sub.add_parser('list')
+    sched_add = sched_sub.add_parser('add')
+    sched_add.add_argument('expression')
+    sched_add.add_argument('--task', default='')
+    sched_add.add_argument('--timezone', default='')
+    sched_add.add_argument('--target', choices=['queue', 'chief'], default=None)
+    sched_add.add_argument('--priority', type=int, default=5)
+    for op_name in ('pause', 'resume', 'remove'):
+        op_p = sched_sub.add_parser(op_name)
+        op_p.add_argument('identifier')
+    sched_sub.add_parser('tick')
     actions.add_parser('approvals')
     for name in ('allow', 'deny'):
         action = actions.add_parser(name)

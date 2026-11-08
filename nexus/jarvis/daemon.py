@@ -65,11 +65,72 @@ class Daemon:
         try:
             policy = self.queue.policy()
             configured = policy['runtime']['enabled'] and policy['level'] != 'L0'
+            scheduler_enabled = bool((policy.get('scheduler') or {}).get('enabled', False) and policy['level'] != 'L0')
+            watchdog_enabled = bool((policy.get('watchdog') or {}).get('enabled', False))
         except (ValueError, OSError):
             configured = False
+            scheduler_enabled = False
+            watchdog_enabled = False
         return {'state': status, 'lock_held': held, 'control': control, 'heartbeat': heartbeat,
                 'execution_enabled': bool(configured and held and status == 'running'),
-                'dispatch_configured': configured, 'note': 'Only explicitly configured loopback/scoped jobs can dispatch. PID is informational.'}
+                'dispatch_configured': configured,
+                'scheduler_enabled': scheduler_enabled,
+                'watchdog_enabled': watchdog_enabled,
+                'note': 'Only explicitly configured loopback/scoped jobs can dispatch. PID is informational.'}
+
+    def _reconcile_chief_on_startup(self, policy):
+        """Recover orphaned Chief missions after crash/reboot without bypassing L1."""
+        try:
+            from ..chief import ChiefDisabledError, ChiefOfStaff, load_chief_config
+            cfg = load_chief_config(self.studio.root)
+            if not cfg.enabled or policy['level'] == 'L0':
+                return []
+            auto_resume = bool(
+                (policy.get('scheduler') or {}).get('auto_resume_crashed', False)
+                and policy['level'] in set(cfg.auto_start_autonomy_levels)
+            )
+            chief = ChiefOfStaff(self.studio.root, studio=self.studio)
+            return chief.recover_missions(auto_resume=auto_resume, background=True)
+        except (ChiefDisabledError, ValueError, OSError):
+            return []
+
+    def tick_once(self, *, now=None):
+        """Run one bounded daemon maintenance cycle (triggers, scheduler, watchdogs, proactive).
+
+        Respects L0/L1/runtime/scheduler/watchdog/proactive opt-in gates; never executes
+        unapproved tools or unenabled runtimes.
+        """
+        from ..computer_control import EmergencyStop
+        from ..scheduler import Scheduler
+        from ..watchdog import check_stuck_missions
+        from .events import Events
+        from .inbox import Inbox
+        from .proactive import ProactiveEngine
+
+        with self.queue.locked():
+            policy = self.queue.policy()
+            stopped = EmergencyStop().stopped()
+        if stopped or policy['level'] == 'L0':
+            return {
+                'emitted': [],
+                'scheduled': [],
+                'watchdog_stopped': [],
+                'proactive': {'enabled': False, 'skipped': True},
+                'skipped': True,
+            }
+        emitted = Events(self.queue).poll()
+        scheduled = Scheduler(self.queue.root, studio=self.studio).tick(now=now)
+        watchdog_stopped = check_stuck_missions(self.queue.root, policy=policy, now=now)
+        proactive_clock = (lambda: float(now)) if now is not None else time.time
+        proactive = ProactiveEngine(self.queue.root, studio=self.studio, clock=proactive_clock).tick_once(now=now)
+        Inbox(self.studio).push()
+        return {
+            'emitted': emitted,
+            'scheduled': scheduled,
+            'watchdog_stopped': watchdog_stopped,
+            'proactive': proactive,
+            'skipped': False,
+        }
 
     def request(self, action):
         if action not in {'start', 'stop', 'pause', 'resume', 'kill'}:
@@ -129,6 +190,8 @@ class Daemon:
                     if row['status'] == 'running':
                         row.update(status='interrupted', result={'summary': 'Orphaned worker lease revoked; explicit retry/reapproval required'})
                         self.studio.put('jarvis-job', row, row['id'])
+                startup_policy = self.queue.policy()
+            self._reconcile_chief_on_startup(startup_policy)
             try:
                 while True:
                     with self.queue.locked():
@@ -143,18 +206,17 @@ class Daemon:
                         jobs = self.queue._jobs()  # Bounded TTL maintenance, not tool execution.
                         self.studio.put('jarvis-heartbeat', {'instance': instance, 'pid': os.getpid(),
                                         'heartbeat': time.time(), 'state': state, 'execution_enabled': policy['runtime']['enabled'],
+                                        'scheduler_enabled': bool((policy.get('scheduler') or {}).get('enabled', False)),
+                                        'watchdog_enabled': bool((policy.get('watchdog') or {}).get('enabled', False)),
                                         'pending': sum(j['status'] == 'awaiting_approval' for j in jobs),
                                         'approved': sum(j['status'] == 'approved' for j in jobs),
                                         'active_job': runtime.active[1]['id'] if runtime.active else None}, self.heartbeat_id)
                     if state == 'running' and (trigger_thread is None or not trigger_thread.is_alive()):
                         import threading
 
-                        from .events import Events
                         def poll_triggers():
                             try:
-                                Events(self.queue).poll()
-                                from .inbox import Inbox
-                                Inbox(self.studio).push()
+                                self.tick_once()
                             except (ValueError, OSError):
                                 pass  # Per-probe errors persist; malformed policy is handled by the main loop.
                         trigger_thread = threading.Thread(target=poll_triggers, daemon=True, name='jarvis-probes')

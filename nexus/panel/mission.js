@@ -337,8 +337,13 @@
     nodes.feed.prepend(li);
     while (nodes.feed.children.length > 9) nodes.feed.lastElementChild.remove();
     set(nodes.feedMeta, String(nodes.feed.querySelectorAll('li[data-status]').length));
-    if (alert.severity !== 'info') {
-      window.nexusToast?.(`${alert.title}: ${alert.detail || ''}`.trim(), {tone: alert.severity === 'high' ? 'error' : 'warn', title: t('mission.alert')});
+    if (alert.severity !== 'info' || alert.source === 'proactive') {
+      const tone = alert.severity === 'high' || alert.severity === 'urgent'
+        ? 'error'
+        : alert.severity === 'info'
+          ? 'info'
+          : 'warn';
+      window.nexusToast?.(`${alert.title}: ${alert.detail || ''}`.trim(), {tone, title: alert.title || t('mission.alert')});
     }
   }
 

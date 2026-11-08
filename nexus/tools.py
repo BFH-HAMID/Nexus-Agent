@@ -121,6 +121,10 @@ class ApprovalDecision:
     approved: bool
     scope: str = "once"      # once | session | always | deny
     reason: str = ""
+    second_factor: str = ""
+    second_factor_verified: bool = False
+    notify_after: bool = False
+    risk_class: str = ""
 
 
 ApprovalCallback = Callable[[ToolSpec, dict[str, Any], Risk, str], ApprovalDecision]
@@ -128,8 +132,11 @@ ApprovalCallback = Callable[[ToolSpec, dict[str, Any], Risk, str], ApprovalDecis
 
 def fresh_confirmation_required(spec, args):
     """Typed external mutations/destructive actions cannot inherit --yes scope."""
-    if spec.risk is Risk.DANGEROUS or spec.name in {'gh_create_pr', 'gh_merge_pr'}:
+    if spec.risk is Risk.DANGEROUS or spec.name in {'gh_create_pr', 'gh_merge_pr', 'integration_gmail_send'}:
         return True
+    if spec.name in {'integration_calendar_create', 'integration_calendar_update'}:
+        attendees = args.get('attendees') if isinstance(args, dict) else None
+        return bool(isinstance(attendees, (list, tuple)) and any(str(a).strip() for a in attendees))
     if spec.name == 'git_prepare':
         return bool(args.get('push'))
     if spec.name in {'git', 'gh'}:
@@ -167,6 +174,7 @@ class ApprovalGate:
         extra_blocked_patterns: Sequence[str] = (),
         callback: ApprovalCallback | None = None,
         emit: EventHandler | None = None,
+        medium_notify_callback: Callable[[ToolSpec, dict[str, Any], str], None] | None = None,
     ):
         self.mode = mode
         self.allow_dangerous = allow_dangerous
@@ -179,6 +187,19 @@ class ApprovalGate:
         self.decisions: list[tuple[str, bool]] = []
         self.policy = None
         self.permissions = None
+        self.second_factor_callback = None
+        self.pin_callback = None
+        self.telegram_bot_factory = None
+        self.voice_speaker_check = None
+        self.medium_notify_callback = medium_notify_callback
+        self.tainted: bool = False
+        self.taint_sources: list[str] = []
+
+    def mark_tainted(self, source: str, flags: Sequence[str] = ()) -> None:
+        self.tainted = True
+        label = str(source) if not flags else f"{source}[{','.join(flags)}]"
+        if label not in self.taint_sources:
+            self.taint_sources.append(label)
 
     # ------------------------------------------------------------------ #
     def check(self, spec: ToolSpec, args: dict[str, Any]) -> ApprovalDecision:
@@ -194,67 +215,155 @@ class ApprovalGate:
             return ApprovalDecision(False, reason='Emergency stop latched')
         if self.permissions is None:
             decision = self._check(spec, args)
-            return ApprovalDecision(False, reason='Emergency stop latched') if EmergencyStop().stopped() else decision
+            if EmergencyStop().stopped():
+                return ApprovalDecision(False, reason='Emergency stop latched')
+            if decision.approved and not getattr(decision, 'second_factor_verified', False):
+                from .second_factor import SECOND_FACTOR_DEFAULTS, requires_second_factor
+                from .second_factor import verify as verify_second_factor
+                sf_cfg = dict(SECOND_FACTOR_DEFAULTS)
+                if requires_second_factor(sf_cfg, spec, args, readonly=spec.is_readonly_call(args), tainted=self.tainted):
+                    preview = preview_args(spec, args)
+                    if self.second_factor_callback is not None:
+                        ok_2fa, msg_2fa = self.second_factor_callback(spec, args, preview, sf_cfg)
+                    else:
+                        ok_2fa, msg_2fa = verify_second_factor(
+                            getattr(self, '_workspace', None) or Path('.').resolve(),
+                            sf_cfg,
+                            spec,
+                            args,
+                            preview,
+                            decision=decision,
+                            pin_callback=self.pin_callback,
+                            telegram_bot_factory=self.telegram_bot_factory,
+                        )
+                    if not ok_2fa:
+                        decision = ApprovalDecision(False, reason=msg_2fa or 'second-factor verification failed')
+            return decision
         try:
+            from .autonomy import load_autonomy_dict
+            autonomy_cfg = load_autonomy_dict(self.permissions.root)
             rule = self.permissions.evaluate(spec, args)
-            decision = self._check(spec, args, rule)
+            decision = self._check(spec, args, rule, autonomy_cfg=autonomy_cfg)
             if decision.approved and (EmergencyStop().stopped() or self.permissions.evaluate(spec, args) != rule):
                 decision = ApprovalDecision(False, reason='Permission policy changed during approval; review again')
             if decision.approved and self.policy:
                 reason = self.policy(spec, args)
                 if reason:
                     decision = ApprovalDecision(False, reason=reason)
+            if decision.approved and not getattr(decision, 'second_factor_verified', False):
+                sf_cfg = rule.get('second_factor') or {}
+                from .second_factor import requires_second_factor
+                from .second_factor import verify as verify_second_factor
+                if requires_second_factor(sf_cfg, spec, args, readonly=rule['readonly'], tainted=self.tainted):
+                    preview = preview_args(spec, args)
+                    if self.second_factor_callback is not None:
+                        ok_2fa, msg_2fa = self.second_factor_callback(spec, args, preview, sf_cfg)
+                    else:
+                        ok_2fa, msg_2fa = verify_second_factor(
+                            self.permissions.root,
+                            sf_cfg,
+                            spec,
+                            args,
+                            preview,
+                            decision=decision,
+                            pin_callback=self.pin_callback,
+                            telegram_bot_factory=self.telegram_bot_factory,
+                        )
+                    if not ok_2fa:
+                        decision = ApprovalDecision(False, reason=msg_2fa or 'second-factor verification failed')
             self.permissions.audit(spec, args, rule, decision)
             return decision
         except (ValueError, OSError, TimeoutError):
             return ApprovalDecision(False, reason='Permission configuration/path/audit validation failed; no tool execution')
 
-    def _check(self, spec: ToolSpec, args: dict[str, Any], rule=None) -> ApprovalDecision:
+    def _check(self, spec: ToolSpec, args: dict[str, Any], rule=None, *, autonomy_cfg=None) -> ApprovalDecision:
+        from .autonomy import classify_action_risk
+
         name = spec.name
+        action_risk = classify_action_risk(spec, args)
+        risk_classes = (autonomy_cfg or {}).get('risk_classes') or {
+            'SAFE': 'automatic',
+            'MEDIUM': 'automatic_notify',
+            'DANGEROUS': 'fresh_approval',
+        }
+        risk_mode = risk_classes.get(action_risk.value, 'fresh_approval')
+        notify_after = risk_mode == 'automatic_notify'
+
         if self.policy:
             reason = self.policy(spec, args)
             if reason:
-                return ApprovalDecision(False, reason=reason)
+                return ApprovalDecision(False, reason=reason, risk_class=action_risk.value)
 
         if name in self.never_allow:
-            return ApprovalDecision(False, reason=f"tool '{name}' is in never_allow")
+            return ApprovalDecision(False, reason=f"tool '{name}' is in never_allow", risk_class=action_risk.value)
 
         blocked = self._blocked_reason(spec, args)
         if blocked:
             if self.mode == "plan":
-                return ApprovalDecision(False, reason=f"plan mode: {blocked}")
+                return ApprovalDecision(False, reason=f"plan mode: {blocked}", risk_class=action_risk.value)
             if not self.allow_dangerous:
-                return ApprovalDecision(False, reason=f"blocked command pattern: {blocked}")
+                return ApprovalDecision(False, reason=f"blocked command pattern: {blocked}", risk_class=action_risk.value)
+
+        if self.voice_speaker_check is not None:
+            ok_speaker, speaker_reason = self.voice_speaker_check(spec, args)
+            if not ok_speaker:
+                return ApprovalDecision(
+                    False,
+                    reason=speaker_reason or "Enrolled speaker verification required for this action",
+                    risk_class=action_risk.value,
+                )
 
         readonly = rule['readonly'] if rule is not None else spec.is_readonly_call(args)
         if rule is not None and rule['mode'] == 'READ_ONLY' and not readonly:
-            return ApprovalDecision(False, reason='permissions.yaml: READ_ONLY refuses mutation/execution')
-        if readonly:
-            return ApprovalDecision(True, scope="auto", reason="read-only")
+            return ApprovalDecision(False, reason='permissions.yaml: READ_ONLY refuses mutation/execution', risk_class=action_risk.value)
+        if readonly and risk_mode != 'fresh_approval':
+            return ApprovalDecision(True, scope="auto", reason="read-only", notify_after=notify_after, risk_class=action_risk.value)
 
         if self.mode == "plan":
-            return ApprovalDecision(False, reason="plan mode is read-only (use `nexus task` to apply changes)")
+            return ApprovalDecision(False, reason="plan mode is read-only (use `nexus task` to apply changes)", risk_class=action_risk.value)
 
-        fresh = bool(blocked) or fresh_confirmation_required(spec, args) or bool(rule and (rule['mode'] == 'ASK_EVERY_TIME' or rule['forced']))
+        from .untrusted import is_high_impact_action
+        tainted_escalation = bool(self.tainted and is_high_impact_action(spec, args))
+        risk_forces_fresh = (
+            risk_mode == 'fresh_approval'
+            and self.permissions is not None
+            and not (name.startswith('mcp_') and not getattr(spec, 'risk_declared', True))
+        )
+        fresh = (
+            bool(blocked)
+            or fresh_confirmation_required(spec, args)
+            or tainted_escalation
+            or risk_forces_fresh
+            or bool(rule and (rule['mode'] == 'ASK_EVERY_TIME' or rule['forced']))
+        )
         if rule and rule['mode'] == 'AUTO_ALLOW' and not fresh and self.mode == 'auto':
-            return ApprovalDecision(True, scope='auto', reason='permissions.yaml: AUTO_ALLOW within existing tool/policy ceiling')
+            return ApprovalDecision(True, scope='auto', reason='permissions.yaml: AUTO_ALLOW within existing tool/policy ceiling', notify_after=notify_after, risk_class=action_risk.value)
         if not fresh and (name in self.always_allow or name in self.session_allowed):
-            return ApprovalDecision(True, scope="auto", reason="pre-approved")
+            return ApprovalDecision(True, scope="auto", reason="pre-approved", notify_after=notify_after, risk_class=action_risk.value)
 
         if not fresh and self.mode == "auto":
-            return ApprovalDecision(True, scope="auto", reason="--yes")
+            return ApprovalDecision(True, scope="auto", reason="--yes", notify_after=notify_after, risk_class=action_risk.value)
 
         if self.callback is None:
             return ApprovalDecision(
                 False,
-                reason=("fresh human approval required; --yes/saved approvals cannot authorize this action" if fresh
+                reason=("fresh human approval required; tainted session (untrusted input seen) cannot auto-approve high-impact actions"
+                        if tainted_escalation else
+                        "fresh human approval required; --yes/saved approvals cannot authorize this action" if fresh
                         else "no approval channel available (non-interactive run without --yes)"),
+                risk_class=action_risk.value,
             )
 
         preview = preview_args(spec, args)
+        if tainted_escalation:
+            preview = f"[TAINTED SESSION: {', '.join(self.taint_sources[:4])}] {preview}"
         self.emit(Event(EventType.APPROVAL, {"tool": name, "args": args, "preview": preview,
-                                             "risk": spec.risk.value, "blocked": bool(blocked)}))
+                                             "risk": spec.risk.value, "risk_class": action_risk.value,
+                                             "blocked": bool(blocked),
+                                             "tainted": self.tainted, "taint_sources": list(self.taint_sources)}))
         decision = self.callback(spec, args, spec.risk, preview)
+        decision.risk_class = action_risk.value
+        decision.notify_after = decision.notify_after or notify_after
         self.decisions.append((name, decision.approved))
         if not fresh and decision.approved and decision.scope in {"session", "always"}:
             self.session_allowed.add(name)
@@ -299,6 +408,19 @@ def preview_args(spec: ToolSpec, args: dict[str, Any], limit: int = 400) -> str:
         return f"{args.get('role')}: {str(args.get('question', ''))[:160]}"
     if name == "remember":
         return str(args.get("text", ""))[:limit]
+    if name == "integration_gmail_send":
+        return json.dumps({
+            "recipient": str(args.get("to", "")),
+            "subject": str(args.get("subject", "")),
+            "body": str(args.get("body", ""))[:max(limit, 1200)],
+        }, ensure_ascii=False)
+    if name in {"integration_calendar_create", "integration_calendar_update"}:
+        return json.dumps({
+            "summary": args.get("summary", ""),
+            "start": args.get("start", ""),
+            "end": args.get("end", ""),
+            "attendees": args.get("attendees") or [],
+        }, ensure_ascii=False)[:limit]
     return json.dumps(args, ensure_ascii=False)[:limit]
 
 
@@ -330,11 +452,25 @@ class ToolContext:
     memory_store: Any = None                 # nexus.memory.MemoryStore (global notes/profile)
     sessions: Any = None                     # nexus.sessions.SessionStore (recall)
     state: dict[str, Any] = field(default_factory=dict)
+    tainted: bool = False
+    taint_sources: list[str] = field(default_factory=list)
+
+    def mark_tainted(self, source: str, flags: Sequence[str] = ()) -> None:
+        self.tainted = True
+        label = str(source) if not flags else f"{source}[{','.join(flags)}]"
+        if label not in self.taint_sources:
+            self.taint_sources.append(label)
+        self.state["tainted"] = True
+        self.state["taint_sources"] = list(self.taint_sources)
+        if hasattr(self.gate, "mark_tainted"):
+            self.gate.mark_tainted(source, flags)
 
 
 class ToolRegistry:
     def __init__(self, ctx: ToolContext):
         self.ctx = ctx
+        if ctx.gate is not None and not hasattr(ctx.gate, "_workspace"):
+            ctx.gate._workspace = ctx.workspace
         self._tools: dict[str, Tool] = {}
 
     # -- registration ------------------------------------------------------ #
@@ -345,19 +481,30 @@ class ToolRegistry:
         input_schema: dict[str, Any],
         handler: Callable[[dict[str, Any]], str],
         *,
-        risk: Risk = Risk.WRITE,
+        risk: Risk | None = None,
         read_only: bool = False,
         readonly_subcommands: Sequence[str] = (),
         readonly_actions: Sequence[str] = (),
         approval_context: dict[str, Any] | None = None,
     ) -> None:
+        risk_declared = risk is not None or read_only
+        effective_risk = risk if risk is not None else (Risk.READ if read_only else Risk.WRITE)
         self._tools[name] = Tool(
             spec=ToolSpec(name=name, description=description, input_schema=input_schema,
-                          risk=risk, read_only=read_only,
+                          risk=effective_risk, read_only=read_only,
                           readonly_subcommands=frozenset(readonly_subcommands), readonly_actions=frozenset(readonly_actions),
-                          approval_context=approval_context),
+                          approval_context=approval_context, risk_declared=risk_declared),
             handler=handler,
         )
+
+    def risk_class(self, name: str, args: dict[str, Any] | None = None):
+        """Classify a registered or unknown tool name (+ optional args) into RiskClass."""
+        from .autonomy import classify_action_risk, classify_tool_risk
+
+        tool = self._tools.get(name)
+        if tool is None:
+            return classify_tool_risk(name)
+        return classify_action_risk(tool.spec, args or {})
 
     def names(self) -> list[str]:
         return list(self._tools)
@@ -382,7 +529,9 @@ class ToolRegistry:
 
     # -- execution --------------------------------------------------------- #
     def _emit_failure(self, name: str, message: str) -> None:
-        self.ctx.emit(Event(EventType.TOOL_CALL, {"tool": name, "args": {}, "preview": "", "risk": "write"}))
+        tool = self._tools.get(name)
+        risk_val = tool.spec.risk.value if tool is not None and isinstance(tool.spec.risk, Risk) else Risk.DANGEROUS.value
+        self.ctx.emit(Event(EventType.TOOL_CALL, {"tool": name, "args": {}, "preview": "", "risk": risk_val}))
         self.ctx.emit(Event(EventType.TOOL_RESULT, {"tool": name, "is_error": True,
                                                     "preview": message, "chars": len(message)}))
 
@@ -414,6 +563,57 @@ class ToolRegistry:
         from .computer_control import EmergencyStop
         if EmergencyStop().stopped():
             return 'DENIED: Nexus emergency stop latched; operator must resume-tools', True
+        from .limits import LimitExceeded, check_and_record_action
+        try:
+            check_and_record_action(self.ctx.workspace, name)
+        except LimitExceeded as exc:
+            message = f"DENIED: {exc}"
+            self._emit_failure(name, message)
+            return message, True
+        except (ValueError, OSError):
+            message = "DENIED: Permission configuration/path/audit validation failed; no tool execution"
+            self._emit_failure(name, message)
+            return message, True
+        if self.ctx.tainted and not self.ctx.gate.tainted:
+            self.ctx.gate.tainted = True
+        elif self.ctx.gate.tainted and not self.ctx.tainted:
+            self.ctx.tainted = True
+
+        from .idempotency import IdempotencyLedger, compute_idempotency_key, is_external_action
+
+        idempotency_scope = self.ctx.state.get("idempotency_scope")
+        explicit_idem_key = self.ctx.state.get("idempotency_key") or args.get("idempotency_key")
+        idem_key: str | None = None
+        idem_ledger: IdempotencyLedger | None = None
+        if (idempotency_scope or explicit_idem_key) and is_external_action(name, args):
+            idem_scope = str(idempotency_scope or "tool")
+            idem_key = compute_idempotency_key(
+                idem_scope,
+                name,
+                args,
+                explicit_key=str(explicit_idem_key) if explicit_idem_key else None,
+            )
+            idem_ledger = IdempotencyLedger(self.ctx.workspace)
+            existing_idem = idem_ledger.lookup(idem_key)
+            if existing_idem is not None and existing_idem.get("status") == "completed":
+                skip_id = uuid.uuid4().hex
+                skip_msg = (
+                    f"[idempotent skip: {name} already completed under key {idem_key[:12]}] "
+                    f"{existing_idem.get('result_preview', '')}"
+                ).strip()
+                self.ctx.emit(Event(EventType.TOOL_CALL, {
+                    "call_id": skip_id, "tool": name, "args": args,
+                    "preview": preview_args(tool.spec, args),
+                    "risk": tool.spec.risk.value, "idempotent_skip": True,
+                }))
+                self.ctx.emit(Event(EventType.TOOL_RESULT, {
+                    "call_id": skip_id, "tool": name, "is_error": False,
+                    "preview": clip(skip_msg, 1200), "output": clip(skip_msg, 64_000),
+                    "output_truncated": False, "chars": len(skip_msg), "duration_ms": 0.0,
+                    "idempotent_skip": True,
+                }))
+                return skip_msg, False
+
         decision = self.ctx.gate.check(tool.spec, args)
         if not decision.approved:
             message = f"DENIED: {decision.reason or 'user rejected this call'}."
@@ -445,17 +645,91 @@ class ToolRegistry:
             result, is_error = f"{exc.__class__.__name__}: {exc}", True
         from .github_safety import GitHubSafetyError, safe_output, token_from_environment
         from .studio import redact
+        from .untrusted import flag_names
+        from .untrusted import wrap as wrap_untrusted
         result = str(result if result is not None else "")
         try:
             result = safe_output(result, {'GITHUB_TOKEN': token_from_environment(self.ctx.workspace)})
         except GitHubSafetyError:
             result = redact(result)
+        if not is_error:
+            if name.startswith("mcp_") or name == "browser_action":
+                self.ctx.mark_tainted(name, flag_names(result))
+            elif name.startswith("integration_"):
+                detected = list(flag_names(result))
+                try:
+                    parsed_res = json.loads(result)
+                    if isinstance(parsed_res, dict):
+                        for fl in parsed_res.get("injection_flags") or []:
+                            if isinstance(fl, str) and fl and fl not in detected:
+                                detected.append(fl)
+                except (ValueError, TypeError):
+                    pass
+                if detected:
+                    self.ctx.mark_tainted(name, detected)
+            elif name == "gh":
+                gh_flags = flag_names(result)
+                self.ctx.mark_tainted("gh:" + " ".join(str(a) for a in (args.get("args") or [])[:2]), gh_flags)
+                result, _ = wrap_untrusted(result, source="gh", kind="github")
+            elif name == "read_file":
+                if "\n<untrusted-data " not in result:
+                    rf_flags = flag_names(result)
+                    if rf_flags:
+                        self.ctx.mark_tainted(f"read_file:{args.get('path', '')}", rf_flags)
         result = clip(result, self.ctx.max_output_chars)
+        if not is_error and idem_ledger is not None and idem_key is not None:
+            idem_ledger.record(
+                idem_key,
+                scope=str(idempotency_scope or "tool"),
+                tool=name,
+                result_preview=result,
+                status="completed",
+            )
+        duration_ms = round((time.monotonic() - started) * 1000, 2)
+        if self.ctx.gate.permissions is None:
+            from . import audit
+            try:
+                audit.record(
+                    self.ctx.workspace,
+                    "tool.call",
+                    who="agent",
+                    target=name,
+                    result="error" if is_error else "approved",
+                    risk=tool.spec.risk.value,
+                    detail={"args": audit.redact_args(args), "duration_ms": duration_ms},
+                )
+            except (OSError, ValueError):
+                pass
         self.ctx.emit(Event(EventType.TOOL_RESULT, {
             "call_id": call_id, "tool": name, "is_error": is_error, "preview": clip(result, 1200),
             "output": clip(result, 64_000), "output_truncated": len(result) > 64_000,
-            "chars": len(result), "duration_ms": round((time.monotonic() - started) * 1000, 2),
+            "chars": len(result), "duration_ms": duration_ms,
         }))
+        if getattr(decision, "notify_after", False):
+            preview_line = redact(preview_args(tool.spec, args, limit=180))
+            status_text = f"{name} ({decision.risk_class or 'MEDIUM'}): {'failed' if is_error else 'done'} — {preview_line}"
+            self.ctx.emit(Event(EventType.STATUS, {
+                "kind": "medium_action",
+                "tool": name,
+                "risk_class": decision.risk_class or "MEDIUM",
+                "is_error": is_error,
+                "message": status_text,
+            }))
+            if self.ctx.gate.medium_notify_callback is not None:
+                try:
+                    self.ctx.gate.medium_notify_callback(tool.spec, args, status_text)
+                except Exception:  # noqa: BLE001
+                    pass
+            elif self.ctx.gate.permissions is not None:
+                try:
+                    from .notifications import NotificationRouter
+                    NotificationRouter(self.ctx.workspace).notify(
+                        importance="medium",
+                        title=f"Nexus action: {name}",
+                        message=status_text,
+                    )
+                except Exception:  # noqa: BLE001
+                    pass
         return result, is_error
 
 
@@ -1008,9 +1282,19 @@ def tool_read_file(ctx: ToolContext, args: dict[str, Any]) -> str:
         start, end = end, start
     selected = lines[start - 1 : end]
     numbered = "\n".join(f"{i + start:>5}| {line}" for i, line in enumerate(selected))
-    header = f"{ctx.guard.rel(path)} (lines {start}-{end} of {len(lines)})"
+    rel = ctx.guard.rel(path)
+    header = f"{rel} (lines {start}-{end} of {len(lines)})"
     body = clip(numbered, ctx.max_read_chars)
-    return f"{header}\n{body}"
+    from .untrusted import wrap as wrap_untrusted
+    wrapped_body, flags = wrap_untrusted(body, source=rel, kind="file")
+    outside = False
+    try:
+        path.resolve().relative_to(ctx.workspace.resolve())
+    except ValueError:
+        outside = True
+    if flags or outside:
+        ctx.mark_tainted(f"read_file:{rel}", flags)
+    return f"{header}\n{wrapped_body}"
 
 
 def tool_grep(ctx: ToolContext, args: dict[str, Any]) -> str:
@@ -1716,12 +2000,14 @@ def tool_memory(ctx: ToolContext, args: dict[str, Any]) -> str:
         return f"{block.name} ({block.chars}/{block.limit} chars)\n" + (
             block.render() or "(empty)"
         )
+    if ctx.tainted and action in {"add", "remove"}:
+        raise ToolFailure("Untrusted/tainted context cannot write directly to memory")
     if action == "remove":
         ok, message = store.remove(text, section)
         if not ok:
             raise ToolFailure(message)
         return message
-    ok, message = store.add(text, section)
+    ok, message = store.add(text, section, tainted=ctx.tainted, source="tool:memory")
     if not ok:
         raise ToolFailure(message)
     ctx.emit(Event(EventType.MEMORY, {"role": section, "text": text,

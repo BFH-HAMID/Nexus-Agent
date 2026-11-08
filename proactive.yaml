@@ -1,0 +1,60 @@
+# Operator-owned proactive assistant policy (OFF by default).
+# Agent file tools cannot edit this file. Enable individual capabilities explicitly.
+schema: 1
+enabled: false
+timezone: ""
+
+morning_brief:
+  enabled: false
+  time: "08:00"
+  deliver_on_greeting: true
+  deliver_on_schedule: true
+  spoken_max_chars: 320
+  news_topics: []
+  max_news_items: 5
+  include_weather: true
+  include_calendar: true
+  include_email: true
+  include_tasks: true
+  include_system: true
+  include_ci: true
+  ci_repo: ""
+  ci_ref: "HEAD"
+
+voice_reminders:
+  enabled: false
+  default_recurring_target: "queue"
+
+monitors:
+  enabled: false
+  items: []
+
+suggestions:
+  enabled: false
+  max_speech_per_hour: 3
+  meeting_soon_minutes: 30
+  deadline_hours: 24
+  cooldown_seconds: 900
+
+dnd:
+  enabled: false
+  schedule:
+    enabled: false
+    start: "22:00"
+    end: "07:00"
+    days: []
+  focus_default_minutes: 60
+  urgent_override:
+    enabled: false
+    min_severity: "critical"
+    allowed_sources: []
+
+channels:
+  enabled: false
+  away_fallback: true
+  severity_routing:
+    info: ["hud_toast"]
+    low: ["hud_toast"]
+    medium: ["hud_toast", "voice"]
+    high: ["hud_toast", "voice", "telegram", "desktop"]
+    critical: ["hud_toast", "voice", "telegram", "desktop"]

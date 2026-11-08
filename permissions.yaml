@@ -21,5 +21,34 @@ computer:
   browser_origins: []
   shell_backend: host
   image: ""
-# For Docker, choose shell_backend: docker and an installed IMAGE@sha256:DIGEST.
+# Recommended for untrusted code or production use:
+#   shell_backend: docker
+#   image: "python:3.12-slim@sha256:<64-hex-digest>"
+# Run `nexus sandbox check` after pulling and configuring the digest-pinned image.
 # Host shell execution is explicitly approved, not claimed to be sandboxed.
+
+# Optional Docker sandbox resource & isolation invariants (defaults shown):
+# sandbox:
+#   network: none
+#   read_only: true
+#   memory: 512m
+#   cpus: 1
+#   pids_limit: 128
+#   timeout_seconds: 60
+#   workspace_only: true
+
+# Optional second-factor confirmation for dangerous actions (OFF by default):
+# second_factor:
+#   enabled: false
+#   method: pin                  # pin | telegram | either
+#   pin_env: NEXUS_APPROVAL_PIN  # or TELEGRAM_APPROVAL_PIN
+#   risks: [dangerous]
+#   tools: []
+#   timeout_seconds: 60
+
+# Optional rate & cost limits (OFF by default):
+# limits:
+#   enabled: false
+#   actions_per_minute: 30
+#   daily_tokens: 0
+#   daily_cost_usd: 0.0

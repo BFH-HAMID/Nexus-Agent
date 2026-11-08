@@ -197,6 +197,58 @@ def create_app(studio, token, *, allowed_hosts=None):
         except (ValueError, OSError):
             raise HTTPException(409, 'State unavailable; no fabricated fallback') from None
 
+    @app.get('/api/monitoring')
+    async def monitoring():
+        try:
+            async with slots:
+                return await run_in_threadpool(service.monitoring)
+        except (ValueError, OSError):
+            raise HTTPException(409, 'Monitoring telemetry unavailable') from None
+
+    @app.get('/api/schedules')
+    async def schedules_list():
+        try:
+            async with slots:
+                return await run_in_threadpool(service.schedules)
+        except (ValueError, OSError):
+            raise HTTPException(409, 'Schedules unavailable') from None
+
+    @app.post('/api/schedules')
+    async def schedules_action(request: Request):
+        from ..scheduler import Scheduler
+        data = bytearray()
+        async for chunk in request.stream():
+            if len(data) + len(chunk) > 16000:
+                raise HTTPException(413, 'Request too large')
+            data.extend(chunk)
+        try:
+            payload = json.loads(data or b'{}')
+            if not isinstance(payload, dict) or token in json.dumps(payload, ensure_ascii=False):
+                raise ValueError('Invalid schedule payload')
+            def _do():
+                sched = Scheduler(studio.root, studio=studio)
+                action_name = str(payload.get('action') or 'add')
+                if action_name == 'add':
+                    entry = sched.add(
+                        str(payload.get('expression') or ''),
+                        task=str(payload.get('task') or ''),
+                        timezone=payload.get('timezone') or None,
+                        target=payload.get('target') or None,
+                        priority=int(payload.get('priority', 5)),
+                    )
+                    return service.clean(entry.to_dict())
+                if action_name in {'pause', 'resume'}:
+                    entry = sched.set_enabled(str(payload.get('id') or ''), action_name == 'resume')
+                    return service.clean(entry.to_dict())
+                if action_name == 'remove':
+                    removed = sched.remove(str(payload.get('id') or ''))
+                    return {'removed': removed, 'id': str(payload.get('id') or '')}
+                raise ValueError('Unsupported schedule action')
+            async with slots:
+                return await run_in_threadpool(_do)
+        except (ValueError, TypeError) as exc:
+            raise HTTPException(400, str(exc)) from None
+
     @app.get('/api/trace/{identifier}')
     async def trace(identifier: str, operation: str = 'inspect', step: int | None = None):
         if operation not in {'inspect', 'why', 'replay'}:
@@ -222,6 +274,137 @@ def create_app(studio, token, *, allowed_hosts=None):
                 return await run_in_threadpool(service.approval, identifier)
         except (ValueError, OSError):
             raise HTTPException(404, 'Approval unavailable') from None
+
+    @app.get('/api/chief/missions')
+    async def chief_missions():
+        from ..chief import chief_hud_summary
+        async with slots:
+            return await run_in_threadpool(lambda: service.clean(chief_hud_summary(studio.root)))
+
+    @app.get('/api/chief/history')
+    async def chief_history(status: str | None = None, limit: int = 50):
+        from ..chief import ChiefOfStaff
+        async with slots:
+            return await run_in_threadpool(lambda: service.clean({'items': ChiefOfStaff(studio.root, studio=studio).history(status=status, limit=limit)}))
+
+    @app.get('/api/chief/missions/{identifier}/replay')
+    async def chief_mission_replay(identifier: str, step_id: str | None = None, trace_step: int | None = None, mode: str = 'inspect'):
+        from ..chief import ChiefError, ChiefOfStaff
+        if mode not in {'inspect', 'why'}:
+            raise HTTPException(400, 'HTTP replay supports read-only inspect or why; use CLI for reexecute')
+        try:
+            async with slots:
+                return await run_in_threadpool(lambda: service.clean(ChiefOfStaff(studio.root, studio=studio).replay(identifier, step_id=step_id, trace_step=trace_step, mode=mode)))
+        except ChiefError:
+            raise HTTPException(404, 'Mission unavailable in this workspace') from None
+
+    @app.get('/api/proactive/status')
+    async def proactive_status():
+        try:
+            async with slots:
+                return await run_in_threadpool(service.proactive_status)
+        except (ValueError, OSError) as exc:
+            raise HTTPException(409, str(exc)) from None
+
+    @app.post('/api/proactive/action')
+    async def proactive_action(request: Request):
+        data = bytearray()
+        async for chunk in request.stream():
+            if len(data) + len(chunk) > 16000:
+                raise HTTPException(413, 'Request too large')
+            data.extend(chunk)
+        try:
+            payload = json.loads(data or b'{}')
+            if not isinstance(payload, dict) or token in json.dumps(payload, ensure_ascii=False):
+                raise ValueError('Invalid proactive payload')
+            async with slots:
+                return await run_in_threadpool(service.proactive_action, payload)
+        except (ValueError, TypeError) as exc:
+            raise HTTPException(400, str(exc)) from None
+
+    @app.get('/api/chief/missions/{identifier}')
+    async def chief_mission_detail(identifier: str):
+        from ..chief import ChiefError, load_mission
+        try:
+            async with slots:
+                return await run_in_threadpool(lambda: service.clean(load_mission(studio.root, identifier).to_dict()))
+        except ChiefError:
+            raise HTTPException(404, 'Mission unavailable in this workspace') from None
+
+    @app.post('/api/chief/missions')
+    async def chief_mission_create(request: Request):
+        from ..chief import ChiefDisabledError, ChiefError, ChiefOfStaff
+        data = bytearray()
+        async for chunk in request.stream():
+            if len(data) + len(chunk) > 32000:
+                raise HTTPException(413, 'Request too large')
+            data.extend(chunk)
+        try:
+            payload = json.loads(data)
+            if not isinstance(payload, dict) or token in json.dumps(payload, ensure_ascii=False):
+                raise ValueError('Invalid mission payload')
+            def _create():
+                chief = ChiefOfStaff(studio.root, studio=studio)
+                mission = chief.plan(
+                    str(payload.get('goal') or ''),
+                    pipeline=payload.get('pipeline') or None,
+                    cost_cap_usd=payload.get('cost_cap_usd'),
+                    concurrency=payload.get('concurrency'),
+                    max_retries=payload.get('max_retries'),
+                    critic_enabled=payload.get('critic_enabled'),
+                    source='hud',
+                )
+                auto_ok = ChiefOfStaff.can_auto_start(mission, chief.chief_config(), chief.autonomy_policy())
+                if payload.get('start') and (auto_ok or str(payload.get('confirm') or '').strip().upper() == 'GO'):
+                    mission = chief.start_background(mission.id, auto_approve=True)
+                elif not auto_ok:
+                    from ..chief import save_mission
+                    mission.status = 'awaiting_approval'
+                    save_mission(studio.root, mission)
+                return service.clean(mission.to_dict())
+            async with slots:
+                return await run_in_threadpool(_create)
+        except ChiefDisabledError as exc:
+            raise HTTPException(403, str(exc)) from None
+        except (ChiefError, ValueError, TypeError) as exc:
+            raise HTTPException(400, str(exc)) from None
+
+    @app.post('/api/chief/missions/{identifier}/{verb}')
+    async def chief_mission_control(identifier: str, verb: str, request: Request):
+        from ..chief import ChiefDisabledError, ChiefError, ChiefOfStaff
+        if verb not in {'approve', 'pause', 'resume', 'cancel'}:
+            raise HTTPException(404, 'Unknown Chief-of-Staff action')
+        data = bytearray()
+        async for chunk in request.stream():
+            if len(data) + len(chunk) > 8000:
+                raise HTTPException(413, 'Request too large')
+            data.extend(chunk)
+        try:
+            payload = json.loads(data or b'{}')
+            if not isinstance(payload, dict):
+                raise ValueError('Object required')
+            def _act():
+                chief = ChiefOfStaff(studio.root, studio=studio)
+                if verb == 'approve':
+                    mission = chief.approve(
+                        identifier,
+                        approved=bool(payload.get('approved', True)),
+                        confirm=str(payload.get('confirm') or ''),
+                        background=bool(payload.get('background', True)),
+                    )
+                elif verb == 'pause':
+                    mission = chief.pause(identifier)
+                elif verb == 'resume':
+                    mission = chief.resume(identifier, background=bool(payload.get('background', True)))
+                else:
+                    mission = chief.cancel(identifier)
+                return service.clean(mission.to_dict())
+            async with slots:
+                return await run_in_threadpool(_act)
+        except ChiefDisabledError as exc:
+            raise HTTPException(403, str(exc)) from None
+        except (ChiefError, ValueError, TypeError) as exc:
+            raise HTTPException(409, str(exc)) from None
 
     @app.post('/api/action/{operation}')
     async def action(operation: str, request: Request):

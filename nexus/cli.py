@@ -135,6 +135,8 @@ def emit_console(event: Event) -> None:
         print(COLORS.red(f"✗ {d.get('message', '')}"))
     elif t is EventType.MEMORY:
         print(COLORS.dim(f"🧠 saved memory for {d.get('role')} -> {d.get('path')}"))
+    elif t is EventType.VOICE_STATE:
+        print(COLORS.dim(f"🎙 voice: {d.get('state', 'idle')}"))
     elif t is EventType.APPROVAL:
         pass  # handled by the interactive callback
     elif t is EventType.DONE:
@@ -1939,11 +1941,68 @@ def _ago(timestamp: float) -> str:
 
 
 def cmd_memory(args: argparse.Namespace) -> int:
-    """Global memory (MEMORY.md / USER.md) - the long-term brain."""
-    from .memory import MemoryStore, env_flag
+    """Global memory (MEMORY.md / USER.md) plus opt-in long-term personal memory."""
+    from .memory import LongTermMemory, MemoryPolicyError, MemoryStore, env_flag
+
+    action = getattr(args, "action", None) or "list"
+    ws = Path(getattr(args, "workspace", None) or Path.cwd()).resolve()
+
+    if action in {"personal", "remember", "search", "confirm", "reject", "forget", "forget-topic", "compact", "export"}:
+        ltm = LongTermMemory(ws)
+        try:
+            text = (getattr(args, "text", "") or "").strip()
+            if action == "personal":
+                rows = ltm.list_entries(query=text)
+                if getattr(args, "json", False):
+                    print(json.dumps({"enabled": ltm.enabled, "vector_count": ltm.vector_count, "entries": rows}, indent=2, ensure_ascii=False))
+                else:
+                    print(COLORS.bold(f"personal memory (enabled={ltm.enabled}, vectors={ltm.vector_count}, encrypted={ltm.encrypted})"))
+                    for row in rows:
+                        print(f"  [{row.get('status', 'confirmed')}] {row['id']} ({row.get('store', 'vector')}, {row.get('source', 'user')}, {row.get('date', '')}): {row['text']}")
+                return 0
+            if action == "remember":
+                if not text:
+                    print(COLORS.red("usage: nexus memory remember <text>"))
+                    return 2
+                res = ltm.handle_command(f"remember that {text}", explicit_sensitive=bool(getattr(args, "yes", False)))
+                print(json.dumps(res, indent=2, ensure_ascii=False) if getattr(args, "json", False) else COLORS.green(res["reply"]))
+                return 0
+            if action == "search":
+                hits = ltm.search(text)
+                if getattr(args, "json", False):
+                    print(json.dumps(hits, indent=2, ensure_ascii=False))
+                else:
+                    for h in hits:
+                        print(f"  {h['id']} [{h['source']} | {h['date']}] ({h['score']}) {h['text']}")
+                return 0
+            if action == "confirm":
+                fact = ltm.confirm_fact(text)
+                print(json.dumps(fact, indent=2, ensure_ascii=False) if getattr(args, "json", False) else COLORS.green(f"confirmed {fact['id']}"))
+                return 0
+            if action == "reject":
+                ok = ltm.reject_fact(text)
+                print(COLORS.green(f"rejected {text}") if ok else COLORS.red(f"not found: {text}"))
+                return 0 if ok else 1
+            if action == "forget":
+                res = ltm.forget(text)
+                print(json.dumps(res, indent=2, ensure_ascii=False) if getattr(args, "json", False) else COLORS.green(f"forgot {res['total_removed']} item(s)"))
+                return 0
+            if action == "forget-topic":
+                res = ltm.forget_topic(text, confirm=bool(getattr(args, "yes", False)))
+                print(json.dumps(res, indent=2, ensure_ascii=False) if getattr(args, "json", False) else COLORS.green(res.get("message") or f"forgot {res['total_removed']} item(s)"))
+                return 0
+            if action == "compact":
+                res = ltm.compact()
+                print(json.dumps(res, indent=2, ensure_ascii=False) if getattr(args, "json", False) else COLORS.green(f"compacted {res['compacted']} entry(ies)"))
+                return 0
+            if action == "export":
+                print(json.dumps(ltm.export_json(), indent=2, ensure_ascii=False))
+                return 0
+        except MemoryPolicyError as exc:
+            print(COLORS.red(str(exc)))
+            return 1
 
     store = MemoryStore(enabled=env_flag("NEXUS_MEMORY", True))
-    action = getattr(args, "action", None) or "list"
     if action == "add":
         text = (getattr(args, "text", "") or "").strip()
         if not text:
@@ -2054,6 +2113,166 @@ def cmd_update(args: argparse.Namespace) -> int:
     return 1
 
 
+def cmd_sandbox(args: argparse.Namespace) -> int:
+    """``nexus sandbox check`` — verify Docker daemon, digest-pinned image, and isolation flags."""
+    from .sandbox import check_sandbox
+
+    workspace = Path(args.workspace).resolve() if getattr(args, "workspace", None) else Path.cwd().resolve()
+    action = getattr(args, "action", None) or "check"
+    if action != "check":
+        print(COLORS.red(f"unknown sandbox action: {action}"), file=sys.stderr)
+        return 2
+    report = check_sandbox(workspace)
+    if getattr(args, "json", False):
+        print(json.dumps(report, indent=2, ensure_ascii=False))
+        return 0 if report["ok"] else 1
+    status_line = COLORS.green("✓ READY") if report["ok"] else COLORS.yellow("✗ NOT READY")
+    print(COLORS.bold("Nexus Sandbox Check") + f"  {status_line}  " + COLORS.dim(report["workspace"]))
+    if report["policy_error"]:
+        print(COLORS.red(f"  policy error: {report['policy_error']}"))
+    for item in report["checks"]:
+        mark = COLORS.green("✓") if item["ok"] else COLORS.red("✗")
+        print(f"  {mark} {item['name']:<22} {item['detail']}")
+        if item.get("hint") and not item["ok"]:
+            print(COLORS.dim(f"      hint: {item['hint']}"))
+    return 0 if report["ok"] else 1
+
+
+def cmd_audit(args: argparse.Namespace) -> int:
+    """``nexus audit verify`` | ``nexus audit tail`` — inspect tamper-evident audit log."""
+    from . import audit
+
+    workspace = Path(args.workspace).resolve() if getattr(args, "workspace", None) else Path.cwd().resolve()
+    action = getattr(args, "action", None) or "verify"
+    if action == "tail":
+        rows = audit.tail(
+            workspace,
+            limit=int(getattr(args, "limit", 20) or 20),
+            action=str(getattr(args, "filter_action", "") or ""),
+        )
+        if getattr(args, "json", False):
+            print(json.dumps(rows, indent=2, ensure_ascii=False))
+            return 0
+        if not rows:
+            print(COLORS.dim("no audit events recorded yet"))
+            return 0
+        for row in rows:
+            print(
+                f"#{row.get('seq', '?'):>4}  {row.get('when', '')}  "
+                f"{row.get('who', ''):<8}  {row.get('what', ''):<22}  "
+                f"{row.get('result', ''):<10}  {row.get('target', '')}"
+            )
+        return 0
+
+    report = audit.verify(workspace)
+    if getattr(args, "json", False):
+        print(json.dumps(report, indent=2, ensure_ascii=False))
+        return 0 if report.get("ok") else 1
+    if report.get("ok"):
+        print(
+            COLORS.green("✓ audit chain verified")
+            + COLORS.dim(
+                f"  ({report.get('events', report.get('checked', 0))} events · head {str(report.get('head', ''))[:16]} · {report.get('path')})"
+            )
+        )
+        return 0
+    print(COLORS.red("✗ audit chain verification FAILED") + COLORS.dim(f"  ({report.get('path')})"))
+    if report.get("first_bad") is not None:
+        print(COLORS.red(f"  first corrupted event seq: {report['first_bad']}"))
+    if report.get("error"):
+        print(COLORS.red(f"  {report['error']}"))
+    return 1
+
+
+def cmd_integrations(args: argparse.Namespace) -> int:
+    from .personal_integrations import (
+        INTEGRATION_PROVIDERS,
+        grant_integration_token,
+        integrations_status,
+        revoke_integration_token,
+    )
+
+    workspace = Path(getattr(args, "workspace", None) or ".").resolve()
+    action = getattr(args, "action", "status") or "status"
+    try:
+        if action == "status":
+            info = integrations_status(workspace)
+            if getattr(args, "json", False):
+                print(json.dumps(info, indent=2, ensure_ascii=False))
+                return 0
+            state_lbl = COLORS.green("enabled") if info["enabled"] else COLORS.dim("disabled")
+            print(f"Personal integrations ({state_lbl}) · keyring service: {info['keyring_service']}")
+            for name, p in info["providers"].items():
+                if name == "notes":
+                    folders = len(p.get("obsidian_folders", [])) + len(p.get("notion_folders", []))
+                    print(f"  notes      enabled={p['enabled']} folders={folders}")
+                    continue
+                scopes = ", ".join(p.get("granted_scopes") or []) or "(none)"
+                print(
+                    f"  {name:<10} enabled={p['enabled']} token_stored={p['token_stored']} "
+                    f"granted_scopes={scopes}"
+                )
+            return 0
+
+        if action == "grant":
+            provider = getattr(args, "provider", "") or ""
+            if provider not in INTEGRATION_PROVIDERS:
+                print(COLORS.red(f"Provider must be one of: {', '.join(INTEGRATION_PROVIDERS)}"))
+                return 2
+            scopes_raw = getattr(args, "scopes", "") or ""
+            scopes = [s.strip() for s in scopes_raw.split(",") if s.strip()]
+            if not scopes:
+                print(COLORS.red("Specify minimal scopes with --scopes, e.g. --scopes gmail.readonly"))
+                return 2
+            token = getattr(args, "token", "") or ""
+            if getattr(args, "token_stdin", False):
+                token = sys.stdin.read().strip()
+            elif not token:
+                import getpass
+
+                token = getpass.getpass(f"OAuth access token for {provider}: ").strip()
+            res = grant_integration_token(workspace, provider, token, scopes=scopes)
+            if getattr(args, "json", False):
+                print(json.dumps(res, indent=2, ensure_ascii=False))
+                return 0
+            print(COLORS.green(f"✓ Stored OAuth token for {provider} in keyring ({', '.join(res['granted_scopes'])})"))
+            return 0
+
+        if action == "revoke":
+            target = getattr(args, "provider", "") or ("all" if getattr(args, "all", False) else "")
+            if not target:
+                print(COLORS.red("Specify a provider name or --all"))
+                return 2
+            res = revoke_integration_token(workspace, target)
+            if getattr(args, "json", False):
+                print(json.dumps(res, indent=2, ensure_ascii=False))
+                return 0
+            print(COLORS.green(f"✓ Revoked OAuth token(s) from keyring for {target}"))
+            return 0
+
+        if action == "search":
+            from .knowledge import search_personal_sources
+
+            q = " ".join(getattr(args, "query", None) or []).strip()
+            src = getattr(args, "source", "all") or "all"
+            sources = ("drive", "docs", "notes") if src == "all" else (src,)
+            res = search_personal_sources(workspace, q, sources=sources)
+            if getattr(args, "json", False):
+                print(json.dumps(res, indent=2, ensure_ascii=False))
+                return 0
+            for item in res.get("results", []):
+                print(f"{item['citation_tag']}  flags={item.get('injection_flags', [])}")
+            return 0
+
+    except (ValueError, ImportError) as exc:
+        if getattr(args, "json", False):
+            print(json.dumps({"error": str(exc)}, indent=2))
+        else:
+            print(COLORS.red(f"✗ {exc}"))
+        return 2
+    return 2
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="nexus",
@@ -2087,10 +2306,36 @@ def build_parser() -> argparse.ArgumentParser:
     add_telegram_parser(sub)
     from .context.cli import add_parser as add_context_parser
     add_context_parser(sub)
+    from .voice.cli import add_parser as add_voice_parser
+    add_voice_parser(sub)
     from .evaluation.cli import add_parser as add_evaluation_parser
     add_evaluation_parser(sub)
     from .evaluation.cli import add_trace_parser
     add_trace_parser(sub)
+
+    p = sub.add_parser("integrations", help="inspect, store (keyring), revoke, or search scoped personal integrations")
+    int_sub = p.add_subparsers(dest="action", required=True)
+    ip_status = int_sub.add_parser("status", help="show integration status and granted keyring scopes")
+    ip_status.add_argument("--workspace", "-C")
+    ip_status.add_argument("--json", action="store_true")
+    ip_grant = int_sub.add_parser("grant", help="store a minimal-scope OAuth token in OS keyring")
+    ip_grant.add_argument("provider", choices=["gmail", "calendar", "contacts", "drive", "docs"])
+    ip_grant.add_argument("--scopes", required=True, help="comma-separated minimal scopes")
+    ip_grant.add_argument("--token", default="", help="OAuth token (prefer --token-stdin or interactive prompt)")
+    ip_grant.add_argument("--token-stdin", action="store_true", help="read OAuth token from stdin")
+    ip_grant.add_argument("--workspace", "-C")
+    ip_grant.add_argument("--json", action="store_true")
+    ip_revoke = int_sub.add_parser("revoke", help="revoke OAuth tokens and scopes from keyring")
+    ip_revoke.add_argument("provider", nargs="?", default="")
+    ip_revoke.add_argument("--all", action="store_true", help="revoke all integration tokens in keyring")
+    ip_revoke.add_argument("--workspace", "-C")
+    ip_revoke.add_argument("--json", action="store_true")
+    ip_search = int_sub.add_parser("search", help="search Drive, Docs, and local Obsidian/Notion notes with citations")
+    ip_search.add_argument("query", nargs="+")
+    ip_search.add_argument("--source", default="all", choices=["all", "drive", "docs", "notes"])
+    ip_search.add_argument("--workspace", "-C")
+    ip_search.add_argument("--json", action="store_true")
+    p.set_defaults(func=cmd_integrations)
 
     p = sub.add_parser("chat", help="interactive REPL (default)")
     add_common(p)
@@ -2117,6 +2362,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     from .orchestration.cli import add_parser as add_orchestration_parser
     add_orchestration_parser(sub)
+    from .chief_cli import add_parser as add_chief_parser
+    add_chief_parser(sub)
     from .github_cli import add_parser as add_github_parser
     add_github_parser(sub)
     from .computer_cli import add_parser as add_computer_parser
@@ -2259,11 +2506,22 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--json", action="store_true")
     p.set_defaults(func=cmd_recall)
 
-    p = sub.add_parser("memory", help="long-term memory: MEMORY.md + USER.md")
-    p.add_argument("action", nargs="?", default="list", choices=["list", "add", "remove", "import", "path"])
-    p.add_argument("text", nargs="?", help="the entry to add/remove")
+    p = sub.add_parser("memory", help="long-term memory: MEMORY.md + USER.md + personal memory")
+    p.add_argument(
+        "action",
+        nargs="?",
+        default="list",
+        choices=[
+            "list", "add", "remove", "import", "path",
+            "personal", "remember", "search", "confirm", "reject",
+            "forget", "forget-topic", "compact", "export",
+        ],
+    )
+    p.add_argument("text", nargs="?", help="the entry, query, id, or topic")
     p.add_argument("--user", action="store_true", help="target USER.md (preferences) instead of MEMORY.md")
     p.add_argument("--source", help="import: directory holding MEMORY.md / USER.md")
+    p.add_argument("--workspace", "-C")
+    p.add_argument("--yes", "-y", action="store_true", help="confirm destructive topic forget or explicit sensitive store")
     p.add_argument("--json", action="store_true")
     p.set_defaults(func=cmd_memory)
 
@@ -2281,6 +2539,20 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--no-pull", action="store_true")
     p.add_argument("--no-install", action="store_true")
     p.set_defaults(func=cmd_update)
+
+    p = sub.add_parser("sandbox", help="check Docker sandbox configuration and invariants")
+    p.add_argument("action", nargs="?", default="check", choices=["check"])
+    p.add_argument("--workspace", "-C")
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(func=cmd_sandbox)
+
+    p = sub.add_parser("audit", help="verify or inspect the tamper-evident hash-chained audit log")
+    p.add_argument("action", nargs="?", default="verify", choices=["verify", "tail"])
+    p.add_argument("--limit", "-n", type=int, default=20)
+    p.add_argument("--action", dest="filter_action", default="", help="filter by action prefix (e.g. tool.)")
+    p.add_argument("--workspace", "-C")
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(func=cmd_audit)
 
     p = sub.add_parser("version", help="print version")
     p.set_defaults(func=cmd_version)
@@ -2303,6 +2575,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
     workspace = _workspace_from_argv(argv)
     load_dotenv_files(workspace)
+    from .redaction import install_log_redaction
+    install_log_redaction(workspace)
     parser = build_parser()
     if len(argv) == 1 and argv[0] in {"-h", "--help"}:
         # top-level help: list the subcommands instead of chat's flags

@@ -29,8 +29,10 @@ from .workbench import observation, proposal, safe_path
 SECRET_PATTERNS = (
     re.compile(r"\b(?:gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,})\b"),
     re.compile(r"\b(?:sk-[A-Za-z0-9_-]{20,}|AIza[A-Za-z0-9_-]{30,}|AKIA[A-Z0-9]{16})\b"),
-    re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----[\s\S]*?-----END [^-]+-----"),
-    re.compile(r'''(?i)\b(?:api[_-]?key|password|access[_-]?token|secret)["\']?\s*[:=]\s*["']?([^\s"']{12,})'''),
+    re.compile(r"\b(?:xox[baprs]-[A-Za-z0-9-]{12,}|[0-9]{7,15}:AA[A-Za-z0-9_-]{25,})\b"),
+    re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----[\s\S]*?-----END [^-]+-----"),
+    re.compile(r'''(?i)\b(?:api[_-]?key|password|access[_-]?token|bot[_-]?token|secret|approval[_-]?pin)["\']?\s*[:=]\s*["']?([^\s"']{12,})'''),
+    re.compile(r"(?i)\bBearer\s+[A-Za-z0-9._~+/-]{16,}=*"),
 )
 
 
