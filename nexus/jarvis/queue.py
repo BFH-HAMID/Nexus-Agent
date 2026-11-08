@@ -6,7 +6,6 @@ import math
 import time
 from contextlib import contextmanager
 
-import yaml
 from filelock import FileLock
 
 
@@ -16,31 +15,13 @@ class Queue:
         self.root = studio.root
 
     def policy(self):
-        path = self.root / 'autonomy.yaml'
-        if path.is_symlink() or (path.exists() and (not path.is_file() or path.stat().st_size > 64000)):
-            raise ValueError('Autonomy requires a bounded operator policy')
-        try:
-            data = yaml.safe_load(path.read_text()) if path.exists() else {}
-        except yaml.YAMLError:
-            raise ValueError('Malformed autonomy policy') from None
-        keys = {'schema', 'level', 'max_queue', 'max_depth', 'cooldown_seconds', 'ttl_seconds', 'max_reserved_cost', 'runtime', 'triggers'}
-        if not isinstance(data, dict) or set(data) - keys or type(data.get('schema', 1)) is not int or data.get('schema', 1) != 1:
-            raise ValueError('Invalid autonomy policy')
-        level = data.get('level', 'L1')
-        if not isinstance(level, str) or level not in {'L0', 'L1', 'L2', 'L3'}:
-            raise ValueError('Unknown autonomy level')
-        policy = {'level': level, 'max_queue': 20, 'max_depth': 3, 'cooldown_seconds': 60,
-                  'ttl_seconds': 86400, 'max_reserved_cost': 1.0, **data}
-        for key, low, high in [('max_queue', 1, 100), ('max_depth', 0, 5), ('cooldown_seconds', 1, 86400), ('ttl_seconds', 60, 604800)]:
-            if type(policy[key]) is not int or not low <= policy[key] <= high:
-                raise ValueError('Invalid bounded autonomy limit')
-        cost = policy['max_reserved_cost']
-        if type(cost) not in {int, float} or not math.isfinite(cost) or not 0 <= cost <= 100:
-            raise ValueError('Invalid queue cost reservation limit')
+        from ..autonomy import load_autonomy_dict
+
+        policy = load_autonomy_dict(self.root)
         from .runtime import settings
-        policy['runtime'] = settings(data.get('runtime', {}))
+        policy['runtime'] = settings(policy.get('runtime', {}))
         from .events import settings as trigger_settings
-        policy['triggers'] = trigger_settings(data.get('triggers', []), self.root)
+        policy['triggers'] = trigger_settings(policy.get('triggers', []), self.root)
         return policy
 
     def directory(self):

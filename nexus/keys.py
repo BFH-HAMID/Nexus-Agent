@@ -255,22 +255,32 @@ def stored_key(family: str | None) -> str:
 
 
 def get_key(family: str) -> str:
-    """Key for a family from the environment first, then the store."""
+    """Key for a family from environment/.env first, then OS keyring, then the mode-600 key store."""
     clean = canonical(family) or str(family or "").strip().lower()
     if not clean:
         return ""
     key, _ = key_from_env(clean)
-    return key or stored_key(clean)
+    if key:
+        return key
+    from .redaction import get_secret
+    ring_val = get_secret(clean)
+    if ring_val:
+        return ring_val
+    return stored_key(clean)
 
 
 def key_source(provider: str | None, api_key_env: str | None = None) -> str:
-    """Human readable origin of an agent's key: ``env:NAME``, ``keys.json`` or ``""``."""
+    """Human readable origin of an agent's key: ``env:NAME``, ``keyring``, ``keys.json`` or ``""``."""
     key, origin = key_from_env(provider, api_key_env)
     if key:
         return origin
     family = family_for(provider, api_key_env)
-    if family and stored_key(family):
-        return str(store_path())
+    if family:
+        from .redaction import get_secret
+        if get_secret(family):
+            return "keyring"
+        if stored_key(family):
+            return str(store_path())
     return ""
 
 

@@ -104,8 +104,20 @@ class HUD:
             audit = {'error': 'Audit unavailable; no fabricated entries'}
         disk = psutil.disk_usage(str(self.queue.root))
         runtime = Runtime(self.studio)
+        from ..chief import chief_hud_summary
+        from ..jarvis.proactive import ProactiveEngine
+        from ..monitoring import collect_self_monitoring
+        from ..voice.config import read_hud_state
+        try:
+            proactive_state = ProactiveEngine(self.queue.root, studio=self.studio).status()
+        except (ValueError, OSError):
+            proactive_state = {'enabled': False, 'error': 'Invalid proactive.yaml'}
         return self.clean({'observed_at': time.time(), 'source': 'existing Studio/Jarvis plus local psutil; not demo data',
                            'context': Context(self.queue.root, self.studio).status(),
+                           'voice': read_hud_state(self.queue.root),
+                           'chief': chief_hud_summary(self.queue.root),
+                           'proactive': proactive_state,
+                           'monitoring': collect_self_monitoring(self.queue.root, studio=self.studio, sessions=self.sessions),
                            'hardware': {'cpu_percent': psutil.cpu_percent(interval=None), 'memory_percent': psutil.virtual_memory().percent,
                                         'disk_free_bytes': disk.free},
                            'daemon': {k: daemon[k] for k in ('state', 'lock_held', 'execution_enabled', 'dispatch_configured')},
@@ -115,6 +127,17 @@ class HUD:
                            'workflows': workflows, 'audit': audit,
                            'traces': self.sessions.trace_summaries(self.queue.root),
                            'evaluation': self.sessions.evaluation_report(self.queue.root, roles=self.studio.wb.state.config.roles.roles)})
+
+    def monitoring(self):
+        from ..monitoring import collect_self_monitoring
+
+        return self.clean(collect_self_monitoring(self.queue.root, studio=self.studio, sessions=self.sessions))
+
+    def schedules(self):
+        from ..scheduler import Scheduler, scheduler_summary
+
+        sched = Scheduler(self.queue.root, studio=self.studio)
+        return self.clean({'summary': scheduler_summary(self.queue.root), 'items': [e.to_dict() for e in sched.list()]})
 
     def trace(self, identifier, operation='inspect', step=None):
         from ..evaluation.replay import inspect, why
@@ -199,3 +222,46 @@ class HUD:
             policy['level'] = level
             self.publish_policy(policy)
         return {'level': level, 'source': 'operator policy updated; autonomy never approves individual dangerous/external actions'}
+
+    def proactive_status(self):
+        from ..jarvis.proactive import ProactiveEngine
+
+        return self.clean(ProactiveEngine(self.queue.root, studio=self.studio).status())
+
+    def proactive_action(self, data):
+        from ..jarvis.proactive import ProactiveDisabledError, ProactiveEngine
+
+        if not isinstance(data, dict):
+            raise ValueError('JSON object required')
+        action = str(data.get('action') or '').strip()
+        engine = ProactiveEngine(self.queue.root, studio=self.studio)
+        try:
+            if action == 'tick':
+                res = engine.tick_once()
+            elif action == 'brief':
+                res = engine.run_morning_brief(
+                    trigger='greeting' if data.get('greeting') else 'manual',
+                    present=bool(data.get('present', True)),
+                    force=bool(data.get('force', True)),
+                )
+            elif action == 'focus':
+                res = engine.set_focus_mode(
+                    bool(data.get('enabled', True)),
+                    minutes=int(data.get('minutes', 60)),
+                    reason=str(data.get('reason') or ''),
+                )
+            elif action == 'remind':
+                res = engine.create_from_voice(str(data.get('text') or ''))
+            elif action == 'stop_suggesting':
+                res = engine.learn_stop_suggesting(str(data.get('topic') or ''))
+            elif action == 'unmute':
+                res = engine.unmute_suggestion(str(data.get('target') or ''))
+            elif action == 'accept_suggestion':
+                res = engine.accept_suggestion(data.get('id') or None)
+            elif action == 'ack_toast':
+                res = engine.ack_hud_toast(str(data.get('id') or ''))
+            else:
+                raise ValueError('Unsupported proactive action')
+        except ProactiveDisabledError as exc:
+            raise ValueError(str(exc)) from exc
+        return self.clean(res)

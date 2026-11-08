@@ -22,11 +22,14 @@
     save: 'SAVE MEMORY POLICY', index: 'INDEX COLLECTION', delete: 'DELETE COLLECTION',
     document: 'REMOVE DOCUMENT', add: 'ADD MEMORY ENTRY', forget: 'FORGET MEMORY ENTRY',
     clean: 'CLEAN MEMORY STORE',
+    personalAdd: 'ADD PERSONAL MEMORY', personalConfirm: 'CONFIRM PROFILE FACT',
+    personalEdit: 'EDIT PERSONAL MEMORY', personalDelete: 'DELETE PERSONAL MEMORY',
   };
 
   const state = {
-    tab: 'overview', overview: null, policy: null, memory: null, collections: null,
-    detail: null, results: null, context: null, selected: '', busy: false,
+    tab: 'overview', overview: null, policy: null, memory: null, personal: null,
+    collections: null, detail: null, results: null, context: null, selected: '', busy: false,
+    editingPersonalId: '',
   };
 
   const root = document.createElement('section');
@@ -139,6 +142,43 @@
               </tr></thead>
               <tbody id="memNoteRows"></tbody>
             </table>
+          </div>
+        </section>
+
+        <section class="security-card" id="memPersonalCard">
+          <div class="security-cardhead">
+            <h2 data-i18n="memory.personal.title"></h2>
+            <span class="security-stamp" id="memPersonalStatus"></span>
+          </div>
+          <p class="security-note" data-i18n="memory.personal.intro"></p>
+          <div class="security-row">
+            <label class="security-field security-grow"><span data-i18n="memory.personal.search"></span>
+              <input id="memPersonalSearch" type="search" maxlength="200" autocomplete="off" data-i18n-ph="memory.personal.searchPlaceholder"></label>
+            <button class="btn ghost" type="button" id="memPersonalSearchBtn"><span class="btn-label" data-i18n="memory.personal.search"></span></button>
+            <button class="btn ghost" type="button" id="memPersonalExport"><span class="btn-label" data-i18n="memory.personal.export"></span></button>
+          </div>
+          <ul class="memory-entries" id="memPersonalEntries"></ul>
+          <label class="security-field"><span data-i18n="memory.personal.addLabel"></span>
+            <textarea id="memPersonalAddText" rows="2" maxlength="1200" data-i18n-ph="memory.personal.addPlaceholder"></textarea></label>
+          <div class="security-row">
+            <label class="security-field"><span>Store</span>
+              <select id="memPersonalStore">
+                <option value="profile">Profile</option>
+                <option value="vector">Vector memory</option>
+              </select></label>
+            <label class="security-field"><span>Category</span>
+              <select id="memPersonalCategory">
+                <option value="">Auto</option>
+                <option value="preferences">preferences</option>
+                <option value="routines">routines</option>
+                <option value="languages">languages</option>
+                <option value="people">people</option>
+                <option value="projects">projects</option>
+                <option value="working_hours">working_hours</option>
+                <option value="tone_preferences">tone_preferences</option>
+                <option value="fact">fact</option>
+              </select></label>
+            <button class="btn" type="button" id="memPersonalAdd"><span class="btn-label" data-i18n="memory.personal.add"></span></button>
           </div>
         </section>
       </section>
@@ -510,11 +550,156 @@
       rows.append(tr);
     }
     if (!data.enabled) $('memError').textContent = t('memory.block.disabled');
+    paintPersonal();
+  }
+
+  function paintPersonal() {
+    const data = state.personal;
+    const host = $('memPersonalEntries');
+    if (!host) return;
+    host.replaceChildren();
+    if (!data) return;
+    $('memPersonalStatus').textContent = data.enabled
+      ? `${data.vector_count ?? 0} vectors · ${data.encrypted ? 'encrypted AES-GCM' : 'local'}`
+      : t('memory.personal.disabled');
+    const entries = data.entries || [];
+    if (!entries.length) {
+      host.append(el('li', 'security-empty', t('memory.personal.empty')));
+      return;
+    }
+    for (const entry of entries) {
+      const item = el('li', 'memory-entry');
+      const head = el('div', 'memory-result-head');
+      head.append(
+        chip(entry.store || 'profile', ''),
+        chip(entry.category || entry.kind || 'fact', ''),
+        chip(entry.status || 'confirmed', entry.status === 'suggested' ? 'warn' : 'ok'),
+        el('span', 'security-stamp', `source: ${entry.source || 'user'} · ${stampOf(entry.updated_at || entry.created_at)}`),
+      );
+      item.append(head);
+      if (state.editingPersonalId === entry.id) {
+        const input = el('textarea', 'security-field');
+        input.rows = 2;
+        input.value = entry.text || '';
+        input.id = `memPersonalEditInput_${entry.id}`;
+        const actions = el('div', 'security-row');
+        const save = el('button', 'btn security-small', t('memory.personal.save'));
+        save.type = 'button';
+        save.onclick = () => askPersonalEdit(entry, input.value);
+        const cancel = el('button', 'btn ghost security-small', t('memory.personal.cancel'));
+        cancel.type = 'button';
+        cancel.onclick = () => { state.editingPersonalId = ''; paintPersonal(); };
+        actions.append(save, cancel);
+        item.append(input, actions);
+      } else {
+        item.append(el('p', 'memory-entry-text', entry.text));
+        const foot = el('div', 'memory-entry-foot');
+        foot.append(el('span', 'security-stamp', `${entry.id} · ${entry.date || ''}`));
+        const btns = el('div', 'security-row');
+        if (entry.status === 'suggested') {
+          const conf = el('button', 'btn security-small', t('memory.personal.confirm'));
+          conf.type = 'button';
+          conf.onclick = () => askPersonalConfirm(entry, 'confirm');
+          const rej = el('button', 'btn ghost security-small', t('memory.personal.reject'));
+          rej.type = 'button';
+          rej.onclick = () => askPersonalConfirm(entry, 'reject');
+          btns.append(conf, rej);
+        }
+        const editBtn = el('button', 'btn ghost security-small', t('memory.personal.edit'));
+        editBtn.type = 'button';
+        editBtn.onclick = () => { state.editingPersonalId = entry.id; paintPersonal(); };
+        const delBtn = el('button', 'btn ghost security-small', t('memory.personal.delete'));
+        delBtn.type = 'button';
+        delBtn.onclick = () => askPersonalDelete(entry);
+        btns.append(editBtn, delBtn);
+        foot.append(btns);
+        item.append(foot);
+      }
+      host.append(item);
+    }
+  }
+
+  async function loadPersonal(query = '') {
+    const q = query ? `?q=${encodeURIComponent(query)}` : '';
+    state.personal = await api(`/api/knowledge/personal/list${q}`);
+    paintPersonal();
   }
 
   async function loadMemory() {
     state.memory = await api('/api/knowledge/memory');
+    state.personal = await api('/api/knowledge/personal/list').catch(() => null);
     paintMemory();
+  }
+
+  function askPersonalAdd() {
+    const text = ($('memPersonalAddText').value || '').trim();
+    if (!text) { showError(t('memory.block.addEmpty')); return; }
+    const store = $('memPersonalStore').value || 'profile';
+    const category = $('memPersonalCategory').value || '';
+    openAction({
+      title: t('memory.personal.addTitle'),
+      token: TOKENS.personalAdd,
+      detail: t('memory.personal.addDetail', {store}),
+      onConfirm: async (payload) => {
+        state.personal = await api('/api/knowledge/personal/add', {...payload, text, store, category});
+        $('memPersonalAddText').value = '';
+        paintPersonal();
+        window.nexusToast?.(t('memory.block.added'), {tone: 'done'});
+      },
+    });
+  }
+
+  function askPersonalConfirm(entry, action) {
+    openAction({
+      title: t('memory.personal.confirmTitle'),
+      token: `${TOKENS.personalConfirm} ${entry.id}`,
+      detail: t('memory.personal.confirmDetail', {id: entry.id}),
+      onConfirm: async (payload) => {
+        state.personal = await api('/api/knowledge/personal/confirm', {...payload, id: entry.id, action});
+        paintPersonal();
+      },
+    });
+  }
+
+  function askPersonalEdit(entry, text) {
+    const clean = (text || '').trim();
+    if (!clean) { showError(t('memory.block.addEmpty')); return; }
+    openAction({
+      title: t('memory.personal.editTitle'),
+      token: `${TOKENS.personalEdit} ${entry.id}`,
+      detail: t('memory.personal.editDetail', {id: entry.id}),
+      onConfirm: async (payload) => {
+        state.personal = await api('/api/knowledge/personal/edit', {...payload, id: entry.id, text: clean});
+        state.editingPersonalId = '';
+        paintPersonal();
+      },
+    });
+  }
+
+  function askPersonalDelete(entry) {
+    openAction({
+      title: t('memory.personal.deleteTitle'),
+      token: `${TOKENS.personalDelete} ${entry.id}`,
+      detail: t('memory.personal.deleteDetail', {id: entry.id}),
+      onConfirm: async (payload) => {
+        state.personal = await api('/api/knowledge/personal/delete', {...payload, id: entry.id});
+        paintPersonal();
+      },
+    });
+  }
+
+  async function exportPersonalJson() {
+    const exported = await api('/api/knowledge/personal/export');
+    const blob = new Blob([JSON.stringify(exported, null, 2)], {type: 'application/json'});
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `nexus-personal-memory-${exported.exported_date || 'export'}.json`;
+    document.body.append(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+    window.nexusToast?.(t('memory.personal.exported'), {tone: 'done'});
   }
 
   async function askAdd() {
@@ -871,6 +1056,15 @@
   $('memOpenRun').onclick = () => gui.show('run');
   $('memPolicySave').onclick = askSavePolicy;
   $('memAdd').onclick = () => guard(askAdd);
+  $('memPersonalAdd')?.addEventListener('click', () => guard(askPersonalAdd));
+  $('memPersonalSearchBtn')?.addEventListener('click', () => guard(() => loadPersonal($('memPersonalSearch').value.trim())));
+  $('memPersonalSearch')?.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      guard(() => loadPersonal($('memPersonalSearch').value.trim()));
+    }
+  });
+  $('memPersonalExport')?.addEventListener('click', () => guard(exportPersonalJson));
   $('memBuild').onclick = () => {
     const name = ($('memBuildName').value.trim() || 'docs').toLowerCase();
     if (!/^[a-z0-9][a-z0-9_-]{0,31}$/.test(name)) { showError(t('memory.build.badName')); return; }
@@ -893,6 +1087,7 @@
     i18n.apply(host);
     paintOverview();
     paintMemory();
+    paintPersonal();
     paintCollections();
     paintDocuments();
     paintResults();

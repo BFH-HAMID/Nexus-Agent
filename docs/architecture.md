@@ -21,6 +21,7 @@ the HTTP/SSE server the VS Code sidebar embeds.
 | `nexus/router.py` | task → role | `Router`, `RouteDecision`, `CLASSIFIER_PROMPT` |
 | `nexus/tools.py` | tool implementations + safety | `ToolRegistry`, `ToolContext`, `ApprovalGate`, `PathGuard`, `RoleMemory`, `build_tools()` |
 | `nexus/agent.py` | the loop, sessions, compaction, pipelines | `NexusAgent`, `RunResult`, `render_system_prompt()` |
+| `nexus/chief.py` | opt-in Chief-of-Staff DAG orchestrator & recovery ([docs](chief.md)) | `ChiefOfStaff`, `Mission`, `MissionStep`, `ChiefConfig` |
 | `nexus/cli.py` | argparse UI, REPL, `/commands`, `doctor` | `main()`, `emit_console()`, `interactive_approval()` |
 | `nexus/server.py` | stdlib HTTP + SSE for sidebar/panel | `ServerState`, `Session`, `serve()` |
 | `nexus/panel/` | the web UIs: the GUI deck, the compact extension panel and the simulation console | `dashboard.html/.css/.js`, `panel.html`, `panel.js`, `index.html` |

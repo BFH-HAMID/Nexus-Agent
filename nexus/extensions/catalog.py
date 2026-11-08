@@ -90,10 +90,13 @@ class Catalog:
             value = yaml.safe_load(bounded(path, 64000)) if path.exists() else {}
         except yaml.YAMLError:
             raise ValueError('Invalid MCP YAML') from None
-        if not isinstance(value, dict) or set(value) - {'schema', 'enabled', 'servers', 'plugin_directory'}:
+        if not isinstance(value, dict) or set(value) - {'schema', 'enabled', 'servers', 'plugin_directory', 'integrations'}:
             raise ValueError('Unknown MCP policy')
         if type(value.get('schema', 1)) is not int or value.get('schema', 1) != 1 or type(value.get('enabled', False)) is not bool:
             raise ValueError('Explicit MCP schema/enable flag required')
+        if 'integrations' in value and value.get('integrations') is not None:
+            from ..personal_integrations import validate_integrations_policy
+            validate_integrations_policy(value.get('integrations'), self.root)
         if not value.get('enabled', False):
             return {}
         servers = value.get('servers', {})

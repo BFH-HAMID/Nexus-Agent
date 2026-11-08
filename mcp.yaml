@@ -4,3 +4,49 @@ schema: 1
 enabled: false
 servers: {}
 plugin_directory: plugins
+
+# Scoped personal data integrations (all disabled by default).
+integrations:
+  enabled: false
+  gmail:
+    enabled: false
+    server: ""
+    scopes: []
+    allow_search: false
+    allow_read: false
+    allow_draft: false
+    allow_labels: false
+    allow_archive: false
+    allow_send: false
+    max_results: 20
+  calendar:
+    enabled: false
+    server: ""
+    scopes: []
+    allow_read: false
+    allow_write: false
+    allow_invites: false
+    max_results: 25
+  contacts:
+    enabled: false
+    server: ""
+    scopes: []
+    allow_read: false
+    max_results: 20
+  drive:
+    enabled: false
+    server: ""
+    scopes: []
+    allow_read: false
+    max_results: 20
+  docs:
+    enabled: false
+    server: ""
+    scopes: []
+    allow_read: false
+  notes:
+    enabled: false
+    allow_read: false
+    obsidian_folders: []
+    notion_folders: []
+    max_results: 20

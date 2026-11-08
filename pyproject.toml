@@ -41,10 +41,13 @@ hud = ["keyring>=25", "feedparser>=6.0,<7", "fastapi>=0.115,<1", "uvicorn>=0.30,
 dev = ["feedparser>=6.0,<7", "jsonschema>=4.23,<5", "fastapi>=0.115,<1", "uvicorn>=0.30,<1", "websockets>=13,<17", "textual>=0.80,<9", "pytest>=8.0", "tomli>=2; python_version < '3.11'", "ruff>=0.6", "cryptography>=44", "keyring>=25", "faiss-cpu>=1.8,<2", "numpy>=1.25,<3", "python-docx>=1.1,<2", "openpyxl>=3.1,<4", "python-pptx>=1.0,<2", "mss>=9,<11", "Pillow>=10,<13", "pytesseract>=0.3.13,<1"]
 orchestrator = ["faiss-cpu>=1.8,<2", "numpy>=1.25,<3"]
 assistant = ["faiss-cpu>=1.8,<2", "numpy>=1.25,<3", "keyring>=25", "pypdf>=5,<7", "python-docx>=1.1,<2", "openpyxl>=3.1,<4", "python-pptx>=1.0,<2", "Pillow>=10,<13"]
-voice = ["faster-whisper>=1.1,<2", "edge-tts>=7,<8", "sounddevice>=0.5,<1"]
-voice-wake = ["openwakeword>=0.6,<1", "pvporcupine>=3,<4"]
+voice = ["faster-whisper>=1.1,<2", "edge-tts>=7,<8", "sounddevice>=0.5,<1", "silero-vad>=5,<6", "numpy>=1.25,<3"]
+voice-wake = ["openwakeword>=0.6,<1", "pvporcupine>=3,<4", "pynput>=1.7,<2"]
 voice-offline = ["piper-tts>=1.2,<2", "kokoro>=0.9,<1"]
 voice-speaker = ["resemblyzer>=0.1.3,<1"]
+voice-realtime = ["google-genai>=1.0,<2"]
+voice-livekit = ["livekit-agents>=0.12,<2"]
+voice-pipecat = ["pipecat-ai>=0.0.55,<1"]
 vision = ["mss>=9,<11", "Pillow>=10,<13", "pypdf>=5,<7", "ultralytics>=8,<9", "opencv-python-headless>=4.10,<5", "face-recognition>=1.3,<2"]
 smart-home = ["paho-mqtt>=2,<3"]
 computer = ["playwright>=1.50,<2", "python-docx>=1.1,<2", "openpyxl>=3.1,<4", "python-pptx>=1.0,<2"]
@@ -83,8 +86,12 @@ packages = ["nexus"]
 "docs/images/world-svg-bangla-offline.png" = "nexus/_config/docs/images/world-svg-bangla-offline.png"
 "docs/images/world-mobile-offline.png" = "nexus/_config/docs/images/world-mobile-offline.png"
 "mcp.yaml" = "nexus/_config/mcp.yaml"
+"memory.yaml" = "nexus/_config/memory.yaml"
 "telegram.yaml" = "nexus/_config/telegram.yaml"
 "context.yaml" = "nexus/_config/context.yaml"
+"voice.yaml" = "nexus/_config/voice.yaml"
+"persona.yaml" = "nexus/_config/persona.yaml"
+"chief.yaml" = "nexus/_config/chief.yaml"
 "docs/hud.md" = "nexus/_config/docs/hud.md"
 "docs/gui.md" = "nexus/_config/docs/gui.md"
 "docs/updating.md" = "nexus/_config/docs/updating.md"
@@ -108,13 +115,16 @@ packages = ["nexus"]
 "docs/images/gui-management.png" = "nexus/_config/docs/images/gui-management.png"
 
 "docs/mcp.md" = "nexus/_config/docs/mcp.md"
+"docs/memory.md" = "nexus/_config/docs/memory.md"
 "docs/telegram.md" = "nexus/_config/docs/telegram.md"
 "docs/context.md" = "nexus/_config/docs/context.md"
+"docs/voice.md" = "nexus/_config/docs/voice.md"
+"docs/chief.md" = "nexus/_config/docs/chief.md"
 "docs/evaluation.md" = "nexus/_config/docs/evaluation.md"
 "examples/mcp" = "nexus/_config/examples/mcp"
 
 [tool.hatch.build.targets.sdist]
-include = ["nexus", "roles.d", "skills", "tests", "scripts", "examples", "frontend/world", "agents.yaml", "roles.yaml", "pipelines.yaml", "teams.yaml", "role-index.yaml", "permissions.yaml", "autonomy.yaml", "hud.yaml", "widget.yaml", "mcp.yaml", "telegram.yaml", "context.yaml", ".env.example", "docs", "README.md", "LICENSE"]
+include = ["nexus", "roles.d", "skills", "tests", "scripts", "examples", "frontend/world", "agents.yaml", "roles.yaml", "pipelines.yaml", "teams.yaml", "role-index.yaml", "permissions.yaml", "autonomy.yaml", "hud.yaml", "widget.yaml", "mcp.yaml", "memory.yaml", "telegram.yaml", "context.yaml", "voice.yaml", "persona.yaml", "chief.yaml", ".env.example", "docs", "README.md", "LICENSE"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

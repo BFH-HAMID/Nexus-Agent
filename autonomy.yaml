@@ -43,3 +43,47 @@ runtime:
   max_cpu_percent: 90
 # Opt-in file/schedule/TODO/build/Git/CI/system/inbox/queue-idle probes; see docs/jarvis.md.
 triggers: []
+
+# Tool autonomy risk classes (unknown tools always default to DANGEROUS):
+# - SAFE: read, search, draft, summarise -> automatic
+# - MEDIUM: bounded code edits, local tests, git branches, draft/create PRs -> automatic with post-action notice
+# - DANGEROUS: push main, deploy, send, delete, spend, change permissions, unknown tools -> always fresh approval
+risk_classes:
+  SAFE: automatic
+  MEDIUM: automatic_notify
+  DANGEROUS: fresh_approval
+
+# Live status narration across Chief-of-Staff / voice / CLI (OFF by default).
+# verbosity: silent | milestones | chatty
+status_narration:
+  enabled: false
+  verbosity: milestones
+  cooldown_seconds: 0.0
+  max_chars: 180
+
+# Notification routing by importance (OFF by default; voice when present, Telegram/desktop when away).
+notifications:
+  enabled: false
+  presence: auto
+  present_ttl_seconds: 300
+  voice_when_present: true
+  away_channel: auto
+
+# Recurring / delayed mission & job scheduler (OFF by default).
+# Set timezone (e.g. "Asia/Dhaka", "America/New_York", "UTC") and enabled: true to dispatch due schedules.
+timezone: ""
+scheduler:
+  enabled: false
+  timezone: ""
+  max_schedules: 64
+  auto_resume_crashed: false
+  default_target: queue
+
+# Watchdogs for stuck steps, identical repeated tool-call loops, and runaway cost (OFF by default).
+watchdog:
+  enabled: false
+  step_timeout_seconds: 300.0
+  max_identical_tool_calls: 3
+  poll_seconds: 5.0
+  notify_on_trigger: true
+

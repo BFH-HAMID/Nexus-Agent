@@ -27,12 +27,28 @@ def sanitize_role_name(raw: str) -> str:
     return cleaned[:64]
 
 
+class RiskClass(str, Enum):
+    """High-level autonomy risk class mapped from tools and call arguments."""
+
+    SAFE = "SAFE"
+    MEDIUM = "MEDIUM"
+    DANGEROUS = "DANGEROUS"
+
+
 class Risk(str, Enum):
     """How dangerous a tool call is. Drives the approval gate."""
 
     READ = "read"          # never needs approval
     WRITE = "write"        # needs approval unless --yes / always-allow
     DANGEROUS = "danger"   # always needs explicit approval, --yes won't skip
+
+    @property
+    def risk_class(self) -> RiskClass:
+        if self is Risk.READ:
+            return RiskClass.SAFE
+        if self is Risk.WRITE:
+            return RiskClass.MEDIUM
+        return RiskClass.DANGEROUS
 
 
 @dataclass
@@ -188,6 +204,17 @@ class Message:
         return total
 
 
+_KNOWN_READ_TOOLS = frozenset({
+    "list_files", "read_file", "grep", "skill_view", "recall",
+    "ask_agent", "finish", "request_clarification", "domain_fetch",
+})
+_KNOWN_MEDIUM_TOOLS = frozenset({
+    "write_file", "edit_file", "remember", "skill_manage", "memory",
+    "git", "git_prepare", "gh", "gh_create_pr", "office_file",
+    "sandbox_command", "run_command",
+})
+
+
 @dataclass
 class ToolSpec:
     """JSON-schema description of a tool, as sent to the model."""
@@ -195,13 +222,39 @@ class ToolSpec:
     name: str
     description: str
     input_schema: dict[str, Any]
-    risk: Risk = Risk.WRITE
+    risk: Risk | None = None
     read_only: bool = False
     # subcommands of a wrapper tool (``git``) that stay read-only: they never
     # need approval, even in plan mode
     readonly_subcommands: frozenset[str] = frozenset()
     readonly_actions: frozenset[str] = frozenset()
     approval_context: dict[str, Any] | None = None  # human-only; never sent as model authority
+    risk_declared: bool = True
+
+    def __post_init__(self) -> None:
+        if self.risk is None:
+            self.risk_declared = False
+            if self.read_only or self.name in _KNOWN_READ_TOOLS:
+                self.risk = Risk.READ
+            elif self.name in _KNOWN_MEDIUM_TOOLS:
+                self.risk = Risk.WRITE
+            else:
+                # Unknown tools default strictly to DANGEROUS.
+                self.risk = Risk.DANGEROUS
+        elif not isinstance(self.risk, Risk):
+            try:
+                self.risk = Risk(str(self.risk))
+            except ValueError:
+                self.risk = Risk.DANGEROUS
+                self.risk_declared = False
+
+    @property
+    def risk_class(self) -> RiskClass:
+        if not self.risk_declared and self.name not in _KNOWN_READ_TOOLS and self.name not in _KNOWN_MEDIUM_TOOLS:
+            return RiskClass.DANGEROUS
+        if isinstance(self.risk, Risk):
+            return self.risk.risk_class
+        return RiskClass.DANGEROUS
 
     def is_readonly_call(self, args: dict[str, Any]) -> bool:
         if self.readonly_actions and isinstance(args.get('action'), str) and args['action'] in self.readonly_actions:
@@ -302,6 +355,7 @@ class EventType(str, Enum):
     ERROR = "error"
     MEMORY = "memory"
     SKILL = "skill"              # skill created / patched / imported
+    VOICE_STATE = "voice_state"  # voice pipeline state change (idle/listening/thinking/speaking)
     DONE = "done"
 
 

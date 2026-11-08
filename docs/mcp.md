@@ -77,3 +77,21 @@ Tests include actual child JSON-RPC and a real loopback HTTP/SSE fixture, fresh
 approval despite AUTO_ALLOW, schema/secret denial, changed manifest, persistent
 quotas, child timeout/overflow/reaping, clean environment and redirect refusal.
 They do not certify arbitrary vendor MCP servers or live account permissions.
+
+## Scoped Personal Data Integrations (`mcp.yaml` `integrations:`)
+
+`mcp.yaml` also holds an opt-in `integrations:` policy (**all disabled by default**),
+built strictly on top of the existing MCP `Catalog`/`Session` transport and
+`nexus.untrusted` wrapper:
+
+- **Gmail**: `search`, `read`, `summarize` (`SAFE`); `draft`, optional `labels` / `archive` (`MEDIUM` only if `allow_labels`/`allow_archive: true`); `send` is always `DANGEROUS` (displays recipient, subject, and body, requires fresh approval + second factor, and never auto-sends).
+- **Google Calendar**: `agenda` and `free_time` (`SAFE`); `create`/`update` without attendees (`MEDIUM` with notification); `create`/`update` with `attendees` invitations (`DANGEROUS`, requires `allow_invites: true` and fresh approval).
+- **Contacts**: `resolve` (`SAFE`), returning single-question disambiguation choices when multiple contacts match (e.g. `"send it to Rahim"`).
+- **Drive, Docs, and Local Notes (Obsidian / Notion export folders)**: searchable and readable through `nexus/knowledge.py` (`search_personal_sources`, `read_personal_source`, `search_with_integrations`, `index_personal_notes`) with numbered source citations.
+- **OAuth Tokens & Minimal Scopes**: OAuth tokens and granted scopes are stored **only** in the OS keyring (`nexus-integrations`), never in YAML, git, or logs. Overly broad scopes (`*`, `mail.google.com`, full `drive`/`calendar`/`contacts`) are rejected.
+  - Inspect status & granted scopes: `nexus integrations status`
+  - Store a minimal-scope token in keyring: `nexus integrations grant gmail --scopes gmail.readonly,gmail.compose --token-stdin`
+  - Revoke keyring tokens & scopes: `nexus integrations revoke gmail` (or `--all`)
+  - Search personal knowledge with citations: `nexus integrations search "project roadmap"`
+- **Voice Email Summaries**: `"check my important emails"` speaks `"You have three important emails: ... Would you like to read, reply, or ignore?"` and supports follow-up `read`, `reply` (draft-only unless freshly approved with 2FA), and `ignore`.
+

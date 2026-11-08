@@ -1,0 +1,40 @@
+# Operator-owned Chief-of-Staff orchestrator policy.
+# OFF by default — set `enabled: true` explicitly to activate multi-agent mission orchestration.
+schema: 1
+enabled: false
+
+# Bounded parallel step execution
+concurrency: 3
+
+# Failure recovery bounds (also capped by `max_depth` in autonomy.yaml)
+max_retries: 2
+retry_backoff_seconds: 0.5
+
+# Mission cost ceiling (USD, operator-priced/estimated accounting; not a provider invoice)
+max_cost_usd: 2.0
+
+# Run independent read-only critic verification after each phase
+critic_enabled: true
+
+# Autonomy levels from autonomy.yaml allowed to auto-start a planned mission
+# without waiting for explicit "Go?" confirmation.
+# L0 always blocks; L1 always waits for explicit confirmation.
+# Individual shell, git, gh, send, delete, spend, and deploy actions STILL require
+# fresh approval via permissions.yaml.
+auto_start_autonomy_levels:
+  - L2
+  - L3
+
+# Require explicit plan approval when any step has high/critical risk (except on L3)
+require_approval_for_high_risk: true
+
+# Optional model routing overrides per step complexity (empty = auto-select from agents.yaml)
+model_routing:
+  easy_agent: ""
+  medium_agent: ""
+  hard_agent: ""
+
+# Optional conservative fallback pricing (USD per 1M tokens) used only when
+# Workbench operator pricing is unset. Keys map model name or agent name ->
+# {input_per_million: float, output_per_million: float}.
+estimated_rates: {}
