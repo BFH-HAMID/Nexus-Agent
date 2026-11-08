@@ -52,7 +52,7 @@ jobs:
             exit 1
           fi
 
-      - name: `nexus teams check` (roster against the installed roles)
+      - name: "nexus teams check (roster against the installed roles)"
         run: python -m nexus teams check
 
       - name: Ensure docs/roles.md is up to date with its generator
