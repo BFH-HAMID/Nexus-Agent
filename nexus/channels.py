@@ -48,7 +48,7 @@ MAX_TITLE = 200
 MAX_DETAIL = 300
 MAX_INBOX = 200
 
-_NOTICE_KINDS = {"run", "approval"}
+_NOTICE_KINDS = {"run", "approval", "reminder", "monitor", "brief", "assistant"}
 
 
 # ── paths and preferences ──────────────────────────────────────────────── #

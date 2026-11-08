@@ -22,6 +22,8 @@
   const SECTIONS = [
     {id: 'mission', group: 'operate', icon: 'i-radar', label: 'nav.mission', aria: 'nav.missionAria', view: 'mission', hint: '1'},
     {id: 'run', group: 'operate', icon: 'i-chat', label: 'nav.run', aria: 'nav.runAria', view: 'run', hint: '2'},
+    {id: 'assistant', group: 'operate', icon: 'i-brain', label: 'nav.assistant', aria: 'nav.assistant', view: 'assistant',
+      detail: 'voice, personal memory, reminders, uploads and sync'},
     {id: 'roles', group: 'operate', icon: 'i-users', label: 'nav.roles', view: 'roles',
       detail: '1000 roles, prompts, history'},
     {id: 'router', group: 'operate', icon: 'i-route', label: 'nav.router', view: 'router',
@@ -50,7 +52,7 @@
   ];
 
   const byId = new Map(SECTIONS.map((section) => [section.id, section]));
-  const viewTitles = {mission: 'nav.mission', roles: 'nav.roles', router: 'nav.router', computer: 'nav.computer',
+  const viewTitles = {mission: 'nav.mission', assistant: 'nav.assistant', roles: 'nav.roles', router: 'nav.router', computer: 'nav.computer',
     approvals: 'nav.approvals', workflows: 'nav.workflows', security: 'nav.security', run: 'nav.run',
     memory: 'nav.memory', cost: 'nav.cost', channels: 'nav.channels',
     operations: 'nav.approvals',

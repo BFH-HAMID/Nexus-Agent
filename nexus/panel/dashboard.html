@@ -4,6 +4,8 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <meta name="color-scheme" content="dark light" />
+<meta name="theme-color" content="#08110f" />
+<link rel="manifest" href="/manifest.webmanifest" />
 <title>Nexus Agent · Control Deck</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M16 2l12 7v14l-12 7L4 23V9z' fill='none' stroke='%232dd4a4' stroke-width='2'/%3E%3Cpath d='M11 21V11l10 10V11' fill='none' stroke='%232dd4a4' stroke-width='2'/%3E%3C/svg%3E" />
 <!-- The Bangla UI swaps the bundled Bengali face to the front of the stack;
@@ -19,6 +21,7 @@
 <link rel="stylesheet" href="/dashboard/desktop.css" />
 <link rel="stylesheet" href="/dashboard/shell.css" />
 <link rel="stylesheet" href="/dashboard/settings.css" />
+<link rel="stylesheet" href="/dashboard/assistant.css" />
 </head>
 <body>
 
@@ -83,6 +86,10 @@
       <svg class="ic" aria-hidden="true"><use href="#i-chat"/></svg>
       <span class="nav-label" data-i18n="nav.run">Run &amp; chat</span><span class="nav-label-short" aria-hidden="true" data-i18n="nav.runShort">Run</span>
       <span class="nav-kbd" aria-hidden="true">Alt+2</span>
+    </button>
+    <button class="nav-item" type="button" data-nav-id="assistant" aria-label="Personal assistant" data-i18n-aria="nav.assistant">
+      <svg class="ic" aria-hidden="true"><use href="#i-brain"/></svg>
+      <span class="nav-label" data-i18n="nav.assistant">Personal assistant</span><span class="nav-label-short" aria-hidden="true" data-i18n="nav.assistantShort">Assistant</span>
     </button>
     <button class="nav-item" type="button" data-nav-id="roles" aria-label="Roles & router" data-i18n-aria="nav.roles">
       <svg class="ic" aria-hidden="true"><use href="#i-users"/></svg>
@@ -162,6 +169,9 @@
   </button>
   <button type="button" role="tab" data-nav="run" aria-selected="false" aria-label="Run & chat" data-i18n-aria="nav.runAria">
     <svg class="ic" aria-hidden="true"><use href="#i-chat"/></svg><span data-i18n="nav.runShort">Run</span>
+  </button>
+  <button type="button" role="tab" data-nav="assistant" aria-selected="false" aria-label="Personal assistant" data-i18n-aria="nav.assistant">
+    <svg class="ic" aria-hidden="true"><use href="#i-brain"/></svg><span data-i18n="nav.assistantShort">Assistant</span>
   </button>
   <button type="button" role="tab" data-nav="approvals" aria-selected="false" aria-label="Operations & approvals" data-i18n-aria="nav.approvalAria">
     <svg class="ic" aria-hidden="true"><use href="#i-shield"/></svg><span data-i18n="nav.approvalsShort">Approvals</span>
@@ -808,6 +818,7 @@
 <script src="/dashboard/memory.js"></script>
 <script src="/dashboard/cost.js"></script>
 <script src="/dashboard/channels.js"></script>
+<script src="/dashboard/assistant.js"></script>
 <script src="/dashboard/worlddesk.js"></script>
 <script src="/dashboard/settings.js"></script>
 </body>

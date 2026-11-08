@@ -689,7 +689,8 @@ def make_handler(state: ServerState):
             before it knows the token (the token lives in the page's query string)."""
             return (
                 path == "/" or path.startswith("/world/")
-                or path in {"/dashboard", "/gui", "/panel", "/console", "/hud"}
+                or path in {"/dashboard", "/gui", "/panel", "/console", "/hud",
+                            "/manifest.webmanifest", "/assistant-sw.js", "/assistant-icon.svg"}
                 or path.startswith(("/dashboard/", "/gui/", "/panel/", "/console/"))
             )
 
@@ -710,6 +711,21 @@ def make_handler(state: ServerState):
 
             if path == '/api/session':
                 return self._send_json({'authenticated': True, 'required': bool(state.token)})
+            if path in {"/manifest.webmanifest", "/assistant-sw.js", "/assistant-icon.svg"}:
+                content_type = {"webmanifest": "application/manifest+json",
+                                "js": "text/javascript", "svg": "image/svg+xml"}[path.rsplit(".", 1)[-1]]
+                return self._static(path.lstrip("/"), content_type)
+            if path.startswith("/api/assistant/"):
+                from .assistant import api as assistant_api
+                client = self._rolehub_client()
+                bucket = "assistant-read:" + client
+                if not state.api_limiter.allow(bucket):
+                    return self._send_json({"error": "Assistant rate limit reached"}, 429)
+                try:
+                    result = assistant_api.get(state, path.removeprefix("/api/assistant/"), parse_qs(parsed.query))
+                    return self._send_json(result)
+                except Exception as exc:
+                    return self._send_json({"error": state.workbench.studio.redact_text(str(exc))[:1000]}, 400)
             if path == "/api/world/overview":
                 return self._world_read("world.overview", lambda desk: desk.overview(state))
             if path.startswith("/api/world/"):
@@ -1121,6 +1137,25 @@ def make_handler(state: ServerState):
                         return self._send_json({'error': 'remember must be boolean'}, 400)
                     self._session_cookie = issue(state, host, remember=remember)
                 return self._send_json({'authenticated': not payload.get('forget')})
+            if path.startswith("/api/assistant/"):
+                from .assistant import api as assistant_api
+                client = self._rolehub_client()
+                bucket = "assistant-write:" + client
+                if not state.api_limiter.allow(bucket):
+                    return self._send_json({"error": "Assistant rate limit reached"}, 429)
+                try:
+                    length = int(self.headers.get("Content-Length", "0"))
+                    if not 0 < length <= assistant_api.MAX_BODY or self.headers.get("Transfer-Encoding"):
+                        return self._send_json({"error": "Bounded assistant JSON body required"}, 413)
+                    payload = json.loads(self.rfile.read(length))
+                    if not isinstance(payload, dict):
+                        raise ValueError("JSON object required")
+                    result = assistant_api.post(state, path.removeprefix("/api/assistant/"), payload, client)
+                    return self._send_json(result)
+                except (ValueError, json.JSONDecodeError) as exc:
+                    return self._send_json({"error": str(exc)[:500]}, 400)
+                except Exception as exc:
+                    return self._send_json({"error": state.workbench.studio.redact_text(str(exc))[:1000]}, 400)
             if path.startswith("/api/world/"):
                 if path != "/api/world/refresh":
                     return self._send_json({"error": f"no route for {path}"}, 404)
@@ -2006,6 +2041,10 @@ def serve(*, host: str = "127.0.0.1", port: int = 8787, workspace: Path | None =
 
     if scheduler_for(state).start():
         print("  schedules  workflow scheduler running (persisted in .nexus/workflows)")
+    if os.environ.get("NEXUS_ASSISTANT_SCHEDULER", "").lower() in {"1", "true", "yes", "on"}:
+        from .assistant.service import service
+        service(state).start_worker()
+        print("  assistant  opt-in reminders/monitors/brief scheduler running")
     if host in {"0.0.0.0", "::"} and not state.token:
         raise ValueError("Exposing the GUI requires NEXUS_SERVE_TOKEN; configure exact NEXUS_ALLOWED_HOSTS too")
     httpd = ThreadingHTTPServer((host, port), make_handler(state))
@@ -2043,6 +2082,9 @@ def serve(*, host: str = "127.0.0.1", port: int = 8787, workspace: Path | None =
     except KeyboardInterrupt:
         print("\nshutting down")
     finally:
+        if getattr(state, "assistant", None):
+            state.assistant.stop_worker()
+            state.assistant.player.stop()
         if getattr(state, "workflow_scheduler", None):
             state.workflow_scheduler.stop()
         if getattr(state, "telegram_runtime", None):

@@ -269,8 +269,10 @@ def test_stream_pushes_the_four_opening_events_then_an_alert(live):
         assert live["mission"].subscribers == 1
     finally:
         reader.close()
-    deadline = time.time() + 5
-    while live["mission"].subscribers and time.time() < deadline:
+    # TCP close is observed on a failed write, and the first post-close write
+    # can succeed. Allow two five-second keepalive rounds plus scheduling slack.
+    deadline = time.monotonic() + 12
+    while live["mission"].subscribers and time.monotonic() < deadline:
         time.sleep(0.05)
     assert live["mission"].subscribers == 0, "a dropped client must free its slot"
 

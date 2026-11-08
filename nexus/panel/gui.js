@@ -53,7 +53,7 @@
   };
   /* Every page the shell can show. One list, so a new view cannot be
      reachable from the sidebar but silently ignored by the router. */
-  const VIEWS = ['mission','roles','router','computer','approvals','workflows','security','memory','cost','channels','run','operations','world','control','settings'];
+  const VIEWS = ['mission','assistant','roles','router','computer','approvals','workflows','security','memory','cost','channels','run','operations','world','control','settings'];
   let worldLoaded = false;
   async function show(view) {
     if (!VIEWS.includes(view)) return;

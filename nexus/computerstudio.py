@@ -256,13 +256,11 @@ def _permissions(workspace: Path) -> dict[str, Any] | None:
 
 def _playwright() -> tuple[bool, str]:
     try:
-        import importlib.util
-
-        spec = importlib.util.find_spec("playwright")
-    except (ImportError, ValueError):
-        spec = None
-    if spec is None:
-        return False, "The Playwright Python package is not installed in this environment."
+        from playwright.sync_api import sync_playwright
+    except Exception as exc:  # a broken optional installation must fail closed
+        return False, f"Playwright's required Python API is unavailable ({type(exc).__name__})."
+    if not callable(sync_playwright):
+        return False, "The installed Playwright package does not provide sync_playwright."
     return True, "Playwright is installed; navigation stays inside the exact origin allowlist."
 
 

@@ -38,8 +38,15 @@ dependencies = [
 context = ["mss>=9,<11", "Pillow>=10,<13", "pytesseract>=0.3.13,<1"]
 mcp = ["jsonschema>=4.23,<5", "keyring>=25"]
 hud = ["keyring>=25", "feedparser>=6.0,<7", "fastapi>=0.115,<1", "uvicorn>=0.30,<1", "websockets>=13,<17", "textual>=0.80,<9"]
-dev = ["feedparser>=6.0,<7", "jsonschema>=4.23,<5", "fastapi>=0.115,<1", "uvicorn>=0.30,<1", "websockets>=13,<17", "textual>=0.80,<9", "pytest>=8.0", "tomli>=2; python_version < '3.11'", "ruff>=0.6", "cryptography>=44", "keyring>=25", "faiss-cpu>=1.8,<2", "numpy>=1.25,<3", "python-docx>=1.1,<2", "openpyxl>=3.1,<4", "python-pptx>=1.0,<2"]
+dev = ["feedparser>=6.0,<7", "jsonschema>=4.23,<5", "fastapi>=0.115,<1", "uvicorn>=0.30,<1", "websockets>=13,<17", "textual>=0.80,<9", "pytest>=8.0", "tomli>=2; python_version < '3.11'", "ruff>=0.6", "cryptography>=44", "keyring>=25", "faiss-cpu>=1.8,<2", "numpy>=1.25,<3", "python-docx>=1.1,<2", "openpyxl>=3.1,<4", "python-pptx>=1.0,<2", "mss>=9,<11", "Pillow>=10,<13", "pytesseract>=0.3.13,<1"]
 orchestrator = ["faiss-cpu>=1.8,<2", "numpy>=1.25,<3"]
+assistant = ["faiss-cpu>=1.8,<2", "numpy>=1.25,<3", "keyring>=25", "pypdf>=5,<7", "python-docx>=1.1,<2", "openpyxl>=3.1,<4", "python-pptx>=1.0,<2", "Pillow>=10,<13"]
+voice = ["faster-whisper>=1.1,<2", "edge-tts>=7,<8", "sounddevice>=0.5,<1"]
+voice-wake = ["openwakeword>=0.6,<1", "pvporcupine>=3,<4"]
+voice-offline = ["piper-tts>=1.2,<2", "kokoro>=0.9,<1"]
+voice-speaker = ["resemblyzer>=0.1.3,<1"]
+vision = ["mss>=9,<11", "Pillow>=10,<13", "pypdf>=5,<7", "ultralytics>=8,<9", "opencv-python-headless>=4.10,<5", "face-recognition>=1.3,<2"]
+smart-home = ["paho-mqtt>=2,<3"]
 computer = ["playwright>=1.50,<2", "python-docx>=1.1,<2", "openpyxl>=3.1,<4", "python-pptx>=1.0,<2"]
 secure-state = ["cryptography>=44", "keyring>=25", "filelock>=3.16"]
 # only if you point agents.yaml at the legacy Anthropic Messages API
@@ -68,6 +75,7 @@ packages = ["nexus"]
 ".env.example" = "nexus/_config/.env.example"
 "docs/jarvis.md" = "nexus/_config/docs/jarvis.md"
 "docs/delegation.md" = "nexus/_config/docs/delegation.md"
+"docs/assistant.md" = "nexus/_config/docs/assistant.md"
 "hud.yaml" = "nexus/_config/hud.yaml"
 "widget.yaml" = "nexus/_config/widget.yaml"
 "docs/world-widget.md" = "nexus/_config/docs/world-widget.md"

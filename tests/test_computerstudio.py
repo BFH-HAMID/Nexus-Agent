@@ -7,8 +7,12 @@ latch and computer store are never touched.
 
 from __future__ import annotations
 
+import builtins
+import importlib.machinery
 import json
+import sys
 import threading
+import types
 import urllib.error
 import urllib.request
 from http.server import ThreadingHTTPServer
@@ -150,7 +154,21 @@ def test_read_only_permissions_cap_the_studio_at_read(state, repo: Path):
         studio.write(state, {"path": "notes.txt", "text": "hello", "confirmation": "WRITE notes.txt"})
 
 
-def test_browser_adapter_needs_both_the_opt_in_and_an_origin(state, repo: Path):
+def test_browser_adapter_needs_both_the_opt_in_and_an_origin(state, repo: Path, monkeypatch):
+    real_import = builtins.__import__
+    package = types.ModuleType("playwright")
+    package.__spec__ = importlib.machinery.ModuleSpec("playwright", loader=None)
+
+    def without_playwright_api(name, *args, **kwargs):
+        if name == "playwright" or name.startswith("playwright."):
+            raise ModuleNotFoundError("Playwright API intentionally blocked in this test")
+        return real_import(name, *args, **kwargs)
+
+    # Simulate a discoverable top-level package with a broken/missing worker API.
+    # A find_spec("playwright")-only probe must not report this as available.
+    monkeypatch.setitem(sys.modules, "playwright", package)
+    monkeypatch.delitem(sys.modules, "playwright.sync_api", raising=False)
+    monkeypatch.setattr(builtins, "__import__", without_playwright_api)
     (repo / "permissions.yaml").write_text(yaml.safe_dump({
         "schema": 1, "default": "ASK_EVERY_TIME",
         "computer": {"browser": True, "browser_origins": ["http://127.0.0.1:8080"]}}))

@@ -11,6 +11,8 @@
 
     'nav.mission': 'Mission Control',
     'nav.run': 'Run & chat',
+    'nav.assistant': 'Personal assistant',
+    'nav.assistantShort': 'Assistant',
     'nav.roles': 'Roles & router',
     'nav.computer': 'Computer Control',
     'nav.workflows': 'Workflows',
@@ -2200,6 +2202,8 @@
     'nav.workflows': 'ওয়ার্কফ্লো',
     'nav.approvals': 'অনুমোদন',
     'nav.security': 'নিরাপত্তা ও লগ',
+    'nav.assistant': 'পার্সোনাল অ্যাসিস্ট্যান্ট',
+    'nav.assistantShort': 'অ্যাসিস্ট্যান্ট',
     'nav.memory': 'মেমরি ও জ্ঞান',
     'nav.cost': 'খরচ ও মডেল',
     'nav.channels': 'অ্যালার্ট ও চ্যানেল',
