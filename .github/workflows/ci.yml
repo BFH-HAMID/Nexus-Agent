@@ -28,7 +28,7 @@ jobs:
       - name: Install
         run: |
           python -m pip install --upgrade pip
-          pip install -e ".[dev,context]"
+          pip install -e ".[dev]"
 
       - name: Validate roles.yaml (111 curated roles, no dupes)
         run: python scripts/build_roles.py --check --stats
@@ -52,7 +52,7 @@ jobs:
             exit 1
           fi
 
-      - name: `nexus teams check` (roster against the installed roles)
+      - name: "nexus teams check (roster against the installed roles)"
         run: python -m nexus teams check
 
       - name: Ensure docs/roles.md is up to date with its generator
@@ -71,7 +71,11 @@ jobs:
           nexus keys
           nexus keys --json
           nexus prompt backend | head -20
+          nexus assistant capabilities > /tmp/nexus-assistant-capabilities.json
           nexus doctor --json || true
+
+      - name: Ruff
+        run: python -m ruff check .
 
       - name: Tests
         run: python -m pytest -q --junitxml=/tmp/nexus-pytest.xml

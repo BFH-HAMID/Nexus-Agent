@@ -186,6 +186,10 @@ class NexusAgent:
             max_chars=self.config.settings.memory_max_chars,
             enabled=self.config.settings.memory_enabled,
         )
+        # Personal memory is a separate explicit opt-in store; enabling task
+        # learning above never enables preferences, routines or active context.
+        from .assistant.memory import PersonalMemory
+        self.personal_memory = PersonalMemory(self.ws)
 
         # chat session state
         self.sticky_role: str | None = None
@@ -371,6 +375,8 @@ class NexusAgent:
 
         active_role = decision.role
         self.active_role = active_role
+        if self.personal_memory.enabled and not getattr(self, "remote_workspace", None):
+            self.personal_memory.set_active(task, {"role": active_role.name, "read_only": bool(read_only)})
         agent_cfg = self.config.agent_for_role(active_role)
         if decision.note:
             self.status(decision.note)
@@ -420,6 +426,9 @@ class NexusAgent:
         if interval and self._turns_since_nudge >= interval:
             extras.append(self.learning.nudge())
             self._turns_since_nudge = 0
+        personal_memory = "" if getattr(self, "remote_workspace", None) else self.personal_memory.prompt(task)
+        if personal_memory:
+            extras.append(personal_memory)
         if extra_system:
             extras.append(extra_system)
         if getattr(self, "remote_workspace", None):

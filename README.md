@@ -109,6 +109,24 @@ external/destructive actions still need approval. **GitHub off / No repository**
 lets you work without a remote repo attachment; that choice survives reload.
 See [GUI setup and security](docs/gui.md).
 
+### Opt-in personal assistant
+
+`nexus assistant` adds Bangla/English wake-word/STT/TTS adapters, verified-speaker
+fresh voice approvals, screenshot/upload/camera perception, Google/Notion/Obsidian
+reads, reviewed Gmail draft/send, separate persistent personal memory with FAISS,
+reminders/briefs/monitors, reviewed desktop/backup/smart-home automation,
+planner→executor→critic repair and domain-allowlisted cited research. The same
+authenticated dashboard now exposes memory editing/forgetting, real voice
+waveforms, upload QA, reminders and reviewed email, plus an installable mobile
+PWA and revisioned phone↔laptop reads.
+
+Nothing activates a microphone, camera, external account, background worker or
+desktop backend at import time. External sends need fresh approval; source text is
+untrusted data; personal memory is a separate opt-in; Playwright stays disabled by
+default. See [setup, commands and the live-acceptance boundary](docs/assistant.md).
+Hardware, biometrics, OAuth delivery, MQTT and multi-device use are not claimed as
+CI-verified merely because their adapters and deterministic tests are present.
+
 ## Opt-in multi-role project planning (Module 1 preview)
 
 A new `nexus orchestrate` path reuses the existing roles, model adapters, learning
@@ -807,13 +825,20 @@ Behaviour knobs (`settings:` block) and every `NEXUS_*` override are documented 
 
 ## Testing & development
 
+From a fresh clone, activate your virtual environment and install the checkout **before** running
+`pytest`:
+
 ```bash
-pip install -e ".[dev]"
-python -m pytest -q                     # 409 tests, all offline (scripted providers)
+python -m pip install -e ".[dev]"
+python -m pytest -q                     # all offline (scripted providers)
 python scripts/build_roles.py --check   # validate the role data
 python scripts/build_roles.py --stats   # counts by category / agent
 ruff check nexus tests
 ```
+
+The editable install is required because the Jarvis integration tests launch isolated
+`python -I -m nexus` subprocesses. The `dev` extra also includes the screenshot and OCR packages
+used by the context tests, so a separate `context` install is not needed.
 
 Nothing in the test suite touches the network: providers are scripted, the server tests run
 against a real socket on an ephemeral port, and `--demo` covers the loop end to end.

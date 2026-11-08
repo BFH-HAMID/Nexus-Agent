@@ -1,0 +1,17 @@
+{
+  "name": "Nexus Personal Assistant",
+  "short_name": "Nexus",
+  "description": "Authenticated voice, memory, reminders and reviewed automation from your own Nexus workspace.",
+  "id": "/dashboard#assistant",
+  "start_url": "/dashboard#assistant",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#08110f",
+  "theme_color": "#08110f",
+  "lang": "en",
+  "dir": "ltr",
+  "categories": ["productivity", "utilities"],
+  "icons": [
+    {"src": "/assistant-icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable"}
+  ]
+}

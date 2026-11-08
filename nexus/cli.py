@@ -2081,6 +2081,8 @@ def build_parser() -> argparse.ArgumentParser:
     add_hud_parser(sub)
     from .extensions.cli import add_parser as add_extensions_parser
     add_extensions_parser(sub)
+    from .assistant.cli import add_parser as add_assistant_parser
+    add_assistant_parser(sub)
     from .telegram.cli import add_parser as add_telegram_parser
     add_telegram_parser(sub)
     from .context.cli import add_parser as add_context_parser
