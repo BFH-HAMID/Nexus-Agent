@@ -27,6 +27,7 @@ from .integrations import ollama_models, ollama_url
 from .workbench import observation, proposal, safe_path
 
 SECRET_PATTERNS = (
+    re.compile(r"(?<![A-Za-z0-9_-])nd1_[a-f0-9]{24}_[A-Za-z0-9_-]{43}(?![A-Za-z0-9_-])"),
     re.compile(r"\b(?:gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,})\b"),
     re.compile(r"\b(?:sk-[A-Za-z0-9_-]{20,}|AIza[A-Za-z0-9_-]{30,}|AKIA[A-Z0-9]{16})\b"),
     re.compile(r"\b(?:xox[baprs]-[A-Za-z0-9-]{12,}|[0-9]{7,15}:AA[A-Za-z0-9_-]{25,})\b"),
@@ -405,9 +406,13 @@ class Studio:
             item["messages"].append({"role": "assistant", "text": redact((session.result or {}).get("text") or
                 (session.result or {}).get("error", "")), "task_id": session.task_id, "at": time.time()})
             self.put("conversation", item, item["id"])
+        from .computer_actions import history_event, history_result
+        computer = getattr(session, "computer_request", None) is not None
         self.put("evidence", {"task_id": session.task_id, "criteria": session.options.get("criteria", []),
-                 "criteria_state": "unverified until human review", "tools": redact([e for e in session.log if e["type"] in {"tool_call", "tool_result"}]),
-                 "result": redact(session.result), "note": "Model success text is not test evidence"}, "evidence-" + session.task_id)
+                 "criteria_state": "unverified until human review",
+                 "tools": redact([history_event(e, computer=computer) for e in session.log if e["type"] in {"tool_call", "tool_result"}]),
+                 "result": redact(history_result(session.result) if computer else session.result),
+                 "note": "Model success text is not test evidence"}, "evidence-" + session.task_id)
 
     def verification(self, payload: dict) -> dict:
         kind = payload.get("kind")

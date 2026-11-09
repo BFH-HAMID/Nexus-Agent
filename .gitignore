@@ -11,6 +11,7 @@ env/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+.cache/
 .coverage
 htmlcov/
 .tox/
@@ -69,3 +70,14 @@ projects/
 # Role Hub version snapshots are runtime state, never source
 .nexus/rolehub/
 .nexus/router/
+
+# Operator-installed vision weights, biometric templates and capture artifacts
+.nexus/assistant/
+.nexus/vision/
+vision-weights/
+*.pt
+*.enc
+
+# Operator browser download sandbox (opaque untrusted data; never commit).
+browser-downloads/
+**/nexus-backups/

@@ -77,6 +77,7 @@ class Session:
     auto_yes: bool = False
     local_model: str | None = None
     options: dict[str, Any] = field(default_factory=dict)
+    computer_request: dict[str, Any] | None = None  # set only by the authenticated explicit computer route
     status: str = "queued"          # queued | running | awaiting_approval | done | error | cancelled
     pending: dict[str, Any] | None = None
     approval_event: threading.Event = field(default_factory=threading.Event)
@@ -89,6 +90,8 @@ class Session:
     log: list[dict[str, Any]] = field(default_factory=list)
     changed: threading.Condition = field(default_factory=threading.Condition)
     sequence: int = 0
+    event_callback: Any = field(default=None, repr=False)
+    presence_history: list | None = field(default=None, repr=False)
 
     def push(self, event: dict[str, Any]) -> None:
         with self.changed:
@@ -98,6 +101,11 @@ class Session:
             if len(self.log) > 4000:
                 self.log = self.log[-3000:]
             self.changed.notify_all()
+        if self.event_callback is not None:
+            try:
+                self.event_callback(stamped)
+            except (ValueError, OSError, TimeoutError):
+                pass  # Observational sharing never changes a tool decision/outcome.
 
     def snapshot(self) -> dict[str, Any]:
         return {
@@ -328,6 +336,7 @@ class ServerState:
         with session.changed:
             if (session.pending is None or session.approval_event.is_set()
                     or session.cancel.is_set()
+                    or (getattr(session, 'computer_request', None) is not None and approval_id != session.pending['approval_id'])
                     or (approval_id and approval_id != session.pending["approval_id"])):
                 return 409, {"error": "approval is no longer pending; refresh task status"}
             diff = session.pending.get("proposal", {})
@@ -456,6 +465,10 @@ class ServerState:
         try:
             if session.cancel.is_set():
                 raise RuntimeError("run cancelled")
+            if getattr(session, 'computer_request', None) is not None:
+                from .computer_sessions import run as run_computer
+                run_computer(self, session)
+                return
             auto_yes = self.auto_yes or session.auto_yes
             config = load_config(self.workspace)
             if self.workbench.settings()["local_only"]:
@@ -511,6 +524,7 @@ class ServerState:
                     session.task,
                     role=session.role or None,
                     read_only=session.read_only,
+                    **({'history': session.presence_history} if session.presence_history is not None else {}),
                 )
             session.result = {
                 "trace_id": getattr(result, "trace_id", ""),
@@ -654,19 +668,37 @@ def make_handler(state: ServerState):
                 return False
 
         def _authorized(self) -> bool:
+            self._principal = {'kind': 'operator', 'id': 'operator', 'scopes': []}
             if not state.token:
-                return True
+                return True  # Legacy loopback API; new presence always requires a token.
+            import hmac
+
             from .gui_session import valid
+            from .hud.devices import Devices, cookie_token
             provided = self.headers.get('X-Nexus-Token', '')
             if provided:
-                import hmac
-                return hmac.compare_digest(provided.encode(), state.token.encode())
+                if hmac.compare_digest(provided.encode(), state.token.encode()):
+                    return True
+                identity = Devices(state.workspace, state.token).authenticate(provided)
+                if identity:
+                    self._principal = identity
+                return identity is not None
             query = parse_qs(urlparse(self.path).query)
-            provided = (query.get('token') or [''])[0]  # Compatibility for existing API clients.
+            provided = (query.get('token') or [''])[0]  # Legacy master-token clients only.
             if provided:
-                import hmac
                 return hmac.compare_digest(provided.encode(), state.token.encode())
+            device, presented = cookie_token(self.headers.get('Cookie', ''))
+            if presented:
+                identity = Devices(state.workspace, state.token).authenticate(device)
+                if identity:
+                    self._principal = identity
+                return identity is not None
             return valid(state, self.headers.get('Host', ''), self.headers.get('Cookie', ''))
+
+        def _device_allowed(self, path):
+            if self._principal['kind'] != 'device' or self._public_asset(path):
+                return True
+            return path == '/api/session' or path.startswith('/api/presence/')
 
         def _credential_presented(self, parsed) -> bool:
             """Did this request actually offer a credential? A signed-out tab does not."""
@@ -677,18 +709,28 @@ def make_handler(state: ServerState):
         def _send_json(self, payload: Any, status: int = 200) -> None:
             body = json.dumps(payload, ensure_ascii=False, default=str).encode("utf-8")
             self.send_response(status)
+            # A rejected upload may still have unread body bytes. Never parse those
+            # as the next request on an HTTP/1.1 keep-alive connection.
+            if self.command == 'POST' and status >= 400:
+                self.close_connection = True
+                self.send_header('Connection', 'close')
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.send_header("Content-Length", str(len(body)))
             self.send_header("Referrer-Policy", "no-referrer")
             from .gui_session import renew, valid
             if (self.command == 'GET' and urlparse(self.path).path == '/api/session'
                     and not getattr(self, '_session_cookie', None) and status == 200
+                    and getattr(self, '_principal', {}).get('kind') != 'device'
                     and valid(state, self.headers.get('Host', ''), self.headers.get('Cookie', ''))):
                 self._session_cookie = renew(state, self.headers.get('Host', ''), self.headers.get('Cookie', ''))
             if getattr(self, '_session_cookie', None):
                 secure = '; Secure' if os.environ.get('NEXUS_GUI_HTTPS_PROXY') == '1' else ''
                 self.send_header('Set-Cookie', self._session_cookie + secure)
                 self._session_cookie = None
+            for cookie in getattr(self, '_extra_cookies', []):
+                secure = '; Secure' if os.environ.get('NEXUS_GUI_HTTPS_PROXY') == '1' else ''
+                self.send_header('Set-Cookie', cookie + secure)
+            self._extra_cookies = []
             self.send_header('X-Content-Type-Options', 'nosniff')
             self.send_header('Cache-Control', 'no-store')
             self.end_headers()
@@ -752,15 +794,25 @@ def make_handler(state: ServerState):
                                            presented=self._credential_presented(parsed))
                 return self._send_json({"error": "invalid or missing token"}, 401)
 
+            if not self._device_allowed(path):
+                return self._send_json({'error': 'Device token is scoped to the presence API, not administration'}, 403)
+
             if path == "/":
                 return self._redirect("/dashboard" + ("?" + parsed.query if parsed.query else ""))
 
             if path == '/api/session':
-                return self._send_json({'authenticated': True, 'required': bool(state.token)})
+                return self._send_json({'authenticated': True, 'required': bool(state.token), 'principal': self._principal})
+            if path.startswith('/api/presence/'):
+                return self._presence_get(path.removeprefix('/api/presence/'))
             if path in {"/manifest.webmanifest", "/assistant-sw.js", "/assistant-icon.svg"}:
                 content_type = {"webmanifest": "application/manifest+json",
                                 "js": "text/javascript", "svg": "image/svg+xml"}[path.rsplit(".", 1)[-1]]
                 return self._static(path.lstrip("/"), content_type)
+            if path.startswith(('/api/vision/', '/api/assistant/vision/', '/api/computer/')) and not state.token:
+                return self._send_json({'error': 'Capture/computer HTTP requires a configured authentication token'}, 401)
+            if path == '/api/vision/status':
+                from .vision.api import get as vision_status
+                return self._send_json(vision_status(state))
             if path.startswith("/api/assistant/"):
                 from .assistant import api as assistant_api
                 client = self._rolehub_client()
@@ -1252,6 +1304,12 @@ def make_handler(state: ServerState):
                 securitycenter.note_denied(state, path, self._rolehub_client(),
                                            presented=self._credential_presented(parsed))
                 return self._send_json({"error": "invalid or missing token"}, 401)
+            if not self._device_allowed(path):
+                return self._send_json({'error': 'Device token cannot access administration'}, 403)
+            if (path.startswith('/api/presence/') or self._principal['kind'] == 'device') and not self.headers.get('X-Nexus-Token') and not self.headers.get('Origin'):
+                return self._send_json({'error': 'Cookie controls require a same-origin Origin header'}, 403)
+            if path.startswith('/api/presence/'):
+                return self._presence_post(path.removeprefix('/api/presence/'))
             if path == '/api/session':
                 from . import securitycenter
                 from .gui_session import forget, issue
@@ -1261,7 +1319,24 @@ def make_handler(state: ServerState):
                         securitycenter.revoke_current(state.workspace, self.headers.get('Cookie', ''))
                     except (OSError, ValueError):
                         pass
+                    from .hud.devices import Devices, cookie
+                    if self._principal['kind'] == 'device':
+                        Devices(state.workspace, state.token).revoke(self._principal['id'])
                     self._session_cookie = forget()
+                    self._extra_cookies = [cookie()]
+                elif self._principal['kind'] == 'device':
+                    from .hud.devices import cookie, cookie_token
+                    host = self.headers.get('Host', '')
+                    if urlparse('http://' + host).hostname not in {'localhost', '127.0.0.1', '::1'} and os.environ.get('NEXUS_GUI_HTTPS_PROXY') != '1':
+                        return self._send_json({'error': 'Device login requires loopback or a trusted HTTPS proxy'}, 403)
+                    if type(payload.get('remember', True)) is not bool:
+                        return self._send_json({'error': 'remember must be boolean'}, 400)
+                    token = self.headers.get('X-Nexus-Token') or cookie_token(self.headers.get('Cookie', ''))[0]
+                    self._session_cookie = cookie(token, max_age=self._principal['expires'] - time.time())
+                    if payload.get('remember') is False:
+                        import re
+                        self._session_cookie = re.sub(r'; Max-Age=\d+', '', self._session_cookie)
+                    self._extra_cookies = [forget()]
                 elif state.token:
                     host = self.headers.get('Host', '')
                     if urlparse('http://' + host).hostname not in {'localhost', '127.0.0.1', '::1'} and os.environ.get('NEXUS_GUI_HTTPS_PROXY') != '1':
@@ -1270,7 +1345,27 @@ def make_handler(state: ServerState):
                     if type(remember) is not bool:
                         return self._send_json({'error': 'remember must be boolean'}, 400)
                     self._session_cookie = issue(state, host, remember=remember)
+                    from .hud.devices import cookie
+                    self._extra_cookies = [cookie()]  # Explicit owner re-login replaces device identity.
                 return self._send_json({'authenticated': not payload.get('forget')})
+            if path.startswith(('/api/vision/', '/api/assistant/vision/', '/api/computer/')) and not state.token:
+                return self._send_json({'error': 'Capture/computer HTTP requires a configured authentication token'}, 401)
+            if path.startswith('/api/vision/'):
+                from .vision import api as vision_api
+                operation = path.removeprefix('/api/vision/')
+                client = self._rolehub_client()
+                if operation != 'off' and not state.api_limiter.allow('vision-write:' + client):
+                    return self._send_json({'error': 'Vision rate limit reached'}, 429)
+                try:
+                    length = int(self.headers.get('Content-Length', '0'))
+                    if not 0 < length <= vision_api.MAX_BODY or self.headers.get('Transfer-Encoding'):
+                        return self._send_json({'error': 'Bounded vision JSON required'}, 413)
+                    payload = json.loads(self.rfile.read(length))
+                    if not isinstance(payload, dict):
+                        raise ValueError('Object required')
+                    return self._send_json(vision_api.post(state, operation, payload, client))
+                except (ValueError, OSError, TimeoutError, RecursionError):
+                    return self._send_json({'error': 'Vision refused: check vision.yaml, dependencies, limits and fresh cloud review. No automatic retry.'}, 409)
             if path.startswith("/api/assistant/"):
                 from .assistant import api as assistant_api
                 client = self._rolehub_client()
@@ -1305,7 +1400,18 @@ def make_handler(state: ServerState):
                     return self._send_json({'error': 'Invalid JSON'}, 400)
                 status, data = state.gui.call('POST', path, parse_qs(parsed.query), payload)
                 return self._send_json(data, status)
-            payload = self._read_json()
+            if path.startswith('/api/computer/'):
+                try:
+                    length = int(self.headers.get('Content-Length', '0'))
+                    if not 0 < length <= 550000 or self.headers.get('Transfer-Encoding'):
+                        return self._send_json({'error': 'Bounded computer JSON body required'}, 413)
+                    payload = json.loads(self.rfile.read(length))
+                    if not isinstance(payload, dict):
+                        raise ValueError('Object required')
+                except (ValueError, RecursionError):
+                    return self._send_json({'error': 'Invalid computer JSON'}, 400)
+            else:
+                payload = self._read_json()
 
             if path in {"/api/roles/route", "/api/roles/export", "/api/roles/restore"}:
                 return self._rolehub_action(path.rsplit("/", 1)[-1], payload)
@@ -1402,7 +1508,7 @@ def make_handler(state: ServerState):
             if path.startswith("/api/computer/"):
                 action = path.removeprefix("/api/computer/")
                 if action not in {"settings", "file/preview", "file/write", "file/undo", "file/trash",
-                                 "trash/restore", "browser/open", "panic", "resume"}:
+                                 "trash/restore", "browser/open", "action", "action/review", "panic", "resume"}:
                     return self._send_json({"error": f"no route for {path}"}, 404)
                 return self._computer_action(action, payload)
 
@@ -2125,6 +2231,8 @@ def make_handler(state: ServerState):
         def _computer_read(self, action: str, build) -> None:
             """Computer Control reads: limited per client, audited (sampled), redacted."""
             from . import computerstudio, webapi
+            if not state.token:
+                return self._send_json({'error': 'Computer HTTP requires a configured authentication token'}, 401)
 
             client = self._rolehub_client()
             bucket = "computer:" + client
@@ -2145,6 +2253,8 @@ def make_handler(state: ServerState):
         def _computer_action(self, action: str, payload: dict) -> None:
             """Every mutation is validated, limited, and audited on the spot."""
             from . import computerstudio, webapi
+            if not state.token:
+                return self._send_json({'error': 'Computer HTTP requires a configured authentication token'}, 401)
 
             client = self._rolehub_client()
             bucket = ("computer:" if action == "file/preview" else "computer-write:") + client
@@ -2156,7 +2266,13 @@ def make_handler(state: ServerState):
                 return self._send_json(webapi.failed("invalid_request", "A JSON object is required"), 400)
             payload = {**payload, "_client": client}
             try:
-                if action == "settings":
+                if action == 'action':
+                    from .computer_sessions import start
+                    data = start(state, payload)
+                elif action == 'action/review':
+                    from .computer_sessions import review
+                    data = review(state, payload)
+                elif action == "settings":
                     data = computerstudio.save_settings(state, payload)
                 elif action == "file/preview":
                     data = computerstudio.preview(state, payload)
@@ -2180,6 +2296,106 @@ def make_handler(state: ServerState):
                 return self._send_json(webapi.failed(
                     "store_unavailable", "The computer store is unavailable; nothing was changed."), 503)
             return self._send_json(webapi.ok(data))
+
+        def _presence_get(self, path):
+            from .hud.presence_api import service
+            if not state.token:
+                return self._send_json({'error': 'Presence requires a configured serve token'}, 401)
+            api = service(state)
+            if path == 'events':
+                return self._presence_stream(api)
+            if not state.api_limiter.allow('presence-read:' + self._rolehub_client()):
+                return self._send_json({'error': 'Presence rate limit'}, 429)
+            try:
+                if path == 'config':
+                    result = api.config(self._principal)
+                elif path == 'state':
+                    result = api.snapshot(self._principal)
+                elif path.startswith('world/'):
+                    api.check(self._principal)
+                    from .hud.presence_world import cached
+                    result = cached(state, path.removeprefix('world/'), parse_qs(urlparse(self.path).query))
+                elif path == 'push-key':
+                    api.check(self._principal, 'push')
+                    from .hud.presence_policy import require
+                    from .hud.push import public_key
+                    require(state.workspace, 'push_enabled')
+                    result = {'public_key': public_key()}
+                else:
+                    return self._send_json({'error': 'Unknown presence route'}, 404)
+                return self._send_json(result)
+            except (ValueError, OSError, TypeError, KeyError, TimeoutError):
+                return self._send_json({'error': 'Presence unavailable; inspect operator YAML, authentication and private state'}, 409)
+
+        def _presence_post(self, path):
+            if not state.token:
+                return self._send_json({'error': 'Presence requires a configured serve token'}, 401)
+            if not state.api_limiter.allow('presence-write:' + self._rolehub_client()):
+                return self._send_json({'error': 'Presence rate limit'}, 429)
+            from .hud.presence_api import service
+            try:
+                length = int(self.headers.get('Content-Length', '0'))
+                limit = 3_000_000 if path == 'voice/transcribe' else 32_000
+                if not 0 < length <= limit or self.headers.get('Transfer-Encoding'):
+                    return self._send_json({'error': 'Bounded presence JSON required'}, 413)
+                payload = json.loads(self.rfile.read(length))
+                if not isinstance(payload, dict):
+                    raise ValueError('Object required')
+                if not self._authorized():  # Revalidate after a slow body upload.
+                    return self._send_json({'error': 'Credential revoked'}, 401)
+                return self._send_json(service(state).post(path, self._principal, payload))
+            except (ValueError, OSError, TypeError, KeyError, TimeoutError, RecursionError) as exc:
+                from .redaction import mask, secrets
+                message = mask(str(exc), secrets(state.workspace) + [state.token])[:300]
+                return self._send_json({'error': message or 'Presence control refused; no automatic retry'}, 409)
+
+        def _presence_stream(self, api):
+            from .mission import encode
+            try:
+                cfg = api.check(self._principal)
+                cursor = max(0, int(self.headers.get('Last-Event-ID') or 0))
+                with api.lock:
+                    if api.streams >= cfg['max_streams']:
+                        return self._send_json({'error': 'Presence stream limit'}, 429)
+                    api.streams += 1
+            except (ValueError, OSError):
+                return self._send_json({'error': 'Presence stream disabled or unauthorized'}, 409)
+            started = False
+            try:
+                first = api.snapshot(self._principal, cursor)
+                self.send_response(200)
+                for key, value in [('Content-Type', 'text/event-stream; charset=utf-8'),
+                                   ('Cache-Control', 'no-store, no-transform'), ('Connection', 'close'),
+                                   ('X-Accel-Buffering', 'no'), ('Referrer-Policy', 'no-referrer')]:
+                    self.send_header(key, value)
+                self.end_headers()
+                started = True
+                self.close_connection = True
+                self.connection.settimeout(5)  # A stalled device cannot hold a slot indefinitely.
+                while not api.closed.is_set():
+                    if not self._authorized():
+                        self.wfile.write(encode('presence.revoked', {'revoked': True}))
+                        self.wfile.flush()
+                        return
+                    if _client_disconnected(self.connection):
+                        return
+                    payload = first if first is not None else api.snapshot(self._principal, cursor)
+                    first = None
+                    if not self._authorized():
+                        return
+                    cursor = payload['state']['revision']
+                    self.wfile.write(encode('presence.state', payload, cursor))
+                    self.wfile.flush()
+                    if api.closed.wait(1):
+                        return
+            except (OSError, ValueError, TypeError, KeyError, TimeoutError):
+                if not started:
+                    self.close_connection = True
+                    return self._send_json({'error': 'Presence snapshot unavailable; local inspection required'}, 409)
+                return
+            finally:
+                with api.lock:
+                    api.streams -= 1
 
         def _mission_client(self) -> str:
             return str((getattr(self, "client_address", ("", 0)) or ("", 0))[0] or "local")
@@ -2238,6 +2454,8 @@ def make_handler(state: ServerState):
                 poll_interval = 0.25
                 keepalive_interval = 5.0
                 while not state.mission.stopped:
+                    if not self._authorized():
+                        return
                     if _client_disconnected(getattr(self, "connection", None)):
                         return
                     item = subscriber.next(timeout=poll_interval)
@@ -2290,18 +2508,20 @@ def make_handler(state: ServerState):
             except ValueError:
                 cursor = 0
             while True:
+                if not self._authorized():
+                    return
                 with session.changed:
                     entries = [entry for entry in session.log if entry["event_id"] > cursor]
                     if not entries:
                         if session.log and session.log[-1]["type"] == "done":
                             return
-                        session.changed.wait(timeout=15)
+                        session.changed.wait(timeout=1)
                         entries = [entry for entry in session.log if entry["event_id"] > cursor]
                 if not entries:
                     if not write({"type": "ping", "status": session.status}):
                         return
                 for entry in entries:
-                    if not write(entry):
+                    if not self._authorized() or not write(entry):
                         return
                     cursor = entry["event_id"]
                     if entry["type"] == "done":
@@ -2315,6 +2535,13 @@ def serve(*, host: str = "127.0.0.1", port: int = 8787, workspace: Path | None =
           open_panel: bool = False) -> int:
     ws = Path(workspace or Path.cwd()).resolve()
     state = ServerState(ws, token=token, auto_yes=auto_yes, quiet=quiet, demo=demo)
+    import ipaddress
+    try:
+        loopback = ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        loopback = host == 'localhost'
+    if not loopback and not state.token:
+        raise ValueError('Exposing the GUI requires NEXUS_SERVE_TOKEN and exact NEXUS_ALLOWED_HOSTS')
     # Persisted workflow schedules are picked up here, so a restart resumes them
     # (missed windows are recorded as missed, never replayed).
     from .workflowstudio import scheduler_for
@@ -2362,6 +2589,9 @@ def serve(*, host: str = "127.0.0.1", port: int = 8787, workspace: Path | None =
     except KeyboardInterrupt:
         print("\nshutting down")
     finally:
+        state.mission.close()
+        if getattr(state, "presence", None):
+            state.presence.closed.set()
         if getattr(state, "assistant", None):
             state.assistant.stop_worker()
             state.assistant.player.stop()

@@ -20,6 +20,8 @@
 
   /* ── the fourteen sections ───────────────────────────────────────────── */
   const SECTIONS = [
+    {id: 'presence', group: 'operate', icon: 'i-radar', label: 'nav.presence', aria: 'nav.presence', view: 'presence',
+      detail: 'shared HUD, mobile conversation, devices and exact reviews'},
     {id: 'mission', group: 'operate', icon: 'i-radar', label: 'nav.mission', aria: 'nav.missionAria', view: 'mission', hint: '1'},
     {id: 'run', group: 'operate', icon: 'i-chat', label: 'nav.run', aria: 'nav.runAria', view: 'run', hint: '2'},
     {id: 'assistant', group: 'operate', icon: 'i-brain', label: 'nav.assistant', aria: 'nav.assistant', view: 'assistant',

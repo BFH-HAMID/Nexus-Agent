@@ -153,6 +153,8 @@ def vision_fixture(context, monkeypatch, cloud=False):
     image = bytearray(b'scripted-image-bytes')
     monkeypatch.setattr('nexus.context.vision.capture', lambda *a: image)
     monkeypatch.setattr(context, 'desktop', lambda: {'app': 'editor', 'title': 'safe'})
+    # Fake detector isolates legacy transport contracts; real face rejection is covered in test_vision.
+    monkeypatch.setattr('nexus.vision.media.assert_no_faces', lambda pages: None)
     return config, registry, wires, image
 
 
@@ -173,7 +175,7 @@ def test_cloud_image_needs_separate_exact_payload_permission(context, monkeypatc
         reviews.append((spec.name, args))
         return ApprovalDecision(False)
     with pytest.raises(ValueError):
-        describe(context, ApprovalGate(callback=reject_upload), config, registry, cloud_agent='vision')
+        describe(context, ApprovalGate(callback=reject_upload), config, registry, cloud_agent='vision', no_people=True)
     assert reviews[0][0] == 'context_cloud_upload' and reviews[0][1]['sha256']
     assert not wires and not image
 
@@ -235,7 +237,7 @@ def test_cloud_positive_requires_real_gate_and_one_actual_wire(context, monkeypa
     config, registry, wires, image = vision_fixture(context, monkeypatch, cloud=True)
     reviews = []
     gate = ApprovalGate(callback=lambda spec, args, *rest: reviews.append(spec.name) or ApprovalDecision(True))
-    result = describe(context, gate, config, registry, cloud_agent='vision')
+    result = describe(context, gate, config, registry, cloud_agent='vision', no_people=True)
     assert reviews == ['context_cloud_upload']  # capture mocked separately; capture gate has its own test
     assert result['uploaded'] and len(wires) == 1 and not image
     assert registry.wire_guard is None and not hasattr(registry.get('vision'), 'payload_guard')
@@ -264,7 +266,7 @@ def test_no_network_after_policy_revoked_during_upload_review(context, monkeypat
         enable(context, screenshots=False)
         return ApprovalDecision(True)
     with pytest.raises(ProviderError, match="No screenshot retry"):
-        describe(context, ApprovalGate(callback=revoke), config, registry, cloud_agent='vision')
+        describe(context, ApprovalGate(callback=revoke), config, registry, cloud_agent='vision', no_people=True)
     assert not wires and not image
 
 

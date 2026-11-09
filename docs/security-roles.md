@@ -123,4 +123,15 @@ Wheel and source distributions include `roles.d/`, keeping existing equivalents
 and new specializations available together instead of losing imported equivalents
 when installing outside the checkout. Restart an already running server to load
 new role definitions; then refresh its role picker. No new frontend endpoints or
-security-policy changes are needed.
+security-policy changes are needed for role discovery.
+
+## Opt-in defensive incident reports (Task 14)
+
+The [defensive security assistant](defensive-security.md) reuses installed defensive
+roles from this registry for separately reviewed incident reports. `security.yaml`
+controls the role allowlist, selected configured agent and explicit remote opt-in;
+missing roles/models are refused rather than silently replaced. Reports have no
+tools, fallback, automatic response execution or learning path. The role's persona
+is report context, never scan authorization or an approval grant. Raw scanners are
+refused; the supported active check separately requires an operator IP/port
+allowlist and fresh exact approval.

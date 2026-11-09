@@ -21,6 +21,43 @@ computer:
   browser_origins: []
   shell_backend: host
   image: ""
+  # New environment controls. Only an operator may enable/narrow these scopes.
+  desktop:
+    enabled: false
+    backend: auto                 # auto | xdotool (X11 + wmctrl) | pywinauto (Windows)
+    apps: {}                      # exact trusted executable + window class + action allowlist
+  browser_controls:
+    enabled: false                # open/search/draft_form/extract_data
+    forms: false                  # separate draft digest + fresh submit approval
+    downloads: false              # bounded unauthenticated downloads, never opened
+    download_dir: browser-downloads
+    max_download_bytes: 2000000
+    search_url: ""                # exact allowlisted URL with one {query} placeholder
+  files:
+    enabled: false
+    roots: []                     # workspace-relative roots; no symlinks/private/operator files
+    max_files: 200
+    max_bytes: 20000000
+  workflows:
+    enabled: false
+    voice: false
+    directory: computer-macros
+    approved: {}                  # name: SHA256 of the operator-reviewed name.yaml
+    allowed_tools: []             # intersects the live role's registry, never widens it
+    max_steps: 30
+  smart_home:
+    enabled: false
+    voice: false
+    home_assistant:
+      enabled: false
+      url: ""                    # HTTPS exact origin including port (or loopback HTTP)
+      devices: {}                # alias: {entity: light.desk, services: [turn_off]}
+    mqtt:
+      enabled: false
+      host: ""
+      port: 8883                 # TLS mandatory; credentials in env/keyring, never YAML
+      devices: {}                # alias: {topic: exact/topic, kind: light, commands: {off: 'OFF'}}
+    voice_commands: {}           # exact phrase -> adapter/device/action (no inferred authority)
 # Recommended for untrusted code or production use:
 #   shell_backend: docker
 #   image: "python:3.12-slim@sha256:<64-hex-digest>"

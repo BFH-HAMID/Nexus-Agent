@@ -218,7 +218,7 @@ def test_pwa_public_assets_and_authenticated_api(repo: Path):
     thread.start()
     base = f"http://127.0.0.1:{httpd.server_address[1]}"
     try:
-        for path, marker in [("/manifest.webmanifest", b"Nexus Personal Assistant"),
+        for path, marker in [("/manifest.webmanifest", b"Nexus Shared HUD"),
                              ("/assistant-icon.svg", b"<svg"), ("/assistant-sw.js", b"Never cache API")]:
             with urllib.request.urlopen(base + path, timeout=5) as response:
                 assert response.status == 200 and marker in response.read()

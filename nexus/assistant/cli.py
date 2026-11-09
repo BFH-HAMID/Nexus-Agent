@@ -191,12 +191,23 @@ def _voice(args) -> dict[str, Any]:
                     pass
             threading.Thread(target=barge_in, name="nexus-voice-barge-in", daemon=True).start()
     try:
-        result = agent.run(transcript.text, read_only=not args.write)
+        from ..vision.service import LOOK_REQUEST, SCREEN_REQUEST, VisionService
+        requested = LOOK_REQUEST.fullmatch(transcript.text.strip()) or SCREEN_REQUEST.search(transcript.text)
+        if requested:
+            if args.speak and args.engine not in {'piper', 'kokoro'}:
+                raise AssistantError('Vision answers require explicitly local speech, not cloud TTS')
+            if not args.write:
+                agent.gate.mode = 'plan'
+            result = VisionService(workspace).look(transcript.text, gate=agent.gate, channel='voice')
+            if streamer:
+                speech_queue.put(result['answer'])
+        else:
+            result = agent.run(transcript.text, read_only=not args.write)
     finally:
         speech_queue.put(None)
         if speaker_thread:
             speaker_thread.join(timeout=60)
-    return {"transcript": dataclasses.asdict(transcript), "result": dataclasses.asdict(result),
+    return {"transcript": dataclasses.asdict(transcript), "result": result if isinstance(result, dict) else dataclasses.asdict(result),
             "speech": speech_result, "speaker_verified": True}
 
 
@@ -270,45 +281,41 @@ def _monitor(args) -> dict[str, Any]:
 
 
 def _vision(args) -> dict[str, Any]:
-    from ..config import load_config
-    from ..providers import build_providers
-    from .perception import FaceRegistry, VisionQuestioner, YoloDetector, camera_once
+    """Legacy commands keep their names, but share TASK 11 policy and approvals."""
+    from ..vision.camera import CameraPipeline
+    from ..vision.cli import operator_gate
+    from ..vision.faces import FaceRegistry
+    from ..vision.policy import load_policy
+    from ..vision.service import VisionService
     workspace = Path(args.workspace or ".").resolve()
-    config = load_config(workspace)
-    providers = build_providers(config.agents)
+    gate = operator_gate(workspace)
+    vision = VisionService(workspace)
+    cfg = load_policy(workspace)
+    if args.agent not in (None, '', cfg['vlm']['model']):
+        raise AssistantError('Set the exact model in vision.yaml; --agent cannot override privacy policy')
     if args.operation == "ask":
         if len(args.values) != 1:
             raise AssistantError("vision ask requires one bounded upload path")
-        return VisionQuestioner(config, providers).ask(args.values[0], args.query, agent=args.agent)
+        return vision.ask_path(args.values[0], args.query, gate=gate, cloud=args.cloud, no_people=args.no_people)
     if args.operation == "screen":
-        from ..agent import NexusAgent
-        from ..cli import interactive_approval
-        from ..context.core import Context
-        from .perception import VisionQuestioner
-        agent = NexusAgent(config, workspace=workspace, providers=providers,
-                           approval_callback=interactive_approval, auto_yes=False)
-        return VisionQuestioner(config, providers).screen(Context(workspace), agent.gate, question=args.query,
-                                                           cloud_agent=args.agent if args.cloud else None)
+        return vision.screen(args.query, gate=gate, cloud=args.cloud, no_people=args.no_people)
     if args.operation == "camera":
-        _confirm(args, "CAPTURE CAMERA FRAME")
-        detector = YoloDetector(args.weights) if args.weights else None
-        faces = FaceRegistry(workspace) if args.faces else None
-        return camera_once(detector=detector, faces=faces, camera_index=args.camera_index)
+        if args.camera_index != cfg['camera']['device'] or (args.faces and not cfg['faces']['enabled']):
+            raise AssistantError('Camera and face flags must match vision.yaml')
+        if args.weights and (workspace / args.weights).resolve() != (workspace / cfg['camera']['weights']).resolve():
+            raise AssistantError('Weights must match vision.yaml')
+        return CameraPipeline(workspace).run(gate=gate, frames=1)
     registry = FaceRegistry(workspace)
-    recognition = registry._module()
     if args.operation == "enroll-face":
-        _confirm(args, "ENROLL FACE " + args.name)
-        if len(args.values) != 1:
-            raise AssistantError("enroll-face requires one image containing exactly one face")
-        return registry.enroll(args.name, recognition.load_image_file(args.values[0]))
+        if len(args.values) != 1 or not args.consent:
+            raise AssistantError("enroll-face requires --consent and one local image")
+        return registry.enroll(args.name, registry.load_image(args.values[0]), consent=True, gate=gate)
     if args.operation == "recognize-face":
-        _confirm(args, "RECOGNIZE FACE")
         if len(args.values) != 1:
             raise AssistantError("recognize-face requires one image")
-        return {"faces": registry.recognize(recognition.load_image_file(args.values[0]))}
+        return {"faces": registry.recognize(registry.load_image(args.values[0]))}
     if args.operation == "forget-face":
-        _confirm(args, "FORGET FACE " + args.name)
-        return {"forgotten": registry.forget(args.name)}
+        return {"forgotten": registry.forget(args.name, gate=gate)}
     raise AssistantError("Unknown vision action")
 
 
@@ -365,9 +372,12 @@ def _smarthome(args) -> dict[str, Any]:
     from .personal_data import ExternalActions, NativeVault
     vault = NativeVault()
     actions = ExternalActions()
+    from ..computer_cli import operator_gate
+    workspace = Path(args.workspace or ".").resolve()
+    gate = operator_gate(workspace)
     if args.operation in {"states", "call"}:
         entities = args.entity or [row for row in os.environ.get("NEXUS_HA_ENTITIES", "").split(",") if row]
-        home = HomeAssistant(vault, base_url=args.url or os.environ.get("NEXUS_HA_URL", ""), entities=entities)
+        home = HomeAssistant(vault, base_url=args.url or os.environ.get("NEXUS_HA_URL", ""), entities=entities or None, workspace=workspace, gate=gate)
         if args.operation == "states":
             return {"states": home.states(), "external_writes": 0}
         payload = {"domain": args.domain, "service": args.service_name, "entity_id": args.entity_id}
@@ -383,7 +393,7 @@ def _smarthome(args) -> dict[str, Any]:
         prefixes = args.topic_prefix or [row for row in os.environ.get("NEXUS_MQTT_PREFIXES", "").split(",") if row]
         home = MqttHome(host=args.host or os.environ.get("MQTT_HOST", ""),
                         username=args.username or os.environ.get("MQTT_USERNAME", ""),
-                        password=vault.get("mqtt"), topic_prefixes=prefixes, port=args.port)
+                        password="", topic_prefixes=prefixes or None, port=args.port, workspace=workspace, gate=gate)
         payload = {"topic": args.topic, "message": " ".join(args.values)}
         challenge = actions.preview("MQTT PUBLISH", payload)
         _print({"preview": payload, "confirmation": challenge["confirmation"], "external_writes": 0})
@@ -466,8 +476,9 @@ def command(args) -> int:
             result = ReasoningLoop(config, providers, execute, max_repairs=args.repairs).run(
                 " ".join(args.values), agent=args.agent)
         elif action == "backup":
+            from ..computer_cli import operator_gate
             from .automation import BackupManager
-            manager = BackupManager(Path(args.workspace or ".").resolve())
+            manager = BackupManager(workspace, gate=operator_gate(workspace))
             if args.operation == "create":
                 _confirm(args, "CREATE BACKUP")
                 result = manager.create()
@@ -476,12 +487,11 @@ def command(args) -> int:
                 result = manager.restore(args.id, args.output or "restored",
                                          confirmation=f"RESTORE BACKUP {args.id}")
         elif action == "desktop":
-            if os.environ.get("NEXUS_DESKTOP_ENABLED", "").lower() not in {"1", "true", "yes", "on"}:
-                raise AssistantError("Desktop control requires explicit NEXUS_DESKTOP_ENABLED=1")
             from .automation import DesktopController
             payload = json.loads(args.options)
             _confirm(args, f"APPROVE DESKTOP {args.operation}")
-            controller = DesktopController(backend=args.backend, review=lambda _action, _args: True)
+            from ..computer_cli import operator_gate
+            controller = DesktopController(backend=args.backend, workspace=workspace, gate=operator_gate(workspace))
             result = controller.execute(args.operation, payload)
         elif action == "smarthome":
             result = _smarthome(args)
@@ -496,8 +506,9 @@ def command(args) -> int:
                 _confirm(args, "REMOVE ASSISTANT SERVICE")
                 result = remove()
         elif action == "workflow":
+            from ..computer_cli import operator_gate
             from .automation import DesktopController, WorkflowRecorder
-            recorder = WorkflowRecorder(Path(args.workspace or ".").resolve())
+            recorder = WorkflowRecorder(workspace, gate=operator_gate(workspace))
             if args.operation == "start":
                 _confirm(args, "RECORD SEMANTIC WORKFLOW")
                 result = recorder.start(args.name)
@@ -508,11 +519,8 @@ def command(args) -> int:
                 result = read_json(recorder.path, {})
             else:
                 _confirm(args, "REPLAY REVIEWED WORKFLOW")
-                if os.environ.get("NEXUS_DESKTOP_ENABLED", "").lower() not in {"1", "true", "yes", "on"}:
-                    raise AssistantError("Workflow replay requires explicit NEXUS_DESKTOP_ENABLED=1")
-                controller = DesktopController(backend=args.backend, review=lambda action, values: (
-                    getpass.getpass(f"Approve {action} {values}? type YES: ") == "YES"))
-                result = {"actions": recorder.replay(controller)}
+                controller = DesktopController(backend=args.backend, workspace=workspace, gate=operator_gate(workspace))
+                result = {"actions": recorder.replay(controller, name=args.name)}
         else:
             raise AssistantError("Unknown assistant command")
         _audit(workspace, f"assistant.cli.{action}.{operation}", "ok")
@@ -587,7 +595,9 @@ def add_parser(sub) -> None:
     vision.add_argument("--faces", action="store_true", help="recognize enrolled faces in the explicit camera frame")
     vision.add_argument("--camera-index", type=int, default=0)
     vision.add_argument("--name", default="owner")
-    vision.add_argument("--confirm")
+    vision.add_argument("--confirm", help="legacy option; never bypasses fresh vision approval")
+    vision.add_argument("--consent", action="store_true", help="person freely consented to local face enrollment")
+    vision.add_argument("--no-people", action="store_true", help="attest cloud upload contains no people/faces")
     vision.set_defaults(action="vision")
 
     data = actions.add_parser("data")
@@ -637,7 +647,7 @@ def add_parser(sub) -> None:
     backup.set_defaults(action="backup")
 
     desktop = actions.add_parser("desktop")
-    desktop.add_argument("operation", choices=["move", "click", "type", "key", "scroll"])
+    desktop.add_argument("operation", choices=["move", "click", "type", "key", "scroll", "open", "close", "focus", "hotkey", "screenshot"])
     desktop.add_argument("--options", required=True, help="bounded JSON arguments")
     desktop.add_argument("--backend", default="auto")
     desktop.add_argument("--confirm")
@@ -666,7 +676,7 @@ def add_parser(sub) -> None:
 
     workflow = actions.add_parser("workflow")
     workflow.add_argument("operation", choices=["start", "stop", "show", "replay"])
-    workflow.add_argument("--name", default="Reviewed workflow")
+    workflow.add_argument("--name", default="routine")
     workflow.add_argument("--backend", default="auto")
     workflow.add_argument("--confirm")
     workflow.set_defaults(action="workflow")

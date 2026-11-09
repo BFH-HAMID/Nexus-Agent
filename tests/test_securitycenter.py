@@ -829,3 +829,21 @@ def test_the_read_routes_stay_apart(live):
     status, body = _call(live["base"] + f"/api/security/snapshot?name={taken}")
     assert status == 200 and body["data"]["kind"] == "nexus-security-snapshot"
     assert body["data"]["audit"]["checked"] >= 1
+
+
+def test_auth_denial_budgets_and_path_sampling_are_workspace_scoped(state, monkeypatch):
+    monkeypatch.setattr(center, '_denied', Limiter(limit=2, window=60))
+    monkeypatch.setattr(center, '_denied_paths', {})
+    other = state.workspace / 'other-workspace'
+    other.mkdir()
+    second = SimpleNamespace(workspace=other)
+    for _ in range(3):
+        center.note_denied(state, '/api/presence/events', '127.0.0.1', presented=True)
+    assert len(center.read_events(state.workspace)) == 2
+    center.note_denied(second, '/api/presence/events', '127.0.0.1', presented=True)
+    assert len(center.read_events(other)) == 1
+    for instance in (state, second):
+        for _ in range(2):
+            center.note_denied(instance, '/api/session', '192.0.2.1')
+        rows = center.read_events(instance.workspace)
+        assert sum(r['target'] == '/api/session' for r in rows) == 1

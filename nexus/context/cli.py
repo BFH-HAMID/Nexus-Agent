@@ -27,7 +27,7 @@ def command(args):
                 from ..redaction import mask, secrets
                 print(mask(json.dumps({'operation': spec.name, 'review': arguments, 'confirmation': phrase}), secrets(service.root)))
                 return ApprovalDecision(input('Exact confirmation: ') == phrase)
-            result = describe(service, ApprovalGate(callback=approve), cfg, build_providers(cfg.agents), cloud_agent=args.cloud_agent)
+            result = describe(service, ApprovalGate(callback=approve), cfg, build_providers(cfg.agents), cloud_agent=args.cloud_agent, no_people=args.no_people)
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return 0
     except Exception:
@@ -45,4 +45,6 @@ def add_parser(sub):
     signal = actions.add_parser('signal')
     signal.add_argument('kind', choices=['vscode', 'file', 'terminal'])
     signal.add_argument('data', help='bounded JSON metadata, not arbitrary screen/file contents')
-    actions.add_parser('vision').add_argument('--cloud-agent', help='requires separate exact image/endpoint upload approval; never implicit')
+    vision = actions.add_parser('vision')
+    vision.add_argument('--cloud-agent', help='requires separate exact image/endpoint upload approval; never implicit')
+    vision.add_argument('--no-people', action='store_true', help='attest no people/faces in the image; local face preflight still required')

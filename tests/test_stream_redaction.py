@@ -22,3 +22,14 @@ def test_real_command_cannot_print_environment_token_to_live_events(repo, monkey
     output, code = stream_shell([sys.executable, '-c', 'import os,sys,time; s=os.environ["GITHUB_TOKEN"]; sys.stdout.write(s[:10]); sys.stdout.flush(); time.sleep(.1); print(s[10:])'], repo, timeout=5, emit=events.append)
     assert code == 0 and token not in output and token not in repr(events)
     assert '[REDACTED_SECRET]' in output
+
+
+def test_shared_word_streaming_is_bounded_and_flushes_normal_text():
+    redactor = StreamMask([], hold_words=True)
+    assert redactor.feed('a' * 5000) == '[REDACTED_LONG_TOKEN]'
+    assert not redactor.pending
+    assert redactor.feed('a' * 5000) == ''
+    assert redactor.feed(' words are useful') == ' words are '
+    assert redactor.feed('', final=True) == 'useful'
+    assert redactor.feed('nd1_' + 'e' * 20) == ''
+    assert redactor.feed('', final=True) == '[REDACTED_SECRET]'

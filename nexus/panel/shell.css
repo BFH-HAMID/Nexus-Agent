@@ -844,7 +844,7 @@ dialog.kill-dialog::backdrop { background: var(--scrim); backdrop-filter: blur(3
 .computer-card h2 { margin: 0; font-size: 15px; }
 .computer-card h3 { margin: 8px 0 4px; font-size: 12px; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
 .computer-cardhead { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
-.computer-hint { margin: 0; font-size: 11.5px; color: var(--muted); line-height: 1.5; }
+.computer-hint { margin: 0; font-size: 11.5px; color: var(--muted); line-height: 1.5; overflow-wrap: anywhere; }
 .computer-cap { gap: 8px; }
 .computer-cap h2 { font-size: 14px; }
 .computer-facts { display: grid; grid-template-columns: minmax(0, auto) minmax(0, 1fr); gap: 5px 14px; margin: 0; font-size: 12px; }

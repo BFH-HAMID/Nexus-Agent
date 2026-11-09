@@ -163,3 +163,75 @@ needs `X-Nexus-Token` (or `?token=…`, because `EventSource` cannot send header
 | Per-repo role learning | promote frequently corrected routes into `.nexus/roles.yaml` keywords automatically |
 | Cost accounting | per-agent price table in `agents.yaml`, `Usage` already tracks tokens; show `~$` in `/stats` |
 | Windows | shell tool assumes POSIX (`shlex`, `echo`); add a `cmd`/PowerShell path and CI on windows-latest |
+
+
+### Vision and perception (Task 11)
+
+`nexus.vision` is a lazy opt-in subsystem: strict YAML policy → shared service →
+bounded image/PDF decoder → no-tool single-request Ollama/Gemini adapter. Existing
+context capture owns screenshot OCR/redaction and now uses a shared audited
+capture lease. Camera/YOLO and the encrypted local face registry are separate
+from VLM transport, with no cloud callback. Structured event candidates go to
+`ProactiveEngine.receive_vision_event` for local-only advisory HUD toasts.
+
+CLI, authenticated HUD/main-dashboard APIs, literal voice requests and private
+Telegram attachment handlers converge at the same service and ApprovalGate.
+One-use cloud reviews bind media/question/model/policy hashes; outbound Telegram
+answers require a different fresh approval. Capture indicators and the hard-off
+epoch are under workspace-keyed `NEXUS_HOME/vision`; policy changes start no
+worker/device. Model usage receipts use the existing session/cost ledger but
+omit all evidence and answer content. See [Vision](vision.md) for enabling,
+resource bounds, compatibility and limitations.
+
+
+## Environment control (Task 12)
+
+`computer.py` registers optional native/file/browser/macro/home tools in the same
+`ToolRegistry`. `computer_policy.py` strictly parses OFF-by-default nested operator
+scopes. A tool's optional preparation callback in `tools.py` binds the real target
+and immutable arguments before approval; `computer_actions.py` revalidates them
+before dispatch and writes metadata-only action receipts. Modules
+`desktop_control.py`, `computer_files.py`, `computer_browser.py`/`browser_worker.py`,
+`computer_workflows.py` and `smart_home.py` implement bounded adapters, not new
+privileged agents. Optional dependencies are imported at the point of use.
+
+Macros are protected operator files pinned by SHA-256, not learned skills. Replay
+calls the existing pruned registry and temporarily requires fresh approval for
+every step, including ordinarily automatic reads. Runtime recordings are drafts,
+never permission grants. Screenshots reuse context OCR/denylists and vision leases/
+hard-off and remain local; there is no new image-to-cloud path.
+
+`computer_sessions.py` is channel glue. Computer Studio literal requests use the
+existing server queue, `Session`, live approval IDs, cancel/panic and event stream;
+no model interprets the action. These sessions do not run hidden Git fingerprint
+commands and cannot auto-retry a physical action from saved history. Legacy
+synchronous Studio actions use short-lived one-use reviews bound to arguments,
+pre-images, policy and narrower page scopes, then the same ApprovalGate. Assistant
+compatibility APIs delegate to these paths. Literal voice macros/device aliases
+retain role pruning, speaker checks and the same shared gate.
+
+See [computer control](computer-control.md) for supported operations and the
+explicit non-sandbox/native-acceptance limitations.
+
+
+## Defensive security assistant (Task 14)
+
+`nexus/security_assistant/` is an inert, opt-in package: strict operator policy →
+bounded passive collectors → a private workspace-scoped normalized evidence journal
+→ existing proactive DND/HUD/local speech. The explicit foreground CLI runs one
+tick or a watch loop; status/HUD reads never start collection. Recent persisted
+security toasts bridge into the existing authenticated owner Mission `alert.new`
+SSE feed, not a new server, device scope or external sender.
+
+Six adapters register in the original `ToolRegistry`. Scan/response/analysis use
+its preparation callback and fresh `ApprovalGate`, with short-lived one-use
+policy/payload/preimage-bound reviews. Shared pre/post-approval guards refuse
+out-of-scope scans and, in enabled defensive mode, opaque execution relays. The
+only active probe is a bounded IP-literal TCP connect. Response plans have exact
+commands and rollback text but no executor. Existing defensive role definitions
+feed a single no-tool model request, with explicit remote opt-in, caller guards,
+no fallback/retry and metadata-only existing session/cost observations.
+
+Evidence is hashed, read-only normalized metadata, not raw forensic acquisition
+or externally attested storage. See [setup, compatibility, resource bounds and
+security limitations](defensive-security.md).

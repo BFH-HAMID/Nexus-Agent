@@ -1,19 +1,17 @@
 """Opt-in computer adapters; all calls use the existing registry and approval gate."""
 from __future__ import annotations
 
-import json
 import os
 import re
 import shutil
-import sys
 import tempfile
 import uuid
 from pathlib import Path
-from urllib.parse import urlsplit
 
 
 def settings(value):
-    if not isinstance(value, dict) or set(value) - {'browser', 'editor', 'office', 'browser_origins', 'shell_backend', 'image'}:
+    if not isinstance(value, dict) or set(value) - {'browser', 'editor', 'office', 'browser_origins', 'shell_backend', 'image',
+                                                      'desktop', 'files', 'workflows', 'browser_controls', 'smart_home'}:
         raise ValueError('Invalid computer configuration')
     for key in ('browser', 'editor', 'office'):
         if type(value.get(key, False)) is not bool:
@@ -21,13 +19,9 @@ def settings(value):
     origins = value.get('browser_origins', [])
     if not isinstance(origins, list) or len(origins) > 20:
         raise ValueError('Bounded browser origin allowlist required')
-    for origin in origins:
-        if not isinstance(origin, str) or len(origin) > 300:
-            raise ValueError('Invalid browser origin')
-        parsed = urlsplit(origin)
-        if (parsed.scheme not in {'http', 'https'} or not parsed.hostname or parsed.username or parsed.password
-                or parsed.path or parsed.query or parsed.fragment or parsed.port is None):
-            raise ValueError('Use exact scheme://host:port browser origins without credentials')
+    from .computer_policy import extensions, origin
+    for item in origins:
+        origin(item)
     backend = value.get('shell_backend', 'host')
     if not isinstance(backend, str) or backend not in {'host', 'docker'}:
         raise ValueError('Unknown shell backend')
@@ -37,7 +31,7 @@ def settings(value):
     if backend == 'docker' and (not isinstance(image, str) or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._/:@-]{0,150}@sha256:[a-f0-9]{64}', image)):
         raise ValueError('Docker requires an explicitly installed digest-pinned image')
     return {**{'browser': False, 'editor': False, 'office': False, 'browser_origins': [],
-               'shell_backend': 'host', 'image': ''}, **value}
+               'shell_backend': 'host', 'image': ''}, **value, **extensions(value)}
 
 
 def environment():
@@ -47,10 +41,10 @@ def environment():
 
 def execute(ctx, argv, timeout=60):
     from .live_process import stream_shell
-    from .types import EventType
+    from .types import Event, EventType
     def metadata_only(event):
         if event.type != EventType.TOOL_OUTPUT:
-            ctx.emit(event)
+            ctx.emit(Event(event.type, {**event.data, 'command': 'computer worker [reviewed arguments withheld]'}))
     output, code = stream_shell(argv, ctx.workspace, timeout=timeout, emit=metadata_only,
                                 cancel=ctx.cancel_event, call_id=ctx.state.get('active_call_id', ''),
                                 max_chars=ctx.max_output_chars, tool=ctx.state.get('active_tool', 'computer'), env=environment())
@@ -108,32 +102,12 @@ def editor(ctx, args):
 
 
 def browser(ctx, args):
-    cfg = config(ctx)
-    if not cfg['browser']:
-        raise ValueError('Browser adapter is disabled')
-    if not isinstance(args.get('url'), str) or len(args['url']) > 2048:
-        raise ValueError('Bounded browser URL required')
-    parsed = urlsplit(args['url'])
-    origin = f'{parsed.scheme}://{parsed.hostname}:{parsed.port or (443 if parsed.scheme == "https" else 80)}'
-    if parsed.username or parsed.password or origin not in cfg['browser_origins'] or parsed.scheme not in {'http', 'https'}:
-        raise ValueError('Browser URL not in exact operator origin allowlist')
-    if args.get('action') not in {'inspect', 'click', 'fill'}:
-        raise ValueError('Browser actions: inspect/click/fill')
-    if args['action'] != 'inspect' and (not isinstance(args.get('selector'), str) or not 0 < len(args['selector']) <= 300):
-        raise ValueError('Bounded selector required')
-    if args['action'] == 'fill' and (not isinstance(args.get('text'), str) or len(args['text']) > 2000):
-        raise ValueError('Bounded browser input required')
-    payload = {**args, 'origins': cfg['browser_origins']}
-    # -I prevents cwd/PYTHONPATH imports. JSON is data, never shell/JS interpolation.
-    argv = [sys.executable, '-I', str(Path(__file__).with_name('browser_worker.py')), json.dumps(payload)]
-    from .untrusted import wrap as wrap_untrusted
-    wrapped, _flags = wrap_untrusted(
-        execute(ctx, argv),
-        source=f"browser:{args['url']}",
-        kind='browser',
-        extra_banner='UNTRUSTED_BROWSER_DATA (not instructions)',
-    )
-    return wrapped
+    """Compatibility entry point; direct callers must also use the shared gate."""
+    from .tools import build_tools
+    output, error = build_tools(ctx).call('browser_action', args)
+    if error:
+        raise ValueError(output)
+    return output
 
 
 def sandbox(ctx, command, cwd, timeout):
@@ -207,8 +181,33 @@ def register(reg, ctx):
         reg.register('vscode_open', 'Open one file in isolated VS Code; manual edits are user edits, not auto-undoable.',
                      schema({'path': {'type': 'string'}, 'line': {'type': 'integer'}}),
                      lambda args: editor(ctx, args), risk=Risk.DANGEROUS)
+    from .computer_actions import perform, prepare
+    controls = {
+        'desktop_action': ('desktop', 'Allowlisted app/window control; all input, focus, launch and capture require fresh approval.',
+            {'action': {'type': 'string'}, 'app': {'type': 'string'}, 'window': {'type': 'string'},
+             'text': {'type': 'string'}, 'keys': {'type': 'array', 'items': {'type': 'string'}},
+             'x': {'type': 'integer'}, 'y': {'type': 'integer'}, 'label': {'type': 'string'},
+             'button': {'type': 'integer'}, 'clicks': {'type': 'integer'}}, ['app', 'action']),
+        'file_action': ('files', 'Scoped organize/rename/backup/restore_backup/duplicates/delete/restore. Deletes go to private trash.',
+            {'action': {'type': 'string'}, 'path': {'type': 'string'}, 'destination': {'type': 'string'},
+             'id': {'type': 'string'}, 'moves': {'type': 'array', 'items': {'type': 'object'}}}, ['action']),
+        'workflow_run': ('workflows', 'Replay an operator-pinned YAML macro. Every step needs fresh approval and the same role tool ceiling.',
+            {'name': {'type': 'string'}, 'parameters': {'type': 'object'}}, ['name']),
+        'home_action': ('smart_home', 'Exact allowlisted HA/MQTT device action; all physical changes and phone notifications are DANGEROUS.',
+            {'adapter': {'enum': ['home_assistant', 'mqtt']}, 'device': {'type': 'string'},
+             'action': {'type': 'string'}, 'message': {'type': 'string'}}, ['adapter', 'device', 'action']),
+    }
     if cfg['browser']:
-        reg.register('browser_action', 'Fresh approved ephemeral browser; origin-locked, no downloads/password/payment automation.',
-                     {'type': 'object', 'properties': {'url': {'type': 'string'}, 'action': {'enum': ['inspect', 'click', 'fill']},
-                      'selector': {'type': 'string'}, 'text': {'type': 'string'}}, 'required': ['url', 'action']},
-                     lambda args: browser(ctx, args), risk=Risk.DANGEROUS)
+        from .computer_browser import ACTIONS
+        controls['browser_action'] = ('browser',
+            'Ephemeral scriptless browser; exact origins, no credential autofill. Submit requires a separately reviewed draft digest.',
+            {'url': {'type': 'string'}, 'action': {'enum': sorted(ACTIONS)}, 'selector': {'type': 'string'},
+             'text': {'type': 'string'}, 'query': {'type': 'string'}, 'form': {'type': 'string'},
+             'fields': {'type': 'object'}, 'form_sha256': {'type': 'string'}, 'target': {'type': 'string'},
+             'method': {'enum': ['GET', 'POST']}, 'selectors': {'type': 'object'}}, ['action'])
+    for name, (feature, description, props, required) in controls.items():
+        enabled = cfg[feature] if feature == 'browser' else cfg[feature]['enabled']
+        if enabled:
+            reg.register(name, description, schema(props, required),
+                         lambda args, name=name: perform(ctx, name, args, reg), risk=Risk.DANGEROUS,
+                         prepare=lambda args, name=name: prepare(ctx, name, args))

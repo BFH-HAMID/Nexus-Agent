@@ -7,13 +7,16 @@
   let resolveReady;
   const ready = new Promise(resolve => { resolveReady = resolve; });
   const login = document.createElement('dialog'); login.id = 'guiLogin';
-  login.innerHTML = '<form><h2>Nexus dashboard access</h2><p>Use the existing GUI access token, not a model/GitHub key. This login covers every section.</p><label>Private access token<input id="guiToken" type="password" autocomplete="off" required></label><label><input id="guiRemember" type="checkbox" checked> Remember this trusted browser</label><button class="btn" type="submit">Connect</button><p id="guiLoginError" role="alert"></p></form>';
+  login.innerHTML = '<form><h2>Nexus dashboard access</h2><p>Use the GUI access token or a paired device token, not a model/GitHub key. Paired devices open the scoped Shared HUD only.</p><label>Private access token<input id="guiToken" type="password" autocomplete="off" required></label><label><input id="guiRemember" type="checkbox" checked> Remember this trusted browser</label><button class="btn" type="submit">Connect</button><p id="guiLoginError" role="alert"></p></form>';
   document.body.append(login);
   async function authenticate() {
     const headers = credential ? {'X-Nexus-Token': credential} : {};
     const response = await fetch('/api/session', {headers});
     if (!response.ok) { if (!login.open) login.showModal(); return; }
     const info=await response.json();
+    gui.principal=info.principal;
+    document.body.classList.toggle('gui-device',info.principal?.kind==='device');
+    if(info.principal?.kind==='device' && gui.view!=='presence')show('presence');
     const logout=document.getElementById('guiLogout');logout.disabled=!info.required;logout.title=info.required?'Forget this browser login':'Local GUI access: no separate login is configured';
     if (credential) {
       const saved = await fetch('/api/session', {method:'POST', headers:{...headers,'Content-Type':'application/json'},body:JSON.stringify({remember:document.getElementById('guiRemember').checked})});
@@ -53,26 +56,47 @@
   };
   /* Every page the shell can show. One list, so a new view cannot be
      reachable from the sidebar but silently ignored by the router. */
-  const VIEWS = ['mission','assistant','roles','router','computer','approvals','workflows','security','memory','cost','channels','run','operations','world','control','settings'];
-  let worldLoaded = false;
+  const VIEWS = ['presence','mission','assistant','roles','router','computer','approvals','workflows','security','memory','cost','channels','run','operations','world','control','settings'];
+  let worldLoaded = false, worldImport = null, worldMount = 0;
+  const worldHome = document.getElementById('view-world');
+  // The same widget instance can live in World or in the shared HUD. The HUD
+  // supplies a cache-only API: no new publisher request or parallel dashboard.
+  gui.mountWorld=async(host,request)=>{
+    const widget=document.getElementById('world-widget');
+    if(!widget || !host)return false;
+    const generation=++worldMount, view=gui.view;
+    // Retire the old adapter before moving a live widget between surfaces.
+    window.dispatchEvent(new Event('hud:disconnected'));
+    host.append(widget); widget.classList.remove('world-hidden');
+    worldImport ||= import('/world/world.js'); await worldImport;
+    if(generation!==worldMount || gui.view!==view || widget.parentElement!==host)return false;
+    worldLoaded=true;
+    window.dispatchEvent(new CustomEvent('hud:connected',{detail:{api:request}}));
+    window.dispatchEvent(new Event('hud:layout'));
+    return true;
+  };
   async function show(view) {
     if (!VIEWS.includes(view)) return;
+    if(gui.principal?.kind==='device' && view!=='presence')view='presence';
+    if(gui.view!==view){++worldMount;window.dispatchEvent(new Event('hud:disconnected'));}
     gui.view = view;
     document.body.classList.toggle('gui-module-view',view!=='run');
     document.querySelectorAll('[data-gui-view]').forEach(n => n.hidden = n.dataset.guiView !== view);
     document.querySelectorAll('[data-gui-tab]').forEach(n => {const active=n.dataset.guiTab===view;n.setAttribute('aria-selected',String(active));});
     history.replaceState(null,'','#'+view); window.scrollTo(0,0);
     window.dispatchEvent(new CustomEvent('nexus:view',{detail:view}));
-    if(view==='world' && !worldLoaded) {
-      worldLoaded = true;
+    if(view!=='presence' && worldHome && document.getElementById('world-widget')?.parentElement!==worldHome){
+      worldHome.append(document.getElementById('world-widget'));
+      window.dispatchEvent(new Event('hud:layout'));
+    }
+    if(view==='world') {
       try {
         await ready;
-        await import('/world/world.js');
-        window.dispatchEvent(new CustomEvent('hud:connected',{detail:{api:(path,body)=>gui.api('/api/'+path,body)}}));
-      } catch {worldLoaded=false;document.getElementById('world-status').textContent='World assets unavailable; check local installation.';}
+        if(gui.view==='world')await gui.mountWorld(worldHome,(path,body)=>gui.api('/api/'+path,body));
+      } catch {worldLoaded=false;worldImport=null;document.getElementById('world-status').textContent='World assets unavailable; check local installation.';}
     }
   }
-  window.addEventListener('nexus:world-settings',()=>{if(worldLoaded)window.dispatchEvent(new CustomEvent('hud:connected',{detail:{api:(path,body)=>gui.api('/api/'+path,body)}}));});
+  window.addEventListener('nexus:world-settings',()=>{if(worldLoaded && gui.view==='world')window.dispatchEvent(new CustomEvent('hud:connected',{detail:{api:(path,body)=>gui.api('/api/'+path,body)}}));});
   const tabs=[...document.querySelectorAll('[data-gui-tab]')];
   tabs.forEach((n,index)=>{n.onclick=()=>show(n.dataset.guiTab);n.onkeydown=e=>{if(!['ArrowLeft','ArrowRight','Home','End'].includes(e.key))return;e.preventDefault();const next=e.key==='Home'?0:e.key==='End'?tabs.length-1:(index+(e.key==='ArrowRight'?1:-1)+tabs.length)%tabs.length;tabs[next].focus();show(tabs[next].dataset.guiTab);};});
   document.addEventListener('click', e => {
@@ -96,7 +120,7 @@
   });
   const attention=document.createElement('div');attention.id='guiAttention';attention.hidden=true;attention.setAttribute('role','status');
   const text=document.createElement('span'),review=document.createElement('button');review.className='btn';review.textContent='Review background actions';review.onclick=()=>show('operations');attention.append(text,review);document.body.append(attention);
-  setInterval(async()=>{if(document.hidden||login.open||gui.view==='operations')return;try{const state=await gui.api('/api/operations/state');const count=state.pending_actions_total||0;text.textContent=count+' background action(s) await your approval.';attention.hidden=count===0;}catch{/* No invented alert when status is unavailable. */}},10000);
+  setInterval(async()=>{if(document.hidden||login.open||gui.principal?.kind==='device'||gui.view==='operations')return;try{const state=await gui.api('/api/operations/state');const count=state.pending_actions_total||0;text.textContent=count+' background action(s) await your approval.';attention.hidden=count===0;}catch{/* No invented alert when status is unavailable. */}},10000);
   window.addEventListener('nexus:view',e=>{if(e.detail==='operations')attention.hidden=true;});
   const hash=location.hash.slice(1);const bookmarked=document.getElementById(hash)?.closest('[data-gui-view]')?.dataset.guiView;
   show(bookmarked||(VIEWS.includes(hash)?hash:'mission'));

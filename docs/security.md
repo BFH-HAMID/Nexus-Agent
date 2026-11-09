@@ -180,3 +180,86 @@ If you want a stricter setup, point those roles at `gemini` instead
 If you find a way to make Nexus damage a repo or leak a secret in a way these controls should have
 prevented, open an issue with the exact task, flags and tool sequence. Deny-list gaps are treated
 as bugs.
+
+
+### Local-first perception
+
+The [vision boundary](vision.md) is OFF by default. Pixels, PDF pages, OCR and
+model answers are untrusted evidence; the VLM adapter has no tools and rejects
+tool-bearing responses. Capture is audited before IO, and each owned device has
+a durable capture lease/indicator. Vision hard off is independent of malformed
+YAML and invalidates old request epochs; native operations already in progress
+can take time to return and transmitted bytes cannot be recalled.
+
+Camera/recognition/enrollment have no cloud route. Face templates and consent
+metadata require AES-GCM and a native keyring, never plaintext fallback or
+biometric authorization. Cloud Q&A permits only explicitly attested non-person
+inputs after a fail-closed local face preflight and exact fresh review. Detection
+can miss faces: uncertain or identifying material belongs on the local path.
+Use trusted model weights and OS controls for device access, temporary files,
+process egress and storage; neither permission policy nor VLM instructions form
+an OS sandbox. No secure RAM/swap/backups erasure guarantee is made.
+
+
+### Environment, desktop and device controls (Task 12)
+
+- Every new surface is OFF in operator-owned `permissions.yaml`; shared fresh
+  approval, role ceilings, optional 2FA, limits, emergency stop and audit remain
+  authoritative. Legacy desktop/backup/home classes and Computer Studio mutations
+  cannot bypass them via an environment flag or reusable confirmation phrase.
+- Native input is scoped to a verified allowlisted executable/window and bounded
+  foreground coordinates or a unique supported accessibility label. All input is
+  dangerous: keystrokes/clicks may send, spend, deploy or delete inside another app.
+  This is not app/network confinement or protection from same-privilege OS races.
+- Browser pages are scriptless/ephemeral, with no credential autofill, persisted
+  profile, file uploads, sockets or service workers. Raw clicks cannot submit a
+  form. A separate hash-bound request and fresh review are required for the exact
+  GET/POST form target/body. Complex/login/hidden-token forms are unsupported.
+  Origin routing is not proof that a GET endpoint has no side effects.
+- Downloaded filenames never choose paths. Bounded unauthenticated downloads stay
+  in an operator-chosen workspace folder and are never opened/executed. File
+  management refuses private/operator paths, links, device names and alternate
+  streams; deletes go to bounded recoverable trash with no automatic purge.
+- Macros are pinned, protected operator files. Learned skills, runtime drafts,
+  webpages and MCP outputs cannot become replay authority. Parameters are typed
+  literal JSON data, not shell templates. Replay checks each step and stops on
+  denial/revocation/uncertain outcome; there is no external rollback guarantee.
+- HA REST and TLS MQTT use exact device/service/topic/action allowlists. Locks,
+  alarms and garage doors cannot be downgraded below DANGEROUS. API acknowledgements
+  do not prove physical state; QoS 1 can deliver duplicate messages. Only normal
+  companion notifications are supported for phones, never command hooks/intents.
+- Screenshots reuse Task 11 context denylist/OCR/lease/hard-off and remain in local
+  private storage, never an automatic cloud/model upload. Privacy filters are
+  best effort; plaintext local artifacts and OS ACLs need operator review.
+- Computer Studio HTTP is authenticated and same-origin. Synchronous legacy
+  effects need one-use expiring reviews; new actions use existing live approval
+  sessions with required current IDs. No automatic replay after server restart.
+
+Offline fake-backend tests are not native OS/hardware/account acceptance. See
+[environment setup, examples and residual limits](computer-control.md).
+
+
+### Defensive monitoring and scoped tests (Task 14)
+
+The [defensive security assistant](defensive-security.md) remains OFF in
+operator-owned `security.yaml`. Inputs are local read-only observations, not
+instructions, target authorization or proof of compromise. Source coverage gaps
+are explicit. Alerts retain evidence and propose review; they never dispatch an
+action. Public-certificate/SSH key parsing is an optional lazy dependency.
+
+Active tests require an explicit IP/port allowlist and fresh DANGEROUS review.
+Raw scanners/exploit runners are refused; enabled defensive mode also rejects
+opaque execution relays at the shared gate before and after approval. This is not
+a universal OS sandbox. Firewall/account/public-key responses have exact commands
+and rollback previews but **no executor**. Existing gates, role ceilings, optional
+second factor, rate limits and emergency stop cannot be expanded by a log or model.
+
+Normalized, redacted evidence is privately stored with read-only artifacts and
+hash-linked timelines, never silently purged. These are not original forensic
+images, WORM storage, secure erasure or root-compromise protection. Dedicated
+analysis uses existing defensive roles without tools, retry or fallback and needs
+explicit remote disclosure authority. Ordinary parent-agent model conversations
+retain their own context/fallback behavior; use the local CLI for private
+investigations. Local alerts honor proactive/Inbox DND and speaker handoff, never
+inherit automatic Telegram/push/desktop sends. Live-host acceptance remains an
+operator responsibility; deterministic fixtures are not a completed security audit.

@@ -13,7 +13,7 @@ function controlState() {
 }
 function changed(key, value) { const next = JSON.stringify(value); if (rendered[key] === next) return false; rendered[key] = next; return true; }
 function access(connected) {
-  for (const n of document.querySelectorAll('[data-control], #autonomy, #quiet, #dnd, #dnd-off, #runtime-enable, #runtime-disable, #delegate button, #jobs button, #approvals button, #allow, #deny')) n.disabled = !connected;
+  for (const n of document.querySelectorAll('[data-control], #autonomy, #quiet, #dnd, #dnd-off, #runtime-enable, #runtime-disable, #vision-off, #vision-ask, #delegate button, #jobs button, #approvals button, #allow, #deny')) n.disabled = !connected;
   $('connection-help').textContent = window.nexusGui
     ? (connected
       ? tr('ops.helpShared', {}, 'Connected through the same Nexus GUI session. Control background tasks here; World, news and weather use the World tab.')
@@ -31,7 +31,7 @@ const tr = (key, vars, fallback) => {
 };
 const message = text => { $('error').textContent = text; };
 async function api(path, body) {
-  if (window.nexusGui) return window.nexusGui.api('/api/operations/' + path, body);
+  if (window.nexusGui) return window.nexusGui.api((path.startsWith('vision/') ? '/api/' : '/api/operations/') + path, body);
   if (!token && !authenticated) throw Error('Connect using your private HUD token first.');
   const response = await fetch('/api/' + path, {method: body === undefined ? 'GET' : 'POST', headers: {...(token ? {Authorization: 'Bearer ' + token} : {}), 'Content-Type': 'application/json'}, ...(body === undefined ? {} : {body: JSON.stringify(body)})});
   const value = await response.json();
@@ -106,6 +106,8 @@ function paint(state) {
     ? tr('ops.contextOn', {}, 'CONTEXT OPT-IN / ON DEMAND')
     : state.context.enabled === false ? tr('ops.contextOff', {}, 'CONTEXT OFF')
     : tr('ops.contextUnknown', {}, 'CONTEXT UNKNOWN / REFUSED');
+  const vision = state.vision;
+  $('vision-state').textContent = vision ? `Camera: ${vision.camera.state} · Screen: ${vision.screen.state}${vision.stopped ? ' · HARD OFF / stop requested' : ''}${vision.enabled === false ? ' · vision policy OFF' : ''}${vision.screen.last_capture ? ' · last screen '+new Date(vision.screen.last_capture*1000).toLocaleTimeString() : ''}` : 'Camera / screen UNKNOWN';
   $('privacy-state').textContent = (state.context.error || (state.context.enabled
     ? tr('ops.privacyOn', {}, 'Context explicitly opted in; collection on demand')
     : tr('ops.privacyOff', {}, 'Context collection OFF'))) + tr('ops.privacySuffix', {}, ' · local state · no implicit model execution');
@@ -243,6 +245,29 @@ bind($('deny'), async () => {
 bind($('autonomy'), async () => {
   const level = $('level').value, confirmation = prompt('Operator policy change; never bypasses action reviews. Type: SET AUTONOMY ' + level);
   if (confirmation !== null) await perform('autonomy', {level, confirmation});
+});
+bind($('vision-off'), async () => {
+  const value = await api('vision/off', {});
+  $('vision-state').textContent = 'HARD OFF latched · native operations may still be stopping';
+  showEvidence(value, 'Vision stopped. Resume requires fresh CLI approval; no device restarts automatically.');
+});
+bind($('vision-ask'), async () => {
+  const file = $('vision-file').files[0];
+  if (!file || file.size > 10000000) throw Error('Choose one image, PDF or text note no larger than 10 MB.');
+  const file_base64 = await new Promise((resolve,reject) => {const reader=new FileReader();reader.onerror=()=>reject(Error('Could not read attachment'));reader.onload=()=>resolve(String(reader.result).split(',')[1]);reader.readAsDataURL(file);});
+  const numbers = id => $(id).value.trim() ? $(id).value.split(',').map(x=>Number(x.trim())) : null;
+  const body = {name:file.name,file_base64,question:$('vision-question').value,pages:numbers('vision-pages'),region:numbers('vision-region'),cloud:$('vision-cloud').checked,no_people:$('vision-no-people').checked};
+  if (body.cloud) {
+    if (!body.no_people) throw Error('Cloud uploads must contain no people/faces. Use local vision if uncertain.');
+    const preview = await api('vision/preview', body);
+    const confirmation = prompt(JSON.stringify(preview.review,null,2)+'\nOne-use review. Type exactly: '+preview.challenge.confirmation);
+    if (confirmation !== preview.challenge.confirmation) return;
+    body.challenge=preview.challenge;body.confirmation=confirmation;
+    body.second_factor=prompt('If permissions.yaml requires a separate PIN, enter it; otherwise leave blank.')||'';
+  }
+  const result = await api('vision/ask', body);
+  $('vision-answer').textContent=JSON.stringify(result,null,2);$('vision-answer').hidden=false;
+  $('vision-file').value='';
 });
 bind($('quiet'), () => perform('delivery', {quiet: !latest?.delivery.quiet}));
 bind($('dnd'), () => perform('delivery', {minutes: 60}));

@@ -9,3 +9,7 @@ const names=[];for(const n of await fs.readdir('node_modules')){if(n.startsWith(
 let notices='Third-party libraries used by the locally bundled World widget.\n\n';
 for(const name of names){let p;try{p=JSON.parse(await fs.readFile(`node_modules/${name}/package.json`,'utf8'));}catch{continue;}notices+=`${name} ${p.version} / ${p.license}\n`;for(const file of ['LICENSE','LICENSE.md','LICENSE.txt']){try{notices+=await fs.readFile(`node_modules/${name}/${file}`,'utf8')+'\n\n';break;}catch{}}}
 await fs.writeFile('../../nexus/hud/world/assets/THIRD-PARTY.txt',notices);
+
+// Keep deterministic generated shader/source lines free of trailing whitespace.
+const output='../../nexus/hud/world/assets/world.js';
+await fs.writeFile(output,(await fs.readFile(output,'utf8')).replace(/[ \t]+$/gm,''));

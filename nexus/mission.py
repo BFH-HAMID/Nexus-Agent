@@ -135,6 +135,7 @@ class Mission:
         self._last_tasks: tuple | None = None
         self._last_approvals: tuple | None = None
         self._last_alerts: dict[str, dict[str, Any]] = {}
+        self._security_toasts_seen: set[str] = set()
         self._audit_lock = threading.Lock()
         self._audit_at: dict[str, float] = {}
         self._log: deque = deque(maxlen=40)
@@ -250,6 +251,7 @@ class Mission:
             "health": self._health_section(),
             "alerts": self._alerts(),
             "monitoring": snapshot.get("monitoring") if isinstance(snapshot, dict) else None,
+            "vision": snapshot.get("vision") if isinstance(snapshot, dict) else None,
             "stream": {"subscribers": self.subscribers, "schema": SCHEMA, "started_at": self.started_at},
         }
         summary["build_ms"] = round((time.perf_counter() - started) * 1000, 1)
@@ -409,6 +411,7 @@ class Mission:
             "agents": summary.get("agents"),
             "daemon": summary.get("daemon"),
             "alerts": summary.get("alerts"),
+            "vision": summary.get("vision"),
         }
 
     def _task_update(self, summary: dict[str, Any]) -> dict[str, Any]:
@@ -485,6 +488,20 @@ class Mission:
             payload["new_ids"] = new_ids
             self.publish("approval.new", payload)
         self._raise_alerts(summary)
+        self._defensive_alerts()
+
+    def _defensive_alerts(self) -> None:
+        from .security_assistant.service import hud_alerts
+        try:
+            rows = hud_alerts(self.state.workspace)
+        except (ValueError, OSError, TypeError, KeyError, TimeoutError, RecursionError):
+            return  # Optional status projection cannot enable collection or break SSE.
+        for row in rows:
+            if row['id'] not in self._security_toasts_seen:
+                self.publish('alert.new', row)
+                self._security_toasts_seen.add(row['id'])
+        if len(self._security_toasts_seen) > 256:
+            self._security_toasts_seen = {row['id'] for row in rows}
 
     def _slow_checks(self) -> None:
         from .integrations import github_status, ollama_models

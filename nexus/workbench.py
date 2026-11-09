@@ -186,9 +186,13 @@ class Workbench:
         return settings
 
     def save_run(self, session) -> None:
-        body = {**session.snapshot(), "log": session.log[-4000:], "local_model": session.local_model,
-                "read_only": session.read_only, "options": session.options,
-                "fingerprint": self.fingerprint(allow_unavailable=True)}
+        from .computer_actions import history_event, history_result
+        computer = getattr(session, "computer_request", None) is not None
+        body = {**session.snapshot(), "log": [history_event(e, computer=computer) for e in session.log[-4000:]],
+                "local_model": session.local_model, "read_only": session.read_only, "options": session.options,
+                "fingerprint": "" if computer else self.fingerprint(allow_unavailable=True)}
+        if computer:
+            body['result'] = history_result(body.get('result'))
         with self.lock, self.connect() as conn:
             conn.execute("INSERT OR REPLACE INTO runs VALUES (?,?,?,?)",
                          (session.task_id, self.key, session.created, json.dumps(body, default=str)))

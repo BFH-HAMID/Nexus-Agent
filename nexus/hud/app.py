@@ -106,7 +106,7 @@ def create_app(studio, token, *, allowed_hosts=None):
             now = time.monotonic()
             while bucket and now - bucket[0] > 60:
                 bucket.popleft()
-            if len(bucket) >= 120:
+            if len(bucket) >= 120 and request.url.path != '/api/vision/off':
                 return JSONResponse({'error': 'Rate limit; retry later'}, status_code=429)
             bucket.append(now)
         response = await call_next(request)
@@ -196,6 +196,33 @@ def create_app(studio, token, *, allowed_hosts=None):
             return await snapshot()
         except (ValueError, OSError):
             raise HTTPException(409, 'State unavailable; no fabricated fallback') from None
+
+    from ..vision.api import MAX_BODY as VISION_MAX_BODY
+    from ..vision.api import VisionAPI
+    from ..vision.state import status as vision_status
+    vision = VisionAPI(studio.root)
+
+    @app.get('/api/vision/status')
+    async def capture_status():
+        return await run_in_threadpool(vision_status, studio.root)
+
+    @app.post('/api/vision/{operation}')
+    async def vision_action(operation: str, request: Request):
+        data = bytearray()
+        async for chunk in request.stream():
+            if len(data) + len(chunk) > VISION_MAX_BODY:
+                raise HTTPException(413, 'Vision request too large')
+            data.extend(chunk)
+        try:
+            payload = json.loads(data)
+            if not isinstance(payload, dict):
+                raise ValueError('Object required')
+            if operation == 'off':
+                return await run_in_threadpool(vision.post, operation, payload, 'hud')
+            async with slots:
+                return await run_in_threadpool(vision.post, operation, payload, 'hud')
+        except (ValueError, OSError, TimeoutError, RecursionError):
+            raise HTTPException(409, 'Vision refused; check operator policy and fresh review') from None
 
     @app.get('/api/monitoring')
     async def monitoring():

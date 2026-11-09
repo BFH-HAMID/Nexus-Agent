@@ -137,25 +137,28 @@ def test_server_and_market_monitors_are_condition_based(repo: Path, monkeypatch)
 # ── desktop, backup and smart home ─────────────────────────────────────── #
 
 
-def test_desktop_requires_review_and_records_only_nonsecret_semantics(monkeypatch):
-    controller = DesktopController(backend="xdotool", review=lambda action, args: False)
-    with pytest.raises(AssistantError, match="Fresh approval"):
-        controller.execute("move", {"x": 1, "y": 2})
-    recorder = WorkflowRecorder.__new__(WorkflowRecorder)
-    recorder.active = True
-    recorder.append = lambda action, args: None
-    calls = []
-    monkeypatch.setattr("shutil.which", lambda name: "/usr/bin/xdotool" if name == "xdotool" else None)
-    monkeypatch.setattr("subprocess.run", lambda argv, **kwargs: calls.append(argv) or type("Result", (), {"returncode": 0})())
-    approved = DesktopController(backend="xdotool", review=lambda action, args: True, recorder=recorder)
-    result = approved.execute("move", {"x": 1, "y": 2})
-    assert result["executed"] == "move" and calls[0][-2:] == ["1", "2"]
+def test_desktop_requires_review_and_records_only_nonsecret_semantics(repo, monkeypatch):
+    from .computer_helpers import FakeDesktop, desktop, registry
+    reg, _calls = registry(repo, desktop=desktop(repo), workflows={'enabled': True, 'allowed_tools': ['desktop_action']})
+    fake = FakeDesktop(repo)
+    monkeypatch.setattr('nexus.desktop_control.backend', lambda *_: fake)
+    controller = DesktopController(workspace=repo, backend='xdotool', review=lambda *_: False)
+    with pytest.raises(AssistantError, match='DENIED'):
+        controller.execute('move', {'app': 'editor', 'x': 1, 'y': 2})
+    recorder = WorkflowRecorder(repo, gate=reg.ctx.gate)
+    recorder.start('routine')
+    approved = DesktopController(workspace=repo, backend='xdotool', gate=reg.ctx.gate, recorder=recorder)
+    result = approved.execute('move', {'app': 'editor', 'x': 1, 'y': 2})
+    assert result['executed'] == 'move' and len(fake.effects) == 1
+    assert len(recorder.read()['steps']) == 1
 
 
 def test_backup_restore_never_overwrites(repo: Path):
     (repo / "notes.txt").write_text("important")
     (repo / ".env").write_text("SECRET=not-backed-up")
-    manager = BackupManager(repo)
+    from .computer_helpers import registry
+    reg, _ = registry(repo, files={'enabled': True, 'roots': ['.']})
+    manager = BackupManager(repo, gate=reg.ctx.gate)
     backup = manager.create()
     assert backup["files"] >= 1
     restored = manager.restore(backup["id"], "restored", confirmation=f"RESTORE BACKUP {backup['id']}")
@@ -166,19 +169,25 @@ def test_backup_restore_never_overwrites(repo: Path):
         manager.restore(backup["id"], "restored", confirmation=f"RESTORE BACKUP {backup['id']}")
 
 
-def test_home_assistant_read_and_fresh_service_call(monkeypatch):
-    home = HomeAssistant(Vault(), base_url="https://home.example", entities=["light.desk"])
-    monkeypatch.setattr(home, "_request", lambda method, path, body=None: [{"entity_id": "light.desk", "state": "on"}]
-                          if method == "GET" else {"state": "changed"})
-    assert home.states()[0]["entity_id"] == "light.desk"
+def test_home_assistant_read_and_fresh_service_call(repo, monkeypatch):
+    from .computer_helpers import home as home_config
+    from .computer_helpers import registry
+    reg, calls = registry(repo, smart_home=home_config())
+    class Backend:
+        def execute(self, device, action, message, guard):
+            guard()
+            return {'entity_id': device['entity'], 'state': 'on' if action == 'state' else 'changed'}
+    monkeypatch.setattr('nexus.smart_home.backend', lambda *_: Backend())
+    home = HomeAssistant(Vault(), base_url='https://home.example:443', entities=['light.desk'], workspace=repo, gate=reg.ctx.gate)
+    assert 'light.desk' in str(home.states()[0])
     actions = ExternalActions()
-    payload = {"domain": "light", "service": "turn_off", "entity_id": "light.desk"}
-    challenge = actions.preview("HOME ASSISTANT", payload)
-    result = home.call(actions, challenge, challenge["confirmation"], payload)
-    assert result["state"] == "changed"
-    payload["entity_id"] = "light.other"
-    with pytest.raises(AssistantError, match="allowlist"):
-        home.call(actions, challenge, challenge["confirmation"], payload)
+    payload = {'domain': 'light', 'service': 'turn_off', 'entity_id': 'light.desk'}
+    challenge = actions.preview('HOME ASSISTANT', payload)
+    result = home.call(actions, challenge, challenge['confirmation'], payload)
+    assert result['state'] == 'changed' and len(calls) == 2
+    payload['entity_id'] = 'light.other'
+    with pytest.raises(AssistantError, match='allowlist'):
+        home.call(actions, challenge, challenge['confirmation'], payload)
 
 
 # ── reasoning and cited research ───────────────────────────────────────── #

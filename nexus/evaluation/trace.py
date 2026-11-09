@@ -106,6 +106,10 @@ class Trace:
             data['replayable'] = bool(data.get('call_id')) and sanitize(data.get('args'), self.root) == data.get('args')
         if event.type.value == 'tool_result' and data.get('is_error') and data.get('call_id') and data.get('call_id') in self.tool_calls:
             self.failed_tools.add(self.tool_calls[data['call_id']])
+        from ..computer_actions import PREPARED_TOOLS, history_event
+        if data.get('tool') in PREPARED_TOOLS:
+            data = history_event({'type': event.type.value, **data})
+            data.pop('type', None)
         self.add(event.type.value, data)
 
     def request(self, name, system, messages, tools):

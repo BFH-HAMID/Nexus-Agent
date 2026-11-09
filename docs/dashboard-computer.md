@@ -1,5 +1,18 @@
 # Computer Control — per-capability trust, reviewed file writes, one panic latch
 
+> **Task 12 update:** [Environment and desktop control](computer-control.md) is the
+> current setup/security reference. All new YAML switches remain OFF. The page now
+> queues native/file/browser/macro/home tools through the existing Run/Approval
+> Center, with fresh per-step decisions and no model interpretation. The files page
+> requires `computer.files.enabled` and operator roots. Legacy write/undo/trash/
+> restore/browser inspection need expiring one-use payload-bound reviews **plus**
+> the shared gate, not the reusable phrases described in the original design below.
+> New trash/receipt layouts are not automatically compatible with old artifacts.
+> The screen/app cards report actual opt-in adapter readiness; two new cards cover
+> macros and devices. Durable computer-run history contains metadata, not typed
+> bodies. The original design notes below describe the prior dashboard milestone;
+> use the linked guide for current behavior, limits and tests.
+
 Prompt 5 of the dashboard build. The workspace already shipped guarded desktop
 adapters in `nexus/computer.py` (headless browser with an exact origin allowlist,
 Office reader/writer, VS Code launcher, Docker shell backend) and a

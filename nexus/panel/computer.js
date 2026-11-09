@@ -48,6 +48,17 @@
     <div class="computer-body">
       <section class="computer-panel" id="ccPanelOverview" role="tabpanel" aria-labelledby="ccTabOverview" data-cc-panel="overview">
         <div class="computer-grid" id="ccCapabilities"></div>
+        <article class="computer-card">
+          <h2>Environment actions · fresh review</h2>
+          <p class="computer-hint">Disabled until enabled in operator-owned permissions.yaml. Desktop apps, file roots, browser origins, reviewed macros and home devices remain allowlisted. Each action (and every macro step) goes to the existing Approval Center. Nothing runs merely by opening this page.</p>
+          <label class="computer-field"><span>Tool</span><select id="ccActionTool">
+            <option>desktop_action</option><option>file_action</option><option>browser_action</option><option>workflow_run</option><option>home_action</option>
+          </select></label>
+          <label class="computer-field"><span>Exact JSON arguments (data, not instructions)</span><textarea id="ccActionArgs" rows="4" spellcheck="false" maxlength="48000">{"action":"focus","app":"editor"}</textarea></label>
+          <div class="computer-actions"><button class="btn primary" type="button" id="ccActionQueue">Queue for fresh review</button><button class="btn ghost" type="button" id="ccActionApprovals">Open approvals</button></div>
+          <p class="computer-status" id="ccActionStatus" role="status"></p>
+          <p class="computer-hint">Examples: file_action {"action":"duplicates","path":"docs"}; workflow_run {"name":"deploy","parameters":{}}; home_action {"adapter":"home_assistant","device":"desk","action":"turn_off"}. Use nexus agent workflow start/stop to record an unreviewed draft. Never paste credentials here.</p>
+        </article>
         <div class="computer-grid">
           <article class="computer-card">
             <h2 data-i18n="computer.workspacePolicy"></h2>
@@ -308,7 +319,7 @@
       const head = document.createElement('div');
       head.className = 'computer-cardhead';
       const title = document.createElement('h2');
-      title.textContent = capLabel(row.id);
+      title.textContent = row.label || capLabel(row.id);
       head.append(title, chip(levelLabel(row.level), levelTone(row.level)));
       const reason = document.createElement('p');
       reason.className = 'computer-hint';
@@ -503,8 +514,7 @@
       button.className = 'btn ghost';
       button.textContent = t('computer.undo');
       button.disabled = item.status !== 'applied' || latched;
-      button.onclick = () => confirmAction(`RESTORE ${item.id}`, t('computer.undoHint'), async (token) => {
-        const body = (await gui.api('/api/computer/file/undo', {id: item.id, confirmation: token})).data;
+      button.onclick = () => reviewAction('file/undo', {id: item.id, confirmation: `RESTORE ${item.id}`}, async (body) => {
         flash($('ccFileStatus'), t('computer.undone', {path: body.restored.path}), 'ok');
         await load();
         await loadFiles();
@@ -526,8 +536,7 @@
       button.className = 'btn ghost';
       button.textContent = t('computer.restore');
       button.disabled = latched;
-      button.onclick = () => confirmAction(`RESTORE ${item.id}`, t('computer.restoreHint'), async (token) => {
-        const body = (await gui.api('/api/computer/trash/restore', {id: item.id, confirmation: token})).data;
+      button.onclick = () => reviewAction('trash/restore', {id: item.id, confirmation: `RESTORE ${item.id}`}, async (body) => {
         flash($('ccFileStatus'), t('computer.restored', {path: body.restored}), 'ok');
         await load();
         await loadFiles();
@@ -586,6 +595,18 @@
     $('ccConfirm').placeholder = token;
     $('ccConfirm').focus();
   }
+  async function reviewAction(operation, payload, onDone, errorNode = $('ccFileStatus')) {
+    try {
+      const review = (await gui.api('/api/computer/action/review', {operation, payload})).data;
+      confirmAction(review.confirmation, review.preview + ' · One use / 60 seconds.', async (typed) => {
+        const body = (await gui.api('/api/computer/' + operation, {...payload, approval_id: review.id, approval: typed})).data;
+        await onDone(body);
+      }, errorNode);
+    } catch (error) {
+      flash(errorNode, message(error), 'error');
+    }
+  }
+
   function closeConfirm() {
     state.pending = null;
     $('ccConfirmRow').hidden = true;
@@ -597,14 +618,14 @@
     if (!pending) return;
     const typed = $('ccConfirm').value.trim();
     if (typed !== pending.token) {
-      flash($('ccSaveStatus'), t('computer.wrongToken'), 'error');
+      flash(pending.errorNode || $('ccSaveStatus'), t('computer.wrongToken'), 'error');
       return;
     }
     closeConfirm();
     try {
       await pending.run(typed);
     } catch (error) {
-      flash(state.pending?.errorNode || $('ccSaveStatus'), message(error), 'error');
+      flash(pending.errorNode || $('ccSaveStatus'), message(error), 'error');
     }
   }
 
@@ -662,54 +683,34 @@
   async function writeFile() {
     if (!state.open) return;
     const path = state.open.path;
-    const text = $('ccText').value;
-    confirmAction(`WRITE ${path}`, t('computer.writeHint'), async (token) => {
-      try {
-        const body = (await gui.api('/api/computer/file/write', {
-          path, text, confirmation: token, revision: state.open.revision,
-        })).data;
-        flash($('ccFileStatus'), t('computer.written', {path: body.saved, bytes: body.bytes}), 'ok');
-        await previewFile(path);
-        await loadFiles();
-      } catch (error) {
-        flash($('ccFileStatus'), message(error), 'error');
-      }
+    await reviewAction('file/write', {path, text: $('ccText').value, confirmation: `WRITE ${path}`, revision: state.open.revision}, async (body) => {
+      flash($('ccFileStatus'), t('computer.written', {path: body.saved, bytes: body.bytes}), 'ok');
+      await previewFile(path);
+      await loadFiles();
     });
   }
 
   async function trashFile() {
     if (!state.open) return;
     const path = state.open.path;
-    confirmAction(`TRASH ${path}`, t('computer.trashHint'), async (token) => {
-      try {
-        const body = (await gui.api('/api/computer/file/trash', {path, confirmation: token})).data;
-        flash($('ccFileStatus'), t('computer.trashed', {path: body.path, id: body.trashed}), 'ok');
-        state.open = null;
-        $('ccText').value = '';
-        await openPath($('ccPath').value || defaultRoot());
-        await loadFiles();
-      } catch (error) {
-        flash($('ccFileStatus'), message(error), 'error');
-      }
+    await reviewAction('file/trash', {path, confirmation: `TRASH ${path}`}, async (body) => {
+      flash($('ccFileStatus'), t('computer.trashed', {path: body.path, id: body.trashed}), 'ok');
+      state.open = null;
+      $('ccText').value = '';
+      await openPath($('ccPath').value || defaultRoot());
+      await loadFiles();
     });
   }
 
   async function inspect() {
     const url = $('ccUrl').value.trim();
     if (!url) return;
-    $('ccInspect').disabled = true;
-    set($('ccBrowserStatus'), t('computer.loading'), '');
-    try {
-      const body = (await gui.api('/api/computer/browser/open', {url})).data;
+    await reviewAction('browser/open', {url}, async (body) => {
       $('ccBrowserTitle').textContent = body.title || body.url;
       $('ccBrowserMeta').textContent = `${body.provider_calls} · ${clock(body.observed_at)}`;
       $('ccBrowserOut').textContent = `${body.url}\n\n${body.text}${body.truncated ? '\n…' : ''}`;
       set($('ccBrowserStatus'), t('computer.inspectDone'), 'ok');
-    } catch (error) {
-      set($('ccBrowserStatus'), message(error), 'error');
-    } finally {
-      $('ccInspect').disabled = !state.browser?.available;
-    }
+    }, $('ccBrowserStatus'));
   }
 
   async function panic() {
@@ -781,6 +782,16 @@
   $('ccTrashButton').onclick = trashFile;
   $('ccSave').onclick = saveSettings;
   $('ccInspect').onclick = inspect;
+  $('ccActionApprovals').onclick = () => gui.show('approvals');
+  $('ccActionQueue').onclick = async () => {
+    $('ccActionQueue').disabled = true;
+    try {
+      const args = JSON.parse($('ccActionArgs').value);
+      const data = (await gui.api('/api/computer/action', {tool: $('ccActionTool').value, arguments: args})).data;
+      set($('ccActionStatus'), `Task ${data.task_id} queued. Review each fresh action in Approvals; inspect the final result in Runs.`, 'warn');
+    } catch (error) { set($('ccActionStatus'), message(error), 'error'); }
+    finally { $('ccActionQueue').disabled = false; }
+  };
   $('ccConfirmGo').onclick = runPending;
   $('ccConfirmCancel').onclick = closeConfirm;
   $('ccConfirm').onkeydown = (event) => { if (event.key === 'Enter') { event.preventDefault(); runPending(); } };

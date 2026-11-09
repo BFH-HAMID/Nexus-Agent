@@ -14,7 +14,6 @@ from .. import securitycenter
 from ..providers import build_providers
 from . import capabilities
 from .common import AssistantError, clean_text
-from .perception import VisionQuestioner, save_upload
 from .personal_data import GoogleWorkspace, NotionNotes, ObsidianNotes
 from .reasoning import ReasoningLoop, WebResearcher
 from .service import service, tts_for
@@ -120,6 +119,9 @@ def get(state, path: str, query: dict[str, list[str]]) -> dict[str, Any]:
 
 
 def post(state, path: str, payload: dict[str, Any], client: str = "") -> dict[str, Any]:
+    if path in {"vision/ask", "vision/preview", "vision/off"}:
+        from ..vision.api import post as vision_post
+        return vision_post(state, path.split('/')[1], payload, client)
     if state.demo:
         raise AssistantError("Assistant actions require live mode, not --demo")
     # Record intent before any mutation or external call; success is recorded
@@ -259,21 +261,6 @@ def post(state, path: str, payload: dict[str, Any], client: str = "") -> dict[st
         _audit(state, "assistant.voice.speak", client, engine=engine, characters=len(text), online=online)
         return {"audio_base64": base64.b64encode(clip.data).decode(), "format": clip.format,
                 "online": online, "characters": len(text)}
-    if path == "vision/ask":
-        data = _audio(payload) if payload.get("audio_base64") else _upload_bytes(payload)
-        question = _field(payload, "question", 3000, lines=True)
-        agent_name = str(payload.get("agent") or state.config.default_agent)
-        if agent_name not in state.config.agents:
-            raise AssistantError("Unknown vision agent")
-        from ..context.core import local_agent
-        local = local_agent(state.config.agents[agent_name])
-        _confirm(payload, "ANALYZE UPLOAD" if local else "UPLOAD DOCUMENT TO CLOUD")
-        from .. import costcenter
-        costcenter.enforce(state.workspace)
-        saved = save_upload(state.workspace, str(payload.get("name") or "upload.txt"), data)
-        result = VisionQuestioner(state.config, _providers(state)).ask(saved, question, agent=agent_name)
-        _audit(state, "assistant.vision.ask", client, agent=agent_name, local=local, bytes=len(data))
-        return _safe({**result, "local": local, "upload_name": saved.name})
     if path == "research":
         _confirm(payload, "RESEARCH WEB")
         urls = payload.get("urls")
@@ -305,34 +292,39 @@ def post(state, path: str, payload: dict[str, Any], client: str = "") -> dict[st
                                    _field(payload, "task", 8000, lines=True), agent=payload.get("agent"))
         _audit(state, "assistant.reasoning.run", client, accepted=result["accepted"], repairs=result["repairs"])
         return _safe(result)
+    if path.startswith('automation/') and not state.token:
+        raise AssistantError('Computer automation requires authenticated HTTP plus operator YAML')
     if path == "automation/backup":
-        _confirm(payload, "CREATE BACKUP")
+        _confirm(payload, 'CREATE BACKUP')
+        from ..computer_sessions import start
         from .automation import BackupManager
-        result = BackupManager(state.workspace).create()
-        _audit(state, "assistant.backup.create", client, id=result["id"], files=result["files"])
-        return result
+        ident, request = BackupManager(state.workspace).request()
+        result = start(state, {'tool': 'file_action', 'arguments': request}, backup_id=ident)
+        return {'id': ident, **result}
     if path == "automation/restore":
-        ident = _field(payload, "id", 100)
-        target = _field(payload, "target", 500)
-        _confirm(payload, f"RESTORE BACKUP {ident}")
+        ident, target = _field(payload, 'id', 100), _field(payload, 'target', 500)
+        _confirm(payload, f'RESTORE BACKUP {ident}')
+        from ..computer_sessions import start
         from .automation import BackupManager
-        result = BackupManager(state.workspace).restore(ident, target, confirmation=f"RESTORE BACKUP {ident}")
-        _audit(state, "assistant.backup.restore", client, id=ident)
-        return result
+        request = BackupManager(state.workspace).restore_request(ident, target)
+        return start(state, {'tool': 'file_action', 'arguments': request})
     if path == "automation/desktop":
-        if not _enabled("NEXUS_DESKTOP_ENABLED"):
-            raise AssistantError("Desktop control is disabled; set NEXUS_DESKTOP_ENABLED=1 explicitly")
-        action = _field(payload, "action", 40)
-        args = payload.get("args")
+        from ..computer_sessions import start
+        from ..permissions import Permissions
+        cfg = Permissions(state.workspace).load()['computer']['desktop']
+        if payload.get('backend', 'auto') not in ('auto', cfg['backend']):
+            raise AssistantError('Backend must match operator YAML')
+        action = _field(payload, 'action', 40)
+        args = payload.get('args')
         if not isinstance(args, dict):
-            raise AssistantError("Desktop args must be an object")
-        _confirm(payload, f"APPROVE DESKTOP {action}")
-        from .automation import DesktopController
-        controller = DesktopController(backend=str(payload.get("backend") or "auto"),
-                                       review=lambda _action, _args: True)
-        result = controller.execute(action, args)
-        _audit(state, "assistant.desktop.execute", client, action=action)
-        return result
+            raise AssistantError('Desktop args must be an object with an allowlisted app')
+        _confirm(payload, f'APPROVE DESKTOP {action}')
+        args = dict(args)
+        if action == 'key':
+            action = 'hotkey'
+            if isinstance(args.get('keys'), str):
+                args['keys'] = args['keys'].casefold().split('+')
+        return start(state, {'tool': 'desktop_action', 'arguments': {**args, 'action': action}})
     raise AssistantError("Unknown assistant action")
 
 

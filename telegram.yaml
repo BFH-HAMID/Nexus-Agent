@@ -8,3 +8,12 @@ challenge_seconds: 60
 quiet_utc_hours: []
 # Explicit export opt-in; default reports contain status/IDs, not task/code text.
 allow_report_text: false
+
+# OFF: private action arguments may include code. Oversized/redacted reviews
+# cannot be approved through the compact Telegram detail view.
+approval_details: false
+voice:
+  enabled: false
+  send_enabled: false
+  max_seconds: 30
+  max_bytes: 2000000

@@ -133,3 +133,73 @@ Accepted macro-free DOCX/XLSX/PPTX pre-images now use the same bounded snapshots
 with Office archive/XML validation and literal credential scanning. Other binary
 formats remain refused. Module 4 admission started separately without enabling any
 unattended tools; see [Jarvis foundation](jarvis.md).
+
+
+### Vision boundaries
+
+[`vision.yaml`](../vision.yaml) is operator-owned, alongside `context.yaml` and
+`autonomy.yaml`. Workspace file tools cannot edit it or replace the configured
+local YOLO weight file (including hardlink aliases); trusted vision runtime and
+face state live under `NEXUS_HOME` and are not workspace file-tool inputs.
+Local `vision_analyze` is read-only. `context_capture`, `vision_camera_start`,
+`vision_cloud_upload`, `vision_face_enroll`, `vision_face_delete`,
+`vision_telegram_send`, and `vision_resume` require fresh dangerous-action
+approval, never an inherited `--yes`/session grant. Existing speaker, second-factor,
+rate and budget checks still apply. Hard off is a stop, not an enabling approval.
+See [Vision](vision.md) for exact scopes and one-use HTTP/Telegram reviews.
+
+
+### Environment scopes (Task 12)
+
+The `computer` section additionally accepts strict nested `desktop`, `files`,
+`browser_controls`, `workflows` and `smart_home` blocks, all `enabled: false` by
+default. Browser form submission/download and workflow/device voice shortcuts have
+separate OFF switches. No environment variable, page settings JSON, macro, OCR,
+email or tool output can enable these. Configuration and credential-like arguments
+are validated before effects; credentials belong in environment/`.env`/keyring.
+
+New `desktop_action`, `file_action`, `workflow_run` and `home_action` tools (and the
+extended `browser_action`) are DANGEROUS and require fresh approval even under
+AUTO_ALLOW/`--yes`. Preflight binds policy, exact arguments and target identity;
+a changed window/process, file pre-image or macro pin invalidates review. Optional
+second factor, limits and emergency stop are not bypassed. All macro steps use the
+same role-pruned registry and require their own fresh decisions.
+
+File operations are limited to operator roots inside the workspace; Studio roots
+can only narrow them. Private files, symlinks/junctions, hardlinks, Windows device
+names/alternate streams, operator macro/plugin trees and trusted app launch inputs
+are not ordinary managed data. Deletion moves one regular file into bounded private
+trash, never a permanent delete; binary trash does not extend typed snapshot
+support. Backup/trash contents are local plaintext and opaque media is not a proven
+secret-free format. Multi-file actions are not atomically rolled back.
+
+Both the default `computer-macros/` directory and a configured macro directory are
+operator-controlled, including hardlink aliases, even while disabled. A recording
+is only a runtime draft; execution additionally requires a manually reviewed YAML
+file and its exact SHA-256 in `workflows.approved`. No saved approval is replayed.
+
+Computer Studio file writes/undo/trash/restore and browser inspection now pass the
+real Permissions-backed gate. The prior reusable WRITE/TRASH/RESTORE phrases alone
+are insufficient: a one-use 60-second client/payload/target/policy/scope-bound review
+is also required. New queued actions use the existing live Approval Center IDs.
+HTTP control requires authentication, same-origin checks and bounded bodies.
+See [complete enablement examples and compatibility notes](computer-control.md).
+
+
+### Defensive security scopes (Task 14)
+
+`security.yaml` is strictly operator-owned, OFF by default, and included in the
+shared approval policy digest. Explicit account-expiry snapshots and staged public
+SSH replacement inputs are also protected from agent edits/hardlink aliases.
+`security_status`, `security_report` and a configured passive `security_monitor`
+are read operations; `security_scan`, `security_response` and `security_analyze`
+are DANGEROUS and require fresh exact review. Scope/role/read-only/second-factor/
+budget/emergency gates remain authoritative; `--yes` and saved approval cannot
+replace the one-use policy/payload/preimage-bound review.
+
+When root defensive mode is enabled, opaque shell/Git/MCP/browser/desktop relays
+are refused rather than trusted to respect an IP allowlist. Known raw scanner
+commands are refused even with the feature OFF. This is a tool-surface boundary,
+not OS confinement of other programs or separately approved legacy code outside
+this mode. Responses only record proposals with rollback text; there is no host
+remediation executor. See [enablement and limitations](defensive-security.md).
