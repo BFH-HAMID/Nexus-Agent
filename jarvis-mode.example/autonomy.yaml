@@ -1,0 +1,79 @@
+# Jarvis mode example — daemon admission policy (CONSERVATIVE: L1, runtime OFF)
+# Copy to workspace root, review, then edit. Agent file tools cannot edit this file.
+schema: 1
+level: L1                       # L1 default: fresh approval for dangerous/external
+max_queue: 20
+max_depth: 3
+cooldown_seconds: 60
+ttl_seconds: 86400
+max_reserved_cost: 1.0          # admission estimate only, not permission to spend
+
+# Local runtime — OFF by default. Enable only for L2/L3 with a pinned local model.
+runtime:
+  enabled: false
+  local_model: ""               # e.g. "qwen2.5-coder:7b" — you install this yourself
+  mode: read_only               # read_only | reviewed_write
+  write_roots: []               # workspace-relative roots only
+  auto_sources: []              # L2/L3 admission only for these explicit sources
+  allow_safe_writes: false      # L3 new-file/append only, also needs AUTO_ALLOW
+  projects: []                  # existing Module 2 project names
+  connectivity: offline         # model inference stays local in both states
+  max_seconds: 120
+  max_turns: 4
+  max_requests: 8
+  max_request_bytes: 100000
+  max_output_tokens: 512
+  max_runs_day: 10
+  max_runs_hour: 5
+  max_requests_day: 80
+  max_requests_hour: 40
+  max_tokens_day: 2000000
+  max_tokens_hour: 1000000
+  max_actions: 20
+  max_actions_day: 200
+  max_actions_hour: 100
+  max_bytes_day: 1000000
+  max_seconds_day: 1200
+  max_memory_mb: 512
+  max_cpu_percent: 90
+
+# Opt-in probes (all OFF by default): see docs/jarvis.md
+triggers: []
+
+# Tool autonomy risk classes
+risk_classes:
+  SAFE: automatic
+  MEDIUM: automatic_notify
+  DANGEROUS: fresh_approval
+
+# Live status narration (OFF by default)
+status_narration:
+  enabled: false
+  verbosity: milestones       # silent | milestones | chatty
+  cooldown_seconds: 0.0
+  max_chars: 180
+
+# Notification routing (OFF by default)
+notifications:
+  enabled: false
+  presence: auto
+  present_ttl_seconds: 300
+  voice_when_present: true
+  away_channel: auto
+
+# Recurring / delayed scheduler (OFF by default)
+timezone: ""
+scheduler:
+  enabled: false
+  timezone: ""
+  max_schedules: 64
+  auto_resume_crashed: false
+  default_target: queue
+
+# Watchdogs (OFF by default)
+watchdog:
+  enabled: false
+  step_timeout_seconds: 300.0
+  max_identical_tool_calls: 3
+  poll_seconds: 5.0
+  notify_on_trigger: true

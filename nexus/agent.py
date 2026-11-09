@@ -15,9 +15,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from .config import NexusConfig, Pipeline, load_config
+from .config import NexusConfig, Pipeline, load_config, nexus_home
 from .execution import WORKSPACE_TOOLS, claims_execution, needs_execution
-from .learning import LearningLoop, nudge_interval, skills_index_for
+from .learning import LearningLoop, LessonsStore, nudge_interval, skills_index_for
 from .memory import LongTermMemory, MemoryStore, env_flag, resolve_runtime_context
 from .providers import ProviderRegistry, StreamCancelled, build_providers
 from .router import RouteDecision, Router
@@ -122,6 +122,7 @@ class RunResult:
     messages: list[Message] = field(default_factory=list)
     ok: bool = True
     learned: dict[str, Any] = field(default_factory=dict)
+    lesson: str = ""
     session_id: str = ""
     trace_id: str = ""
     execution: dict[str, Any] = field(default_factory=dict)
@@ -143,7 +144,9 @@ class NexusAgent:
         self.ws = Path(workspace or os.environ.get("NEXUS_WORKSPACE") or Path.cwd()).resolve()
         self.config = config or load_config(self.ws)
         self.config.settings.workspace = self.ws
-        self.providers = providers or build_providers(self.config.agents)
+        self.providers = providers or build_providers(
+            self.config.agents, offline=(self.config.settings.profile == "offline")
+        )
         base_emit = emit or NullHandler()
         from .context.core import Context
         from .context.core import settings as context_settings
@@ -214,6 +217,7 @@ class NexusAgent:
         self.long_term_memory = LongTermMemory(self.ws, memory_store=self.memory_store)
         self.sessions = SessionStore()
         self.learning = LearningLoop(self)
+        self.lessons = LessonsStore(nexus_home())
         self._turns_since_nudge = 0
         self.pending_skill: str | None = None
         self.idempotency_scope: str | None = None
@@ -597,6 +601,7 @@ class NexusAgent:
                     max_tokens=agent_cfg.max_tokens,
                     temperature=active_role.temperature,
                     model=active_role.model,
+                    timeout=agent_cfg.timeout,
                     on_event=self.emit,
                     on_text=_on_text if use_stream else None,
                 )
@@ -839,6 +844,14 @@ class NexusAgent:
                     self.event(EventType.STATUS, message=f"learning: {note}")
             except Exception as exc:  # noqa: BLE001
                 self.event(EventType.STATUS, message=f"learning skipped: {exc}")
+        try:
+            outcome = getattr(result, "learned", None) or {}
+            lesson = self.lessons.record_from_result(result, task, outcome)
+            if lesson:
+                result.lesson = lesson
+                self.event(EventType.STATUS, message=f"lesson recorded: {lesson}")
+        except Exception:  # noqa: BLE001 - lessons must never break a run
+            pass
         self._turns_since_nudge += 1
         return result
 

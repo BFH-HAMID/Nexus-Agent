@@ -70,6 +70,8 @@ projects/
 # Role Hub version snapshots are runtime state, never source
 .nexus/rolehub/
 .nexus/router/
+# Roles/persona version snapshots (from `scripts/build_roles.py`)
+.nexus/roles.versions/
 
 # Operator-installed vision weights, biometric templates and capture artifacts
 .nexus/assistant/

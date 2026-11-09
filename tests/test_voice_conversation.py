@@ -863,7 +863,7 @@ def test_build_agent_handler_streams_with_persona_and_spoken_approval(repo: Path
     )
     nexus_cfg = load_config(repo)
     nexus_cfg.default_agent = "gemini"
-    monkeypatch.setattr("nexus.agent.build_providers", lambda _agents: fake_registry(provider, config=nexus_cfg))
+    monkeypatch.setattr("nexus.agent.build_providers", lambda _agents, **kwargs: fake_registry(provider, config=nexus_cfg))
 
     cfg = VoiceConfig(
         enabled=True,

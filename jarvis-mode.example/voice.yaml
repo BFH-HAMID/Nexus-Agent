@@ -1,0 +1,96 @@
+# Jarvis mode example — voice configuration (CONSERVATIVE: everything OFF)
+# Copy to workspace root, review, then flip switches you want.
+# Agent file tools cannot edit this file. Cloud secrets go in .env or keyring, never here.
+schema: 1
+enabled: false
+
+sample_rate: 16000
+channels: 1
+input_device: null
+output_device: null
+
+wake:
+  enabled: false          # set true to opt into wake-word listening
+  engine: disabled        # openwakeword | ptt | disabled
+  word: "hey nexus"
+  model_path: ""
+  sensitivity: 0.6
+  cooldown_seconds: 1.5
+  push_to_talk_key: "ctrl+space"
+
+vad:
+  engine: energy          # silero | energy
+  threshold: 0.5
+  min_speech_ms: 250
+  min_silence_ms: 700
+  speech_pad_ms: 200
+  max_utterance_seconds: 30
+
+stt:
+  provider: faster-whisper  # faster-whisper | cloud
+  model_size: small
+  device: auto
+  compute_type: auto
+  language: auto            # auto (Bangla/English/mixed) | bn | en
+  cloud_url: ""
+  cloud_api_key_env: OPENAI_API_KEY
+
+tts:
+  provider: piper           # piper | kokoro | edge | elevenlabs | auto
+  speaking_rate: 1.0
+  piper_model: ""
+  piper_bn_model: ""
+  piper_bin: piper
+  kokoro_voice: af_heart
+  kokoro_language: a
+  edge_voice_bn: bn-BD-NabanitaNeural
+  edge_voice_en: en-US-AriaNeural
+  elevenlabs_voice_id: ""
+  elevenlabs_model: eleven_multilingual_v2
+  elevenlabs_api_key_env: ELEVENLABS_API_KEY
+
+speaker:
+  enabled: false            # true enforces enrolled voiceprint (requires .[voice-speaker])
+  require_for_dangerous: true
+  require_always: false
+  threshold: 0.75
+
+hud:
+  publish_events: true
+
+duplex:
+  enabled: true
+  barge_in_threshold: 0.55
+  barge_in_min_speech_ms: 96
+  cancel_budget_ms: 200
+
+turn_detection:
+  semantic_eot: true
+  adaptive_silence: true
+  min_silence_ms: 450
+  max_silence_ms: 2400
+  incomplete_extension_ms: 900
+
+streaming:
+  enabled: true
+  fast_first_clause: true
+  target_first_audio_ms: 1000
+
+realtime:
+  enabled: false            # local pipeline stays default
+  provider: local           # local | gemini-live | livekit | pipecat
+  model: gemini-2.0-flash-live-001
+  api_key_env: GEMINI_API_KEY
+
+acknowledgements:
+  enabled: true             # short 'Okay, on it.' when slow; disable via false / --no-ack
+  min_delay_ms: 450
+  cooldown_seconds: 12.0
+  max_per_minute: 4
+
+conversation:
+  max_turns: 10
+  resolve_references: true
+  one_question_clarification: true
+  spoken_approvals: true    # 'yes do it', 'no cancel', 'wait'
+  approval_timeout_seconds: 120.0

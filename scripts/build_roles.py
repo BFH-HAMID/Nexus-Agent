@@ -14,7 +14,9 @@ works in a project-local ``.nexus/roles.yaml``, which merges on top of this file
 from __future__ import annotations
 
 import argparse
+import datetime as _dt
 import re
+import shutil
 import sys
 from collections import Counter
 from pathlib import Path
@@ -1095,12 +1097,34 @@ def render_roles_md(roles: list[dict[str, Any]]) -> str:
     return "\n".join(out).rstrip() + "\n"
 
 
+def _snapshot_roles(roles_text: str, versions_dir: Path) -> None:
+    """Keep a timestamped copy of roles.yaml + persona.yaml before a write.
+
+    Rollback targets (`nexus roles --rollback <stamp> --execute`) restore from
+    these snapshots; nothing is ever deleted.
+    """
+    stamp = _dt.datetime.now(_dt.timezone.utc).strftime("%Y%m%dT%H%M%S")
+    vdir = versions_dir / stamp
+    vdir.mkdir(parents=True, exist_ok=True)
+    (vdir / "roles.yaml").write_text(roles_text, encoding="utf-8")
+    persona = ROOT / "persona.yaml"
+    if persona.is_file():
+        shutil.copy2(persona, vdir / "persona.yaml")
+    changelog = versions_dir / "CHANGELOG.md"
+    with changelog.open("a", encoding="utf-8") as out:
+        out.write(f"- {stamp}: regenerated roles.yaml ({len(ROLES)} roles)\n")
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--check", action="store_true", help="validate only, do not write")
     parser.add_argument("--stats", action="store_true", help="print counts and exit")
     parser.add_argument("--docs", action="store_true", help="also regenerate docs/roles.md")
     parser.add_argument("--out", default=str(OUT))
+    parser.add_argument(
+        "--versions-dir", default=str(ROOT / ".nexus" / "roles.versions"),
+        help="directory for timestamped roles/persona snapshots",
+    )
     args = parser.parse_args(argv)
 
     errors = validate(ROLES)
@@ -1124,6 +1148,8 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     text = render_roles_yaml(ROLES)
+    if args.out == str(OUT):
+        _snapshot_roles(text, Path(args.versions_dir))
     Path(args.out).write_text(text, encoding="utf-8")
     print(f"wrote {args.out} ({len(ROLES)} roles, {len(text.splitlines())} lines)")
     if args.docs:

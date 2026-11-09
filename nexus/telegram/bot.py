@@ -355,6 +355,10 @@ class Bot:
             return 'Pause requested; inspect actual heartbeat for acknowledgement.'
         if command == '/kill':
             return self.challenge(user, 'kill', {})
+        if command == '/stop':
+            from ..computer_control import EmergencyStop
+            EmergencyStop().set(True)
+            return 'EMERGENCY STOP latched. All work paused. Resume requires `nexus resume`.'
         if command == '/report':
             row = self.studio.find('jarvis-job', rest)
             result = {'id': rest, 'state': row['status'], 'attempts': row.get('attempts', 0)}

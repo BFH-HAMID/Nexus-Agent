@@ -483,6 +483,16 @@ class Settings:
     never_allow_tools: list[str] = field(default_factory=list)
     blocked_command_patterns: list[str] = field(default_factory=list)
     timezone: str = ""
+    profile: str = "online"          # "online" or "offline" (local-only, no cloud clients)
+    latency_budgets: dict[str, float] = field(
+        default_factory=lambda: {
+            "first_audio_cloud_s": 1.5,
+            "first_audio_local_s": 2.5,
+            "stt_p50_s": 0.6,
+            "llm_first_token_s": 1.0,
+            "tts_first_audio_s": 0.8,
+            "golden_mission_s": 30.0,
+        })
     workspace: Path = field(default_factory=Path.cwd)
 
     @classmethod
@@ -535,6 +545,11 @@ class Settings:
             self.router_agent = os.environ["NEXUS_ROUTER_AGENT"]
         if os.environ.get("NEXUS_TIMEZONE"):
             self.timezone = os.environ["NEXUS_TIMEZONE"].strip()
+        raw_profile = os.environ.get("NEXUS_PROFILE")
+        if raw_profile:
+            raw_profile = raw_profile.strip().lower()
+            if raw_profile in {"online", "offline"}:
+                self.profile = raw_profile
 
 
 @dataclass

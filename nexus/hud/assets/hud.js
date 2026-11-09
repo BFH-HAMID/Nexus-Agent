@@ -8,7 +8,7 @@ const busyButtons = new WeakSet();
 function controlState() {
   if (!latest) return;
   const state = latest.daemon.state;
-  const allowed = {start: !['running','starting','paused','unresponsive'].includes(state) && latest.policy.level !== 'L0', pause: state === 'running', resume: state === 'paused' && latest.policy.level !== 'L0', stop: !['stopped','killed'].includes(state), kill: !['stopped','killed'].includes(state)};
+  const allowed = {start: !['running','starting','paused','unresponsive'].includes(state) && latest.policy.level !== 'L0', pause: state === 'running', resume: state === 'paused' && latest.policy.level !== 'L0', stop: !['stopped','killed'].includes(state), kill: !['stopped','killed'].includes(state), emergency_stop: true};
   for (const n of document.querySelectorAll('[data-control]')) { n.disabled = !authenticated || busyButtons.has(n) || !allowed[n.dataset.control]; n.title = !authenticated ? 'Connect first' : allowed[n.dataset.control] ? 'Request ' + n.dataset.control : 'Not available while worker is ' + state; }
 }
 function changed(key, value) { const next = JSON.stringify(value); if (rendered[key] === next) return false; rendered[key] = next; return true; }
@@ -231,6 +231,10 @@ for (const control of document.querySelectorAll('[data-control]')) bind(control,
   const action = control.dataset.control;
   const confirmation = ['start', 'resume'].includes(action) ? prompt('This can dispatch previously approved work. Type: ' + action.toUpperCase() + ' JARVIS') : '';
   if (confirmation !== null) await perform('control', {action, confirmation});
+});
+bind($('emergency_stop-btn') || document.querySelector('[data-control="emergency_stop"]'), async () => {
+  const confirmed = confirm('EMERGENCY STOP: this latches a hard stop across all Nexus work. Resume requires `nexus resume`. Proceed?');
+  if (confirmed) await perform('emergency_stop', {});
 });
 bind($('allow'), async () => {
   if (!selectedAction) throw Error('Inspect a real pending action first.');
