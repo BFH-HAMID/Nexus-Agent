@@ -16,12 +16,17 @@ keys      set / list / test API keys (no .env file needed)
 models    list the model ids a provider actually offers
 init      write .nexus / .vscode scaffolding into a project
 prompt    print the system prompt a role would get
+eval      run the offline evaluation suite (golden missions, red-team, latency benchmarks)
+lessons   review the append-only lessons log from past missions
+skills    skills: list/show/import/curate/stage/approve/rollback
 version   version info
 """
 
 from __future__ import annotations
 
 import argparse
+import datetime
+import difflib
 import json
 import os
 import shutil
@@ -981,8 +986,94 @@ def _read_stdin_task() -> str:
     return sys.stdin.read().strip()
 
 
+def _roles_versions_dir(workspace: Path) -> Path:
+    return workspace / ".nexus" / "roles.versions"
+
+
+def _list_role_versions(workspace: Path) -> list[str]:
+    vdir = _roles_versions_dir(workspace)
+    if not vdir.is_dir():
+        return []
+    return sorted(
+        p.name
+        for p in vdir.iterdir()
+        if p.is_dir() and (p / "roles.yaml").is_file()
+    )
+
+
+def _dt_stamp() -> str:
+    return datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%S")
+
+
+def cmd_roles_versions(args: argparse.Namespace) -> int:
+    workspace = Path(args.workspace).resolve() if args.workspace else Path.cwd()
+    versions = _list_role_versions(workspace)
+    if getattr(args, "json", False):
+        print(json.dumps(versions, indent=2, ensure_ascii=False))
+        return 0
+    if not versions:
+        print("no role versions yet - run `python3 scripts/build_roles.py` to snapshot")
+        return 0
+    print(COLORS.bold("role/persona versions (newest last)"))
+    for stamp in versions:
+        print(f"  {stamp}")
+    print()
+    print(COLORS.dim("  nexus roles --rollback <stamp>        # preview the restore (diff)"))
+    print(COLORS.dim("  nexus roles --rollback <stamp> --execute  # restore roles.yaml + persona.yaml"))
+    return 0
+
+
+def cmd_roles_rollback(args: argparse.Namespace) -> int:
+    workspace = Path(args.workspace).resolve() if args.workspace else Path.cwd()
+    vdir = _roles_versions_dir(workspace)
+    snap = vdir / args.rollback
+    if not snap.is_dir() or not (snap / "roles.yaml").is_file():
+        print(COLORS.red(f"no role version named '{args.rollback}' - `nexus roles --versions` lists them"))
+        return 1
+    roles_path = workspace / "roles.yaml"
+    persona_path = workspace / "persona.yaml"
+    current = roles_path.read_text(encoding="utf-8") if roles_path.is_file() else ""
+    snapshot = (snap / "roles.yaml").read_text(encoding="utf-8")
+    diff = "\n".join(
+        difflib.unified_diff(
+            current.splitlines(), snapshot.splitlines(),
+            fromfile=f"current {roles_path}", tofile=f"snapshot {snap / 'roles.yaml'}",
+        )
+    )
+    print(diff or COLORS.dim("  (no changes)"))
+    if not getattr(args, "execute", False):
+        print()
+        print(COLORS.dim("dry run - pass --execute to restore roles.yaml and persona.yaml from this snapshot"))
+        return 0
+    backup = vdir / f"pre-rollback-{args.rollback}-{_dt_stamp()}"
+    backup.mkdir(parents=True, exist_ok=True)
+    if roles_path.is_file():
+        shutil.copy2(roles_path, backup / "roles.yaml")
+    if persona_path.is_file():
+        shutil.copy2(persona_path, backup / "persona.yaml")
+    shutil.copy2(snap / "roles.yaml", roles_path)
+    persona_snap = snap / "persona.yaml"
+    if persona_snap.is_file():
+        shutil.copy2(persona_snap, persona_path)
+    elif persona_path.is_file():
+        persona_path.unlink()
+    try:
+        load_config(workspace)
+    except ConfigError as exc:
+        print(COLORS.red(f"restored roles.yaml fails to load: {exc} - keeping your backup at {backup}"))
+        return 1
+    print(COLORS.green(f"✓ rolled back roles/persona to {args.rollback} (previous state backed up at {backup})"))
+    return 0
+
+
 def cmd_roles(args: argparse.Namespace) -> int:
     workspace = Path(args.workspace).resolve() if args.workspace else Path.cwd()
+
+    if getattr(args, "versions", False):
+        return cmd_roles_versions(args)
+    if getattr(args, "rollback", None):
+        return cmd_roles_rollback(args)
+
     config = load_config(workspace)
     team_filter = getattr(args, "team", None)
     if team_filter:
@@ -1617,6 +1708,82 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     branch = run_git(["rev-parse", "--abbrev-ref", "HEAD"], workspace)[0].strip()
     add("git branch", code == 0, branch or "unknown")
 
+    # -- optional components (voice / chief / proactive / vision / integrations) -- #
+    for comp_name, cfg_file, enabled_key in (
+        ("voice", "voice.yaml", "enabled"),
+        ("chief", "chief.yaml", "enabled"),
+        ("proactive", "proactive.yaml", "enabled"),
+        ("vision", "vision.yaml", "enabled"),
+        ("integrations", "mcp.yaml", "integrations.enabled"),
+    ):
+        cfg_path = workspace / cfg_file
+        if not cfg_path.is_file():
+            add(f"opt:{comp_name}", None, f"{cfg_file} not present",
+                f"copy {cfg_file} to workspace to opt in")
+            continue
+        try:
+            data = yaml.safe_load(cfg_path.read_text()) or {}
+        except yaml.YAMLError:
+            add(f"opt:{comp_name}", False, f"{cfg_file} invalid YAML", f"fix {cfg_file}")
+            continue
+        val = data
+        for part in enabled_key.split("."):
+            if not isinstance(val, dict):
+                val = None
+                break
+            val = val.get(part)
+        is_enabled = val is True
+        add(
+            f"opt:{comp_name}",
+            None,
+            f"{cfg_file}: {'enabled' if is_enabled else 'OFF'}",
+            f"set {enabled_key}: true in {cfg_file} to opt in (operator-owned file)",
+        )
+
+    # -- security posture ------------------------------------------------------ #
+    autonomy_path = workspace / "autonomy.yaml"
+    perms_path = workspace / "permissions.yaml"
+    sec_path = workspace / "security.yaml"
+
+    def _yaml_bool(path: Path, dotted_key: str) -> bool | None:
+        if not path.is_file():
+            return None
+        try:
+            data = yaml.safe_load(path.read_text()) or {}
+        except yaml.YAMLError:
+            return None
+        val = data
+        for part in dotted_key.split("."):
+            if not isinstance(val, dict):
+                return None
+            val = val.get(part)
+        return val if isinstance(val, bool) else None
+
+    level = None
+    if autonomy_path.is_file():
+        try:
+            ad = yaml.safe_load(autonomy_path.read_text()) or {}
+            level = ad.get("level")
+        except yaml.YAMLError:
+            pass
+    add("security:autonomy", None, f"level={level or 'L1'} (default)",
+        "edit autonomy.yaml to change admission level (operator-owned)")
+
+    sf = _yaml_bool(perms_path, "second_factor.enabled")
+    add("security:second_factor", None,
+        f"second factor {'ON' if sf is True else 'OFF (default)'}",
+        "set permissions.yaml second_factor.enabled: true to require PIN/Telegram")
+
+    sb = _yaml_bool(sec_path, "enabled")
+    add("security:defensive", None,
+        f"defensive mode {'ON' if sb is True else 'OFF (default)'}",
+        "set security.yaml enabled: true to narrow the tool gate")
+
+    rt = _yaml_bool(autonomy_path, "runtime.enabled")
+    add("security:runtime", None,
+        f"local runtime {'ON' if rt is True else 'OFF (default)'}",
+        "set autonomy.yaml runtime.enabled: true to allow local model execution")
+
     exit_code = _render_doctor(checks, args)
     return exit_code
 
@@ -1740,6 +1907,50 @@ def cmd_version(_args: argparse.Namespace) -> int:
 
 
 # --------------------------------------------------------------------------- #
+# emergency stop / resume
+# --------------------------------------------------------------------------- #
+
+
+def cmd_stop(args: argparse.Namespace) -> int:
+    """``nexus stop [--all]`` - latch the emergency stop, cancelling work."""
+    from .computer_control import EmergencyStop
+
+    latch = EmergencyStop()
+    latch.set(True)
+
+    if getattr(args, "all", False):
+        # Also ask every known subsystem to pause/drain where safe.
+        try:
+            from .jarvis.daemon import Daemon
+            Daemon(Path(args.workspace).resolve() if args.workspace else Path.cwd()).request("pause")
+        except Exception:
+            # pause is best-effort; the latch itself is the hard stop.
+            pass
+
+    if getattr(args, "json", False):
+        print(json.dumps({"stopped": True, "resume": "nexus resume"}, ensure_ascii=False))
+    else:
+        print(COLORS.red("EMERGENCY STOP latched. All missions cancelled, pipelines paused, "
+                          "processes/containers stopped. Resume requires `nexus resume`."))
+    return 0
+
+
+def cmd_resume(_args: argparse.Namespace) -> int:
+    """``nexus resume`` - unlatch the emergency stop (operator-only)."""
+    from .computer_control import EmergencyStop
+
+    latch = EmergencyStop()
+    latch.set(False)
+
+    if getattr(_args, "json", False):
+        print(json.dumps({"stopped": False}, ensure_ascii=False))
+    else:
+        print(COLORS.green("Emergency stop cleared. Operator approval still required for all "
+                           "tool actions; nothing resumes automatically."))
+    return 0
+
+
+# --------------------------------------------------------------------------- #
 # argparse
 # --------------------------------------------------------------------------- #
 
@@ -1772,6 +1983,72 @@ def add_common(parser: argparse.ArgumentParser) -> None:
 # --------------------------------------------------------------------------- #
 # skills / memory / recall / learning / hermes / self-update
 # --------------------------------------------------------------------------- #
+
+
+def cmd_lessons(args: argparse.Namespace) -> int:
+    """``nexus lessons`` - review the append-only lessons log (read-only)."""
+    from .learning import LessonsStore
+
+    store = LessonsStore()
+    entries = store.recent(int(getattr(args, "tail", 20) or 20))
+    if getattr(args, "json", False):
+        print(
+            json.dumps(
+                [
+                    {
+                        "when": e.when,
+                        "task": e.task,
+                        "role": e.role,
+                        "agent": e.agent,
+                        "ok": e.ok,
+                        "stopped_reason": e.stopped_reason,
+                        "tool_calls": e.tool_calls,
+                        "changed_files": e.changed_files,
+                        "tainted": e.tainted,
+                        "approval_denied": e.approval_denied,
+                        "lesson": e.lesson,
+                    }
+                    for e in entries
+                ],
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
+        return 0
+    if not entries:
+        print("no lessons recorded yet - run a mission to start the log")
+        return 0
+    print(COLORS.bold("lessons (append-only, review-only - never auto-applied to prompts or permissions)"))
+    for e in entries:
+        mark = COLORS.green("ok") if e.ok else COLORS.red("blocked")
+        print(f"  {COLORS.dim(e.when)}  {e.role:<10} {mark:>8}  {e.lesson}")
+    print()
+    print(COLORS.dim(f"{len(entries)} entry(ies) in {store.path}"))
+    print(COLORS.dim("  lessons inform skills/memory through the normal learning review; they never change prompts or permissions silently"))
+    return 0
+
+
+def cmd_eval(args: argparse.Namespace) -> int:
+    """``nexus eval run`` - offline evaluation suite; fails CI on regression."""
+    from .evaluation.suite import run_suite, write_report
+
+    workspace = Path(getattr(args, "workspace", None) or Path.cwd()).resolve()
+    report = run_suite(workspace, days=int(getattr(args, "days", 7) or 7))
+    path = write_report(report, workspace, fmt=getattr(args, "format", "json"))
+
+    print(COLORS.bold(f"nexus eval ({report.ran_at})  workspace: {workspace}"))
+    for c in report.checks:
+        mark = COLORS.green("ok") if c.ok else COLORS.red("FAIL")
+        budget = f" / budget {c.budget_seconds}s" if c.budget_seconds else ""
+        print(f"  [{mark}] {c.name:<24} {c.detail}{budget}")
+    print()
+    if report.ok:
+        print(COLORS.green("all evaluation checks passed"))
+        print(COLORS.dim(f"report written to {path}"))
+        return 0
+    print(COLORS.red(f"REGRESSIONS: {', '.join(report.regressions)}"))
+    print(COLORS.dim(f"report written to {path}"))
+    return 1 if getattr(args, "fail_on_regression", True) else 0
 
 
 def _skills_count(config_workspace: Path) -> int:
@@ -1828,6 +2105,88 @@ def cmd_skills(args: argparse.Namespace) -> int:
         ok = skilllib.delete_skill(name, workspace=workspace)
         print(COLORS.green(f"deleted {name}") if ok else COLORS.red(f"no skill named '{name}'"))
         return 0 if ok else 1
+
+    if action == "stage":
+        from . import skill_staging
+
+        name = (getattr(args, "name", "") or "").strip()
+        if not name:
+            print(COLORS.red("usage: nexus skills stage <name> --body-file FILE [--description ...] [--tags ...]"))
+            return 2
+        body = getattr(args, "body", "") or ""
+        body_file = getattr(args, "body_file", None)
+        if body_file:
+            body = Path(body_file).read_text(encoding="utf-8")
+        if not body.strip():
+            print(COLORS.red("stage needs a body (--body or --body-file)"))
+            return 2
+        description = getattr(args, "description", "") or ""
+        tags = [t.strip() for t in (getattr(args, "tags", "") or "").split(",") if t.strip()]
+        diff = None
+        diff_file = getattr(args, "diff_file", None)
+        if diff_file:
+            diff = Path(diff_file).read_text(encoding="utf-8")
+        tests = None
+        tests_file = getattr(args, "tests_file", None)
+        if tests_file:
+            tests = Path(tests_file).read_text(encoding="utf-8")
+        try:
+            proposal = skill_staging.stage_proposal(
+                name=name, body=body, description=description, tags=tags,
+                workspace=workspace, diff=diff, tests=tests,
+            )
+        except (ValueError, FileExistsError, OSError) as exc:
+            print(COLORS.red(f"✗ {exc}"))
+            return 1
+        print(COLORS.green(f"✓ staged '{name}' at {proposal.path} (inert until approved)"))
+        for note in proposal.notes[:5]:
+            print(COLORS.dim(f"  {note}"))
+        print(COLORS.dim(f"  review: nexus skills review   ·   activate: nexus skills approve {name} --execute"))
+        return 0
+
+    if action == "review":
+        from . import skill_staging
+
+        proposals = skill_staging.list_staged(workspace)
+        if getattr(args, "json", False):
+            print(json.dumps([p.to_dict() for p in proposals], indent=2, ensure_ascii=False))
+            return 0
+        if not proposals:
+            print(COLORS.dim("no staged skill proposals"))
+            return 0
+        print(COLORS.bold(f"{len(proposals)} staged skill proposal(s)"))
+        for p in proposals:
+            print(f"  {COLORS.cyan(p.name):<30} {p.status:<10} {COLORS.dim(str(p.path))}")
+            for note in p.notes[:3]:
+                print(COLORS.dim(f"    {note}"))
+        print()
+        print(COLORS.dim("  nexus skills approve <name>        # dry-run preview"))
+        print(COLORS.dim("  nexus skills approve <name> --execute  # run tests, ruff, permission check, then activate"))
+        return 0
+
+    if action in {"approve", "rollback"}:
+        from . import skill_staging
+
+        name = (getattr(args, "name", "") or "").strip()
+        if not name:
+            print(COLORS.red(f"usage: nexus skills {action} <name> [--execute]"))
+            return 2
+        if action == "approve":
+            result = skill_staging.approve_proposal(name, workspace, execute=bool(getattr(args, "execute", False)))
+        else:
+            result = skill_staging.rollback_proposal(name, workspace)
+        if getattr(args, "json", False):
+            print(json.dumps(result, indent=2, ensure_ascii=False))
+            return 0 if result.get("ok") else 1
+        for note in result.get("notes", []):
+            print(COLORS.dim(f"  {note}"))
+        if result.get("ok"):
+            print(COLORS.green(f"✓ {result.get('message', 'done')}"))
+            if result.get("activated"):
+                print(COLORS.dim(f"  {result['skill_path']}"))
+            return 0
+        print(COLORS.red(f"✗ {result.get('error', 'refused')}"))
+        return 1
 
     library = skilllib.discover(workspace)
     if action == "show":
@@ -2328,6 +2687,15 @@ def build_parser() -> argparse.ArgumentParser:
     from .evaluation.cli import add_trace_parser
     add_trace_parser(sub)
 
+    p = sub.add_parser("eval", help="run the offline evaluation suite (golden missions, red-team, latency benchmarks)")
+    p.add_argument("action", nargs="?", default="run", choices=["run", "report"])
+    p.add_argument("--workspace", "-C")
+    p.add_argument("--days", type=int, default=7)
+    p.add_argument("--format", default="json", choices=["json", "markdown"])
+    p.add_argument("--fail-on-regression", action="store_true", default=True,
+                   help="exit non-zero when any check fails or a latency budget regresses")
+    p.set_defaults(func=cmd_eval)
+
     p = sub.add_parser("integrations", help="inspect, store (keyring), revoke, or search scoped personal integrations")
     int_sub = p.add_subparsers(dest="action", required=True)
     ip_status = int_sub.add_parser("status", help="show integration status and granted keyring scopes")
@@ -2396,8 +2764,23 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--show")
     p.add_argument("--category", "-c")
     p.add_argument("--team", help="only roles of this team (see `nexus teams`)")
+    p.add_argument("--versions", action="store_true", help="list role/persona snapshot versions")
+    p.add_argument("--rollback", metavar="STAMP", help="preview restoring roles.yaml/persona.yaml from this snapshot")
+    p.add_argument("--execute", action="store_true", help="with --rollback: restore for real")
     p.add_argument("--json", action="store_true")
     p.set_defaults(func=cmd_roles)
+
+    p = sub.add_parser("stop", help="latch the emergency stop and cancel all work")
+    p.add_argument("--all", action="store_true",
+                   help="also pause the Jarvis daemon / scheduler (best-effort)")
+    p.add_argument("--workspace", "-C")
+    p.add_argument("--json", action="store_true", help="machine readable output")
+    p.set_defaults(func=cmd_stop)
+
+    p = sub.add_parser("resume", help="clear the emergency stop latch (operator-only)")
+    p.add_argument("--workspace", "-C")
+    p.add_argument("--json", action="store_true", help="machine readable output")
+    p.set_defaults(func=cmd_resume)
 
     p = sub.add_parser("agents", help="list configured model agents")
     p.add_argument("--workspace", "-C")
@@ -2500,17 +2883,25 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--workspace", "-C")
     p.set_defaults(func=cmd_prompt)
 
-    p = sub.add_parser("skills", help="skills: the agent's procedural memory (list/show/import/curate)")
+    p = sub.add_parser("skills", help="skills: the agent's procedural memory (list/show/import/curate/stage/approve/rollback)")
     p.add_argument("action", nargs="?", default="list",
-                   choices=["list", "show", "import", "curate", "delete", "path"])
-    p.add_argument("name", nargs="?", help="skill name (show / delete)")
+                   choices=["list", "show", "import", "curate", "delete", "stage", "review", "approve", "rollback", "path"])
+    p.add_argument("name", nargs="?", help="skill name (show / delete / stage / approve / rollback)")
     p.add_argument("--workspace", "-C")
     p.add_argument("--search", "-s", help="filter by name/description/tag")
     p.add_argument("--apply", action="store_true", help="curate: archive the stale ones")
     p.add_argument("--stale-days", type=int, default=45)
     p.add_argument("--offline", action="store_true", help="import: use the local checkout, do not pull")
     p.add_argument("--no-optional", action="store_true", help="import: skip optional-skills")
-    p.add_argument("--force", action="store_true", help="import: overwrite existing skills")
+    p.add_argument("--force", action="store_true", help="import: overwrite existing skills / stage: overwrite")
+    p.add_argument("--description", help="stage: one-sentence skill description")
+    p.add_argument("--body-file", help="stage: file with the SKILL.md body")
+    p.add_argument("--body", help="stage: inline SKILL.md body")
+    p.add_argument("--tags", help="stage: comma-separated tags")
+    p.add_argument("--diff-file", help="stage: diff/patch file for review")
+    p.add_argument("--tests-file", help="stage: pytest file exercising the skill")
+    p.add_argument("--execute", action="store_true",
+                   help="approve/roll back for real - without it commands are a dry-run preview")
     p.add_argument("--json", action="store_true")
     p.set_defaults(func=cmd_skills)
 

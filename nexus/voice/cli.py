@@ -241,6 +241,34 @@ def cmd_run(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_bench(args: argparse.Namespace) -> int:
+    """``nexus voice bench`` - report STT/LLM/TTS timings vs latency budgets.
+
+    Runs fully offline with scripted timings; no microphone, model, or network.
+    """
+    from nexus.config import load_config
+    from nexus.evaluation.suite import run_latency_bench
+
+    workspace = Path(getattr(args, "workspace", None) or Path.cwd()).resolve()
+    config = load_config(workspace)
+    checks = run_latency_bench(config.settings)
+
+    print(f"nexus voice bench  workspace: {workspace}  profile={config.settings.profile}")
+    all_ok = True
+    for c in checks:
+        mark = "ok  " if c.ok else "FAIL"
+        budget = f"budget {c.budget_seconds}s" if c.budget_seconds else ""
+        print(f"  [{mark}] {c.name:<20} {c.detail} ({budget})")
+        if c.regressed:
+            all_ok = False
+    print()
+    if all_ok:
+        print("latency budgets met")
+        return 0
+    print("one or more latency budgets regressed")
+    return 1
+
+
 def command(args: argparse.Namespace) -> int:
     action = getattr(args, "voice_action", "")
     try:
@@ -254,6 +282,8 @@ def command(args: argparse.Namespace) -> int:
             return cmd_enroll(args)
         if action == "run":
             return cmd_run(args)
+        if action == "bench":
+            return cmd_bench(args)
         raise VoiceError(f"Unknown voice command: {action}")
     except VoiceError as exc:
         if getattr(args, "json", False):
@@ -311,6 +341,10 @@ def add_parser(sub: argparse._SubParsersAction) -> None:
     p_dev = actions.add_parser("devices", help="list input/output audio devices")
     p_dev.add_argument("-C", "--workspace", default=argparse.SUPPRESS)
     p_dev.add_argument("--json", action="store_true")
+
+    p_bench = actions.add_parser("bench", help="report STT/LLM/TTS timings vs latency budgets (offline)")
+    p_bench.add_argument("-C", "--workspace", default=argparse.SUPPRESS)
+    p_bench.add_argument("--json", action="store_true")
 
     parser.set_defaults(func=command)
 

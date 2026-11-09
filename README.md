@@ -1073,3 +1073,82 @@ encrypted templates. No camera or model starts just by opening the HUD.
 See [Vision setup, privacy boundaries, commands and offline tests](docs/vision.md).
 Extras are split into `vision` (camera/YOLO), `vision-documents` (images/PDF),
 `vision-faces` (biometrics/encryption), and the existing `context` (screen OCR).
+
+
+## Jarvis mode quick start (safe default config)
+
+Jarvis mode is Nexus's opt-in background worker: a Chief-of-Staff orchestrator
+with a local-first runtime, emergency stop, and scheduled missions. Everything
+ships **OFF** — you opt in by editing operator-owned YAML files.
+
+### 1. Install
+
+```bash
+git clone https://github.com/BFH-HAMID/Nexus-Agent && cd Nexus-Agent
+python -m venv .venv && . .venv/bin/activate
+pip install -e ".[dev,hud,voice]"
+```
+
+### 2. Safe default config (copy from `jarvis-mode.example/`)
+
+```bash
+cp jarvis-mode.example/voice.yaml .
+cp jarvis-mode.example/persona.yaml .
+cp jarvis-mode.example/autonomy.yaml .
+cp jarvis-mode.example/permissions.yaml .
+cp jarvis-mode.example/security.yaml .
+```
+
+Review each file, then flip the switches you want — one at a time:
+
+- `chief.yaml enabled: true` — multi-agent mission orchestrator
+- `autonomy.yaml runtime.enabled: true` — local model execution (L2/L3 only)
+- `permissions.yaml second_factor.enabled: true` — PIN/Telegram for dangerous actions
+- `security.yaml enabled: true` — passive defensive monitoring
+- `voice.yaml enabled: true` — wake-word / STT / TTS voice pipeline
+- `proactive.yaml enabled: true` — morning brief, reminders, monitors
+
+### 3. Verify with `nexus doctor`
+
+```bash
+nexus doctor
+```
+
+Check every optional component shows the state you expect, and the security
+posture (autonomy level, second factor, defensive mode, local runtime).
+
+### 4. Run a mission
+
+```bash
+# Plan a multi-role build (pauses for "Go?" approval)
+nexus chief "Build a landing page for my cafe" --plan-only
+
+# Execute after approval
+nexus chief "Build a landing page for my cafe" --confirm GO
+
+# Voice stop (works even if LLM is unreachable)
+nexus stop --all
+
+# Resume (operator-only)
+nexus resume
+```
+
+### 5. Voice (optional)
+
+```bash
+# Stop everything by voice — matched locally, no LLM needed
+"Nexus, stop everything"
+
+# Resume requires CLI
+nexus resume
+```
+
+Every new capability is OFF by default and enabled only through an
+operator-owned YAML file. Agents cannot edit these files. `--yes` never
+bypasses `permissions.yaml`.
+
+See [Jarvis daemon](docs/jarvis.md), [Chief-of-Staff](docs/chief.md),
+[Proactive assistant](docs/proactive.md), [Voice](docs/voice.md),
+[Personal integrations](docs/integrations-personal.md),
+[Environment control](docs/environment.md), [Security assistant](docs/security-assistant.md),
+and [Vision](docs/vision.md) for full details.

@@ -163,7 +163,8 @@ class HUD:
         permitted = {'control': {'action', 'confirmation'}, 'review': {'id', 'action', 'confirmation'},
                      'decide': {'id', 'allow', 'confirmation'}, 'create': {'task', 'max_seconds', 'max_cost_usd'},
                      'cancel': {'id'}, 'resume': {'id'}, 'delivery': {'quiet', 'minutes'},
-                     'runtime': {'enabled', 'local_model', 'confirmation'}, 'autonomy': {'level', 'confirmation'}}
+                     'runtime': {'enabled', 'local_model', 'confirmation'}, 'autonomy': {'level', 'confirmation'},
+                     'emergency_stop': set()}
         if operation not in permitted or set(data) - permitted[operation]:
             raise ValueError('Unsupported action/fields')
         if operation == 'control':
@@ -187,6 +188,10 @@ class HUD:
             result = getattr(Delegations(self.studio), operation)(data['id'])
         elif operation == 'delivery':
             result = Inbox(self.studio).configure(quiet=data.get('quiet'), minutes=data.get('minutes'))
+        elif operation == 'emergency_stop':
+            from ..computer_control import EmergencyStop
+            EmergencyStop().set(True)
+            result = {'stopped': True, 'note': 'Emergency stop latched from HUD; resume requires `nexus resume`.'}
         elif operation == 'runtime':
             result = self.configure_runtime(data)
         else:

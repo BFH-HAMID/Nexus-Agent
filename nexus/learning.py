@@ -23,9 +23,12 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass, field
+from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 from . import skills as skilllib
+from .config import nexus_home
 from .types import EventType, Message
 
 LEARN_SYSTEM = """You are the learning loop of a coding agent. You read a FINISHED run and decide what \
@@ -92,6 +95,149 @@ class LearningOutcome:
             "notes": self.notes,
             "changed": self.changed,
         }
+
+
+# --------------------------------------------------------------------------- #
+# lessons: an operator-reviewable log of what each mission worked, failed,
+# denied or corrected. Applied only through retrieval (skills/memory), never
+# silently rewriting prompts or permissions.
+# --------------------------------------------------------------------------- #
+
+LESSONS_FILENAME = "lessons.md"
+MAX_LESSONS_ENTRIES = 200
+
+
+@dataclass
+class LessonEntry:
+    when: str
+    task: str
+    role: str
+    agent: str
+    ok: bool
+    stopped_reason: str
+    tool_calls: int
+    changed_files: list[str]
+    tainted: bool
+    approval_denied: bool
+    lesson: str
+
+
+def _lesson_summary(result: Any, outcome: Any, task: str) -> str:
+    stopped = (result.stopped_reason or "").strip()
+    if outcome.changed:
+        return f"learned: {outcome.summary()}"
+    if stopped.startswith("blocked: tool approval denied"):
+        return f"refused: {task.strip()[:120]} — tool approval denied; no bypass attempted"
+    if stopped.startswith("blocked:"):
+        return f"blocked: {task.strip()[:120]} — {stopped[len('blocked:'):].strip()[:120]}"
+    if not stopped or stopped in {"finish", "end_turn"}:
+        return f"completed: {task.strip()[:120]} — {result.tool_calls} tool call(s), {result.turns} turn(s)"
+    return f"stopped: {task.strip()[:120]} — {stopped[:120]}"
+
+
+class LessonsStore:
+    """Append-only, human-reviewable lessons log (one file, operator-owned).
+
+    Entries are never applied automatically: they are reviewed with
+    `nexus lessons` and may inform future skills/memory through the normal
+    learning review, which itself is retrieval only.
+    """
+
+    def __init__(self, home: Path | None = None):
+        self.path = (home or nexus_home()) / LESSONS_FILENAME
+
+    def record(self, entry: LessonEntry) -> None:
+        try:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            line = (
+                f"{entry.when} | ok={entry.ok} | role={entry.role} | agent={entry.agent} "
+                f"| tools={entry.tool_calls} | files={','.join(entry.changed_files[:10]) or '-'}"
+            )
+            block = [
+                f"## {entry.when} — {entry.task[:140]}",
+                "",
+                line,
+                f"- stopped: {entry.stopped_reason or 'finished'}",
+                f"- lesson: {entry.lesson}",
+                "",
+            ]
+            with self.path.open("a", encoding="utf-8") as out:
+                out.write("\n".join(block))
+        except OSError:  # lessons must never break a run
+            pass
+
+    def recent(self, limit: int = 20) -> list[LessonEntry]:
+        if not self.path.exists():
+            return []
+        try:
+            raw = self.path.read_text(encoding="utf-8")
+        except OSError:
+            return []
+        entries: list[LessonEntry] = []
+        for block in raw.split("\n## ")[1:]:
+            head, _, rest = block.partition("\n")
+            when, _, task = head.partition(" — ")
+            fields: dict[str, str] = {}
+            for line in rest.splitlines():
+                if line.startswith("- "):
+                    key, _, value = line[2:].partition(": ")
+                    fields[key.strip()] = value.strip()
+            entries.append(
+                LessonEntry(
+                    when=when.strip(),
+                    task=task.strip(),
+                    role=fields.get("role", ""),
+                    agent=fields.get("agent", ""),
+                    ok=fields.get("ok", "False") == "True",
+                    stopped_reason=fields.get("stopped", ""),
+                    tool_calls=int(fields.get("tools", "0").split()[0] or 0),
+                    changed_files=[f for f in fields.get("files", "").split(",") if f],
+                    tainted=fields.get("tainted", "False") == "True",
+                    approval_denied="approval denied" in fields.get("stopped", ""),
+                    lesson=fields.get("lesson", ""),
+                )
+            )
+        return entries[-limit:]
+
+    def prompt_section(self, task: str, limit: int = 5) -> str:
+        """Retrieval-only context for the learning reviewer (never auto-applied)."""
+        terms = set(task.lower().split())
+        scored = []
+        for entry in self.recent(limit * 4):
+            score = sum(t in (entry.task + " " + entry.lesson).lower() for t in terms)
+            if score:
+                scored.append((score, entry))
+        scored.sort(key=lambda pair: (-pair[0], pair[0] and pair[1].when), reverse=True)
+        picked = [entry for _, entry in scored[:limit]] or self.recent(limit)
+        if not picked:
+            return ""
+        lines = ["Past lessons (review-only, not applied automatically):"]
+        for entry in picked:
+            lines.append(f"- {entry.when} {entry.role}: {entry.lesson}")
+        return "\n".join(lines)
+
+    def record_from_result(self, result: Any, task: str, outcome: Any = None) -> LessonEntry | None:
+        """Write one lesson for a finished mission (works, failures, denials)."""
+        from datetime import datetime, timezone
+
+        stopped = getattr(result, "stopped_reason", "") or ""
+        outcome = outcome or {}
+        lesson = _lesson_summary(result, SimpleNamespace(**outcome) if isinstance(outcome, dict) else outcome, task)
+        entry = LessonEntry(
+            when=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            task=str(task),
+            role=str(getattr(result, "role", "")),
+            agent=str(getattr(result, "agent", "")),
+            ok=bool(getattr(result, "ok", False)),
+            stopped_reason=stopped,
+            tool_calls=int(getattr(result, "tool_calls", 0) or 0),
+            changed_files=list(getattr(result, "changed_files", []) or []),
+            tainted=bool(getattr(result, "tainted", False)),
+            approval_denied="approval denied" in stopped,
+            lesson=lesson,
+        )
+        self.record(entry)
+        return entry
 
 
 # --------------------------------------------------------------------------- #

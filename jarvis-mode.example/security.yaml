@@ -1,0 +1,50 @@
+# Jarvis mode example — defensive security assistant (CONSERVATIVE: everything OFF)
+# Copy to workspace root, review, then edit. Agent file tools cannot edit this file.
+# This is passive monitoring + reviewed proposals — NOT an OS sandbox.
+schema: 1
+enabled: false
+own_host_confirmed: false
+host_label: local
+monitoring_enabled: false
+watch_enabled: false             # explicit foreground `nexus security watch`
+scan_enabled: false              # exact fresh review for each TCP connect test
+responses_enabled: false         # reviewed PROPOSALS only, never execution
+analysis_enabled: false          # one tool-free existing-role model report
+analysis_allow_remote: false     # separate explicit disclosure + fresh approval
+hud_enabled: false               # existing proactive HUD/DND infrastructure
+speech_enabled: false            # also needs HUD, presence and local Piper; no cloud
+
+monitors:
+  auth_logs: []                  # e.g. [/var/log/auth.log] or [/var/log/secure]
+  fail2ban_logs: []              # e.g. [/var/log/fail2ban.log]
+  ufw_logs: []                   # e.g. [/var/log/ufw.log]
+  listening_ports: false        # passive psutil socket table, TCP listeners only
+  users_files: []               # e.g. [/etc/passwd]; NEVER shadow/password stores
+  cron_dirs: []                 # non-recursive: choose each directory explicitly
+  systemd_dirs: []              # link metadata only; targets never followed
+  integrity_files: []           # exact files; content hash + ownership/mode only
+  certificate_files: []         # public PEM/DER only, no remote TLS fetch
+  dpkg_files: []                # e.g. [/var/lib/dpkg/status]
+  python_packages: false        # this interpreter's installed metadata only
+  cve_feeds: []                 # local schema-1 exact-version advisory snapshots
+
+# An allowlist is not proof of authorization. IP literals / narrow CIDRs only;
+# <=256 addresses per CIDR. No wildcard, DNS, URL, scripts, exploits or nmap.
+targets: []
+scan_ports: [22, 80, 443]
+response_accounts: []           # explicit non-root account names
+account_state_files: {}         # account: fresh operator expiry snapshot
+rotation_paths: {}             # alias: {current: /.../authorized_keys, replacement: /.../authorized_keys.next}
+analysis_roles: [security-audit, blue-team, forensics]
+analysis_agent: ""             # existing agents.yaml name; default uses selected role's agent
+
+ssh_threshold: 20
+ssh_window_seconds: 300
+cooldown_seconds: 300
+certificate_days: 30
+cve_max_age_days: 7
+poll_seconds: 15
+max_records: 1000              # timeline/evidence: full => stop, manual archive
+max_evidence_bytes: 25000000
+max_read_bytes: 2000000         # per input; overlarge input reports unavailable
+max_tick_bytes: 8000000         # total file bytes per passive tick

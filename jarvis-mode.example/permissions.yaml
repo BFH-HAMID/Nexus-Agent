@@ -1,0 +1,75 @@
+# Jarvis mode example — tool permission policy (CONSERVATIVE: ASK_EVERY_TIME)
+# Copy to workspace root, review, then edit. Agent file tools cannot edit this file.
+# --yes does NOT override this file. Dangerous/external actions always need fresh approval.
+schema: 1
+default: ASK_EVERY_TIME
+tools:
+  read_file: READ_ONLY
+  list_files: READ_ONLY
+  grep: READ_ONLY
+  run_command: ASK_EVERY_TIME
+  git: ASK_EVERY_TIME
+  gh: ASK_EVERY_TIME
+
+# Shell/Git execution and registered dangerous/external mutations always require
+# fresh approval, even under AUTO_ALLOW. This is NOT an OS sandbox.
+
+computer:
+  browser: false
+  editor: false
+  office: false
+  browser_origins: []
+  shell_backend: host
+  image: ""
+  desktop:
+    enabled: false
+    backend: auto
+    apps: {}
+  browser_controls:
+    enabled: false
+    forms: false
+    downloads: false
+    download_dir: browser-downloads
+    max_download_bytes: 2000000
+    search_url: ""
+  files:
+    enabled: false
+    roots: []
+    max_files: 200
+    max_bytes: 20000000
+  workflows:
+    enabled: false
+    voice: false
+    directory: computer-macros
+    approved: {}
+    allowed_tools: []
+    max_steps: 30
+  smart_home:
+    enabled: false
+    voice: false
+    home_assistant:
+      enabled: false
+      url: ""
+      devices: {}
+    mqtt:
+      enabled: false
+      host: ""
+      port: 8883
+      devices: {}
+    voice_commands: {}
+
+# Optional second-factor confirmation for dangerous actions (OFF by default):
+# second_factor:
+#   enabled: false
+#   method: pin                  # pin | telegram | either
+#   pin_env: NEXUS_APPROVAL_PIN  # or TELEGRAM_APPROVAL_PIN
+#   risks: [dangerous]
+#   tools: []
+#   timeout_seconds: 60
+
+# Optional rate & cost limits (OFF by default):
+# limits:
+#   enabled: false
+#   actions_per_minute: 30
+#   daily_tokens: 0
+#   daily_cost_usd: 0.0

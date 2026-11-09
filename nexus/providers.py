@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import json
 import re
+import threading
 import time
 from collections.abc import Sequence
 from typing import Any
@@ -889,7 +890,13 @@ def _accepts_on_text(provider: Any) -> bool:
 class ProviderRegistry:
     """Builds and caches providers, and walks the ``fallback`` chain."""
 
-    def __init__(self, agents: dict[str, AgentConfig], *, factories: dict[str, Any] | None = None):
+    def __init__(
+        self,
+        agents: dict[str, AgentConfig],
+        *,
+        factories: dict[str, Any] | None = None,
+        offline: bool = False,
+    ):
         self.agents = agents
         self._cache: dict[str, Provider] = {}
         self._factories = factories or {}
@@ -897,6 +904,18 @@ class ProviderRegistry:
         self.response_observer = None
         self.error_observer = None
         self.wire_guard = None
+        self.offline = bool(offline)
+
+    def _cloud_refused(self, cfg: AgentConfig) -> None:
+        if not self.offline:
+            return
+        if cfg.key_family in {"gemini", "deepseek", "openrouter"}:
+            raise ProviderError(
+                f"agent '{cfg.name}' ({cfg.provider}) is a cloud provider and offline mode "
+                f"(profile: offline) refuses to construct it - use a local agent (ollama/hermes) "
+                f"or switch back to profile: online",
+                retryable=False,
+            )
 
     def get(self, name: str) -> Provider:
         if name in self._cache:
@@ -910,6 +929,7 @@ class ProviderRegistry:
             raise ProviderError(
                 f"unknown agent '{name}' (known: {', '.join(sorted(self.agents)) or 'none'})", retryable=False
             )
+        self._cloud_refused(cfg)
         provider: Provider
         kind = str(cfg.provider or "").strip().lower()
         if kind in ANTHROPIC_KINDS:
@@ -935,6 +955,7 @@ class ProviderRegistry:
         max_tokens: int | None = None,
         temperature: float | None = None,
         model: str | None = None,
+        timeout: float | None = None,
         on_event: Any = None,
         on_text: Any = None,
     ) -> tuple[Provider, Completion]:
@@ -969,15 +990,54 @@ class ProviderRegistry:
             }
             if on_text is not None and _accepts_on_text(provider):
                 kwargs["on_text"] = relay
-            try:
+            def _call_provider(_current=current, _outer_kwargs=kwargs, _provider=provider) -> Any:
+                _kwargs = dict(_outer_kwargs)
                 if self.request_guard:
-                    output_cap = self.request_guard(current, system, messages, tools)
+                    output_cap = self.request_guard(_current, system, messages, tools)
                     if type(output_cap) is int:
-                        kwargs["max_tokens"] = min(kwargs.get("max_tokens") or self.agents[current].max_tokens, output_cap)
-                completion = provider.complete(system, messages, tools, **kwargs)
+                        _kwargs["max_tokens"] = min(
+                            _kwargs.get("max_tokens") or self.agents[_current].max_tokens, output_cap
+                        )
+                completion = _provider.complete(system, messages, tools, **_kwargs)
                 if self.response_observer:
-                    self.response_observer(current, completion)
-                return provider, completion
+                    self.response_observer(_current, completion)
+                return _provider, completion
+
+            try:
+                if timeout is not None and timeout > 0:
+                    result_holder: list[Any] = [None]
+                    error_holder: list[BaseException | None] = [None]
+
+                    def _target(_rh=result_holder, _eh=error_holder) -> None:
+                        try:
+                            _rh[0] = _call_provider()
+                        except BaseException as exc:  # noqa: BLE001
+                            _eh[0] = exc
+
+                    thread = threading.Thread(target=_target, daemon=True)
+                    thread.start()
+                    thread.join(timeout=timeout)
+                    if thread.is_alive():
+                        # Provider call still running - treat as timeout and fall back.
+                        timeout_err = ProviderError(
+                            f"provider '{current}' timed out after {timeout}s",
+                            retryable=True,
+                        )
+                        if self.error_observer:
+                            self.error_observer(current, timeout_err)
+                        last_error = timeout_err
+                        if on_event is not None:
+                            on_event(Event(EventType.AGENT, {"level": "warn", "agent": current, "error": str(timeout_err)}))
+                        current = provider.fallback
+                        if current and on_event is not None:
+                            on_event(
+                                Event(EventType.AGENT, {"level": "info", "message": f"falling back to agent '{current}'"})
+                            )
+                        continue
+                    if error_holder[0] is not None:
+                        raise error_holder[0]
+                    return result_holder[0]
+                return _call_provider()
             except StreamCancelled:
                 raise
             except ProviderError as exc:

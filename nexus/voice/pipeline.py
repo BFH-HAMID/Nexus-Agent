@@ -81,6 +81,7 @@ class VoiceTurnResult:
     resumed: bool = False
     reply_language: str = "en"
     approval_intent: str = ""
+    emergency_stop: bool = False
 
 
 TextHandler = Callable[[TranscriptResult], str | Iterable[str]]
@@ -589,6 +590,41 @@ class VoicePipeline:
                     reply_language=reply_lang,
                 )
 
+        # 0. Emergency stop phrase - matched locally before any LLM call,
+        #    so it works even when the LLM is unreachable.
+        stop_phrase = "nexus, stop everything"
+        normalized = (transcript.text or "").strip().lower().rstrip(".!?।")
+        if normalized == stop_phrase or normalized == "stop everything":
+            from ..computer_control import EmergencyStop
+            EmergencyStop().set(True)
+            confirmation = ("সব কিছু বন্ধ করেছি। `'nexus resume'` দিয়ে আবার চালু করুন।"
+                            if reply_lang.startswith("bn")
+                            else "Everything stopped. Say 'nexus resume' to resume.")
+            spoken, interrupted = self._play_sentences(
+                [confirmation],
+                language=reply_lang,
+                metrics=metrics,
+                t_turn_start=t_turn_start,
+                barge_in_frames=barge_in_frames,
+                on_start_speaking=lambda: _record_state(
+                    VoiceState.SPEAKING, transcript=transcript.text, language=reply_lang
+                ),
+            )
+            metrics.total_turn_ms = round((time.perf_counter() - t_turn_start) * 1000.0, 2)
+            _record_state(VoiceState.IDLE, **metrics.to_dict())
+            return VoiceTurnResult(
+                transcript=transcript,
+                response_text=confirmation,
+                spoken_sentences=spoken,
+                states=turn_states,
+                speaker_match=self.last_speaker_match,
+                wake_event=wake_event,
+                interrupted=interrupted,
+                metrics=metrics,
+                reply_language=reply_lang,
+                emergency_stop=True,
+            )
+
         # 1. Active spoken approval intercept ('yes do it', 'no cancel', 'wait')
         if self.config.conversation.spoken_approvals and self.approval_manager.pending is not None:
             intent, ack_reply = self.approval_manager.submit_intent(
@@ -867,6 +903,47 @@ class VoicePipeline:
 
         try:
             raw_response = active_handler(effective_transcript)
+        except Exception as exc:  # noqa: BLE001
+            if ack_timer is not None:
+                ack_timer.cancel()
+            # Spoken explanation on provider failure (graceful degradation).
+            from ..providers import ProviderError
+            if isinstance(exc, ProviderError):
+                explanation = (
+                    "মডেল সার্ভিস interruption। আমি local মডেলে চেষ্টা করছি, নাহলে পরে আবার চেষ্টা করুন।"
+                    if reply_lang.startswith("bn")
+                    else "The model service is unavailable. I'm trying a local model, or you can try again later."
+                )
+            else:
+                explanation = (
+                    "কিছু ভুল হলো। কষ্ট করে পরে আবার চেষ্টা করুন।"
+                    if reply_lang.startswith("bn")
+                    else "Something went wrong. Please try again later."
+                )
+            spoken, interrupted = self._play_sentences(
+                [explanation],
+                language=reply_lang,
+                metrics=metrics,
+                t_turn_start=t_turn_start,
+                barge_in_frames=barge_in_frames,
+                on_start_speaking=lambda: _record_state(
+                    VoiceState.SPEAKING, transcript=transcript.text, language=reply_lang
+                ),
+            )
+            metrics.total_turn_ms = round((time.perf_counter() - t_turn_start) * 1000.0, 2)
+            _record_state(VoiceState.IDLE, **metrics.to_dict())
+            return VoiceTurnResult(
+                transcript=transcript,
+                response_text=explanation,
+                spoken_sentences=spoken,
+                states=turn_states,
+                speaker_match=self.last_speaker_match,
+                wake_event=wake_event,
+                interrupted=interrupted,
+                error=str(exc),
+                metrics=metrics,
+                reply_language=reply_lang,
+            )
         finally:
             if ack_timer is not None:
                 ack_timer.cancel()
