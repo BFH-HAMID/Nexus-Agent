@@ -67,6 +67,7 @@ UNTRUSTED_SOURCE_PREFIXES: tuple[str, ...] = (
     "drive:",
     "docs:",
     "ocr:",
+    "vision:",
     "file:",
     "untrusted:",
     "external:",

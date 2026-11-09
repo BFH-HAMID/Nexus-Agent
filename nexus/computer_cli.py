@@ -5,6 +5,23 @@ import json
 from pathlib import Path
 
 
+def operator_gate(workspace):
+    """Every callback shows the CURRENT action/target, including nested macro steps."""
+    import hashlib
+
+    from .redaction import mask, secrets
+    from .tools import ApprovalDecision, ApprovalGate
+    def review(spec, args, risk, preview):
+        phrase = 'RUN ' + spec.name + ' ' + hashlib.sha256(json.dumps(args, sort_keys=True).encode()).hexdigest()[:12]
+        print(mask(json.dumps({'tool': spec.name, 'arguments': args, 'risk': risk.value,
+                               'confirmation': phrase}, ensure_ascii=False, indent=2), secrets(workspace)))
+        return ApprovalDecision(input('Exact fresh confirmation (anything else cancels): ') == phrase, scope='once')
+    from .permissions import Permissions
+    gate = ApprovalGate(callback=review)
+    gate.permissions = Permissions(workspace)
+    return gate
+
+
 def command(args):
     from .permissions import Permissions
     from .snapshots import Snapshots
@@ -22,6 +39,16 @@ def command(args):
             else:
                 print(json.dumps({'stopped': control.stopped()}))
             return 0
+        if args.operation == 'workflow':
+            from .computer_workflows import Recorder
+            recorder = Recorder(workspace, gate=operator_gate(workspace))
+            if args.workflow_operation == 'run':
+                args.operation, args.name = 'tool', 'workflow_run'
+                args.arguments = json.dumps({'name': args.macro, 'parameters': json.loads(args.parameters)})
+            else:
+                result = recorder.start(args.macro) if args.workflow_operation == 'start' else recorder.stop() if args.workflow_operation == 'stop' else recorder.read()
+                print(json.dumps(result, indent=2))
+                return 0
         if args.operation == 'tool':
             import hashlib
 
@@ -34,14 +61,15 @@ def command(args):
                 raise ValueError('JSON object required')
             scan_text(json.dumps(payload), workspace=workspace)
             confirmation = 'RUN ' + args.name + ' ' + hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()[:12]
-            gate = ApprovalGate(mode='ask', callback=lambda *a: ApprovalDecision(input('Exact confirmation: ') == confirmation))
-            gate.permissions = Permissions(workspace)
+            gate = operator_gate(workspace)
             registry = build_tools(ToolContext(workspace, PathGuard(workspace), gate))
             if not registry.has(args.name):
                 raise ValueError('Tool disabled or unavailable')
             spec = next(s for s in registry.specs() if s.name == args.name)
-            rule = gate.permissions.evaluate(spec, payload)
-            print(json.dumps({'tool': args.name, 'arguments': payload, 'policy': rule, 'confirmation': confirmation,
+            prepared = registry._tools[args.name].prepare(payload) if registry._tools[args.name].prepare else payload
+            rule = gate.permissions.evaluate(spec, prepared)
+            confirmation = 'RUN ' + args.name + ' ' + hashlib.sha256(json.dumps(prepared, sort_keys=True).encode()).hexdigest()[:12]
+            print(json.dumps({'tool': args.name, 'arguments': prepared, 'policy': rule, 'confirmation': confirmation,
                               'note': 'Preview only; host commands are not sandboxed unless docker backend is configured'}, indent=2))
             if not args.execute:
                 return 0
@@ -81,9 +109,19 @@ def add_parser(sub):
     for name in ('kill', 'resume-tools', 'control-status', 'hotkey'):
         actions.add_parser(name, help='user-scoped emergency tool/process control')
     tool = actions.add_parser('tool', help='preview a permissioned computer/file/terminal tool; no execution without --execute')
-    tool.add_argument('name', choices=['office_file', 'vscode_open', 'browser_action', 'run_command', 'list_files', 'read_file', 'grep', 'write_file', 'edit_file', 'delete_file'])
+    tool.add_argument('name', choices=['office_file', 'vscode_open', 'browser_action', 'run_command', 'list_files', 'read_file', 'grep', 'write_file', 'edit_file', 'delete_file', 'desktop_action', 'file_action', 'workflow_run', 'home_action'])
     tool.add_argument('arguments', help='bounded JSON object, not shell interpolation')
     tool.add_argument('--execute', action='store_true')
+    workflow = actions.add_parser('workflow', help='record unreviewed drafts or replay operator-pinned macros')
+    operations = workflow.add_subparsers(dest='workflow_operation', required=True)
+    record = operations.add_parser('start')
+    record.add_argument('macro', help='lowercase name; records successful approved semantic calls only')
+    operations.add_parser('stop')
+    operations.add_parser('show')
+    run = operations.add_parser('run')
+    run.add_argument('macro')
+    run.add_argument('--parameters', default='{}', help='JSON data; never shell interpolation')
+    run.add_argument('--execute', action='store_true')
     actions.add_parser('snapshots', help='list bounded typed-file recovery records (no file bodies)')
     undo = actions.add_parser('undo', help='preview restoration; never overwrite later user edits')
     undo.add_argument('identifier', nargs='?', default='latest')

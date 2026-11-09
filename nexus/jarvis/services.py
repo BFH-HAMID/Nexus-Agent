@@ -7,17 +7,20 @@ import sys
 from xml.etree import ElementTree as ET
 
 
-def manifest(workspace, platform, user=''):
+def manifest(workspace, platform, user='', *, target='jarvis'):
     workspace = str(workspace)
     python = sys.executable
     if any(c in workspace + python + user for c in '\r\n\x00'):
         raise ValueError('Service values cannot contain control characters')
-    name = 'nexus-jarvis-' + hashlib.sha256(workspace.encode()).hexdigest()[:12]
-    argv = [python, '-I', '-m', 'nexus', 'jarvis', '-C', workspace, 'supervise']
+    if target not in {'jarvis', 'presence'}:
+        raise ValueError('Unknown service target')
+    name = 'nexus-' + target + '-' + hashlib.sha256(workspace.encode()).hexdigest()[:12]
+    argv = [python, '-I', '-m', 'nexus', 'jarvis', '-C', workspace, 'supervise'] if target == 'jarvis' else [python, '-I', '-m', 'nexus', 'service', '-C', workspace, 'run']
     if platform == 'systemd':
         def quote(value):
             return '"' + value.replace('\\', '\\\\').replace('"', '\\"').replace('%', '%%').replace('$', '$$') + '"'
-        content = '\n'.join(['[Unit]', 'Description=Nexus Jarvis (explicit runtime policy)',
+        description = 'Description=Nexus Jarvis (explicit runtime policy)' if target == 'jarvis' else 'Description=Nexus presence (explicit operator policy)'
+        content = '\n'.join(['[Unit]', description,
                              'StartLimitIntervalSec=300', 'StartLimitBurst=3', '[Service]', 'Type=simple',
                              'ExecStart=' + ' '.join(quote(a) for a in argv), 'Restart=on-failure', 'RestartSec=30',
                              'TimeoutStopSec=10', 'KillMode=control-group', 'UMask=0077', '[Install]',
@@ -46,6 +49,10 @@ def manifest(workspace, platform, user=''):
     settings = child(root, 'Settings')
     child(settings, 'MultipleInstancesPolicy', 'IgnoreNew')
     child(settings, 'ExecutionTimeLimit', 'PT0S')
+    if target == 'presence':
+        restart = child(settings, 'RestartOnFailure')
+        child(restart, 'Interval', 'PT1M')
+        child(restart, 'Count', '3')
     action = child(child(root, 'Actions', Context='Operator'), 'Exec')
     child(action, 'Command', python)
     child(action, 'Arguments', subprocess.list2cmdline(argv[1:]))
@@ -55,13 +62,16 @@ def manifest(workspace, platform, user=''):
                              f'schtasks /Run /TN {name}', f'schtasks /Delete /TN {name} /F']}
 
 
-def install(workspace, platform, user='', *, confirmation=''):
+def install(workspace, platform, user='', *, confirmation='', target='jarvis'):
     """Explicit reviewed user install; exact manifest confirmation, never model authority."""
     import os
     from pathlib import Path
 
     from ..config import nexus_home
-    data = manifest(workspace, platform, user)
+    data = manifest(workspace, platform, user, target=target)
+    if target == 'presence':
+        from ..always_on import require_service
+        require_service(workspace)
     digest = hashlib.sha256(data['content'].encode()).hexdigest()[:16]
     expected = 'INSTALL SERVICE ' + data['filename'] + ' ' + digest
     if confirmation != expected:

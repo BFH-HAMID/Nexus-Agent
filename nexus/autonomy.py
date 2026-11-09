@@ -37,6 +37,7 @@ AWAY_CHANNELS = frozenset({"auto", "telegram", "desktop", "none"})
 
 # Built-in baseline risk classes by tool name. Unknown tools default to DANGEROUS.
 BUILTIN_READ_TOOLS = frozenset({
+    "security_status", "security_monitor", "security_report",
     "list_files",
     "read_file",
     "grep",
@@ -117,7 +118,9 @@ _PROTECTED_POLICY_NAMES = frozenset({
     "hud.yaml",
     "widget.yaml",
     "context.yaml",
+    "vision.yaml",
     "memory.yaml",
+    "security.yaml",
 })
 
 _GIT_READONLY_SUBS = frozenset({

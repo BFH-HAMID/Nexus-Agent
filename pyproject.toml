@@ -38,7 +38,7 @@ dependencies = [
 context = ["mss>=9,<11", "Pillow>=10,<13", "pytesseract>=0.3.13,<1"]
 mcp = ["jsonschema>=4.23,<5", "keyring>=25"]
 hud = ["keyring>=25", "feedparser>=6.0,<7", "fastapi>=0.115,<1", "uvicorn>=0.30,<1", "websockets>=13,<17", "textual>=0.80,<9"]
-dev = ["feedparser>=6.0,<7", "jsonschema>=4.23,<5", "fastapi>=0.115,<1", "uvicorn>=0.30,<1", "websockets>=13,<17", "textual>=0.80,<9", "pytest>=8.0", "tomli>=2; python_version < '3.11'", "ruff>=0.6", "cryptography>=44", "keyring>=25", "faiss-cpu>=1.8,<2", "numpy>=1.25,<3", "python-docx>=1.1,<2", "openpyxl>=3.1,<4", "python-pptx>=1.0,<2", "mss>=9,<11", "Pillow>=10,<13", "pytesseract>=0.3.13,<1"]
+dev = ["feedparser>=6.0,<7", "jsonschema>=4.23,<5", "fastapi>=0.115,<1", "uvicorn>=0.30,<1", "websockets>=13,<17", "textual>=0.80,<9", "pytest>=8.0", "tomli>=2; python_version < '3.11'", "ruff>=0.6", "cryptography>=44", "keyring>=25", "faiss-cpu>=1.8,<2", "numpy>=1.25,<3", "python-docx>=1.1,<2", "openpyxl>=3.1,<4", "python-pptx>=1.0,<2", "mss>=9,<11", "Pillow>=10,<13", "pytesseract>=0.3.13,<1", "pypdfium2>=4.30,<6", "pypdf>=5,<7"]
 orchestrator = ["faiss-cpu>=1.8,<2", "numpy>=1.25,<3"]
 assistant = ["faiss-cpu>=1.8,<2", "numpy>=1.25,<3", "keyring>=25", "pypdf>=5,<7", "python-docx>=1.1,<2", "openpyxl>=3.1,<4", "python-pptx>=1.0,<2", "Pillow>=10,<13"]
 voice = ["faster-whisper>=1.1,<2", "edge-tts>=7,<8", "sounddevice>=0.5,<1", "silero-vad>=5,<6", "numpy>=1.25,<3"]
@@ -48,8 +48,15 @@ voice-speaker = ["resemblyzer>=0.1.3,<1"]
 voice-realtime = ["google-genai>=1.0,<2"]
 voice-livekit = ["livekit-agents>=0.12,<2"]
 voice-pipecat = ["pipecat-ai>=0.0.55,<1"]
-vision = ["mss>=9,<11", "Pillow>=10,<13", "pypdf>=5,<7", "ultralytics>=8,<9", "opencv-python-headless>=4.10,<5", "face-recognition>=1.3,<2"]
+# Optional and lazy: installing camera vision does not install biometric recognition.
+vision = ["Pillow>=10,<13", "ultralytics>=8,<9", "opencv-python-headless>=4.10,<5"]
+vision-documents = ["Pillow>=10,<13", "pypdfium2>=4.30,<6"]
+vision-faces = ["face-recognition>=1.3,<2", "numpy>=1.25,<3", "Pillow>=10,<13", "cryptography>=44", "keyring>=25"]
+security = ["cryptography>=44"]
+mobile = ["pywebpush>=2,<3"]
+telegram-voice = ["av>=12,<17", "faster-whisper>=1.1,<2"]
 smart-home = ["paho-mqtt>=2,<3"]
+desktop = ["pywinauto>=0.6.8,<0.7; sys_platform == 'win32'"]
 computer = ["playwright>=1.50,<2", "python-docx>=1.1,<2", "openpyxl>=3.1,<4", "python-pptx>=1.0,<2"]
 secure-state = ["cryptography>=44", "keyring>=25", "filelock>=3.16"]
 # only if you point agents.yaml at the legacy Anthropic Messages API
@@ -89,10 +96,16 @@ packages = ["nexus"]
 "memory.yaml" = "nexus/_config/memory.yaml"
 "telegram.yaml" = "nexus/_config/telegram.yaml"
 "context.yaml" = "nexus/_config/context.yaml"
+"vision.yaml" = "nexus/_config/vision.yaml"
+"docs/vision.md" = "nexus/_config/docs/vision.md"
 "voice.yaml" = "nexus/_config/voice.yaml"
 "persona.yaml" = "nexus/_config/persona.yaml"
 "chief.yaml" = "nexus/_config/chief.yaml"
 "docs/hud.md" = "nexus/_config/docs/hud.md"
+"docs/presence.md" = "nexus/_config/docs/presence.md"
+"security.yaml" = "nexus/_config/security.yaml"
+"docs/defensive-security.md" = "nexus/_config/docs/defensive-security.md"
+"docs/security-roles.md" = "nexus/_config/docs/security-roles.md"
 "docs/gui.md" = "nexus/_config/docs/gui.md"
 "docs/updating.md" = "nexus/_config/docs/updating.md"
 "docs/dashboard-appearance.md" = "nexus/_config/docs/dashboard-appearance.md"
@@ -124,7 +137,7 @@ packages = ["nexus"]
 "examples/mcp" = "nexus/_config/examples/mcp"
 
 [tool.hatch.build.targets.sdist]
-include = ["nexus", "roles.d", "skills", "tests", "scripts", "examples", "frontend/world", "agents.yaml", "roles.yaml", "pipelines.yaml", "teams.yaml", "role-index.yaml", "permissions.yaml", "autonomy.yaml", "hud.yaml", "widget.yaml", "mcp.yaml", "memory.yaml", "telegram.yaml", "context.yaml", "voice.yaml", "persona.yaml", "chief.yaml", ".env.example", "docs", "README.md", "LICENSE"]
+include = ["nexus", "roles.d", "skills", "tests", "scripts", "examples", "frontend/world", "agents.yaml", "roles.yaml", "pipelines.yaml", "teams.yaml", "role-index.yaml", "permissions.yaml", "autonomy.yaml", "hud.yaml", "widget.yaml", "mcp.yaml", "memory.yaml", "telegram.yaml", "context.yaml", "vision.yaml", "security.yaml", "voice.yaml", "persona.yaml", "chief.yaml", ".env.example", "docs", "README.md", "LICENSE"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

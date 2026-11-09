@@ -40,6 +40,7 @@ DECISIONS = {"live": ("approve", "deny"), "action": ("allow", "deny"),
 MAX_ITEMS = 100
 MAX_TEXT = 4000
 MAX_ARGS = 20_000
+MAX_COMPUTER_ARGS = 200_000  # preparation already caps inputs + target metadata below this
 MAX_HISTORY = 100
 _audit_lock = threading.Lock()
 _audit_at: dict[str, float] = {}
@@ -104,6 +105,7 @@ def _seconds_left(expires: Any) -> int | None:
 
 
 def _live_items(state) -> list[dict[str, Any]]:
+    from .computer_actions import PREPARED_TOOLS
     rows: list[dict[str, Any]] = []
     sessions = list(getattr(state, "sessions", {}).values())
     with getattr(state, "lock", _NullLock()):
@@ -135,7 +137,7 @@ def _live_items(state) -> list[dict[str, Any]]:
                 "proposal": pending.get("proposal") or {},
                 "token": f"APPROVE ACTION {approval_id}",
                 "decisions": list(DECISIONS["live"]),
-                "scopes": ["once", "session"],
+                "scopes": ["once"] if pending.get("tool") in PREPARED_TOOLS or getattr(session, "computer_request", None) is not None else ["once", "session"],
             })
     return rows
 
@@ -218,10 +220,14 @@ def _queue_items(state) -> list[dict[str, Any]]:
 
 
 def _truncate(item: dict[str, Any]) -> dict[str, Any]:
+    from .computer_actions import PREPARED_TOOLS
     args = item.get("args")
+    computer = item.get("tool") in PREPARED_TOOLS
     try:
-        if len(json.dumps(args, default=str)) > MAX_ARGS:
+        if len(json.dumps(args, default=str, ensure_ascii=False).encode('utf-8')) > (MAX_COMPUTER_ARGS if computer else MAX_ARGS):
             item["args"] = {"truncated": True, "note": "Arguments exceeded the display budget; open the job for the full record."}
+            if computer:
+                item['decisions'] = ['deny']  # never approve a clipped native request here
     except (TypeError, ValueError):
         item["args"] = {"truncated": True}
     item["preview"] = str(item.get("preview") or "")[:MAX_TEXT]

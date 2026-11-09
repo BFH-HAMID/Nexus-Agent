@@ -34,12 +34,16 @@ def settings(root):
     except yaml.YAMLError:
         raise ValueError('Invalid Telegram YAML') from None
     defaults = {'schema': 1, 'enabled': False, 'user_ids': [], 'poll_seconds': 20, 'challenge_seconds': 60,
-                'quiet_utc_hours': [], 'allow_report_text': False}
+                'quiet_utc_hours': [], 'allow_report_text': False, 'approval_details': False, 'voice': {}}
     if not isinstance(value, dict) or set(value) - set(defaults):
         raise ValueError('Unknown Telegram policy')
     result = {**defaults, **value}
     if type(result['schema']) is not int or result['schema'] != 1 or type(result['enabled']) is not bool or type(result['allow_report_text']) is not bool:
         raise ValueError('Explicit Telegram flags required')
+    from .voice import policy as voice_policy
+    result['voice'] = voice_policy(result['voice'])
+    if type(result['approval_details']) is not bool:
+        raise ValueError('Explicit approval_details flag required')
     ids = result['user_ids']
     if not isinstance(ids, list) or len(ids) > 10 or any(type(i) is not int or not 0 < i < 2**53 for i in ids) or len(set(ids)) != len(ids):
         raise ValueError('Whitelist up to ten exact numeric private-chat user IDs')
@@ -69,6 +73,8 @@ class Bot:
         self.key = 'telegram-' + hashlib.sha256((str(self.root) + self.token).encode()).hexdigest()[:32]
         self.client = client or httpx.Client(timeout=35, trust_env=False, follow_redirects=False)
         self.owns_client = client is None
+        self._vision = None
+        self._voice = None
         token, pin = self.token, self.pin
         class NoCredentials(logging.Filter):
             def filter(self, record):
@@ -76,12 +82,18 @@ class Bot:
                 record.args = ()
                 return True
         self.log_filter = NoCredentials()
-        logging.getLogger('httpx').addFilter(self.log_filter)
+        for logger in ('httpx', 'httpcore.http11', 'httpcore.http2'):
+            logging.getLogger(logger).addFilter(self.log_filter)
 
     def close(self):
+        if self._voice is not None:
+            self._voice.close()
+        if self._vision is not None:
+            self._vision.close()
         if self.owns_client:
             self.client.close()
-        logging.getLogger('httpx').removeFilter(self.log_filter)
+        for logger in ('httpx', 'httpcore.http11', 'httpcore.http2'):
+            logging.getLogger(logger).removeFilter(self.log_filter)
 
     def check_active(self):
         if self.stop_event.is_set():
@@ -98,8 +110,11 @@ class Bot:
             return self._api(method, payload)
 
     def _api(self, method, payload):
-        if method not in ('getUpdates', 'sendMessage'):
+        if method not in ('getUpdates', 'sendMessage', 'getFile'):
             raise ValueError('Telegram API method not authorized')
+        if method == 'getFile' and (set(payload) != {'file_id'} or not isinstance(payload['file_id'], str)
+                or not re.fullmatch(r'[A-Za-z0-9_-]{1,256}', payload['file_id'])):
+            raise ValueError('Explicit bounded Telegram attachment ID required')
         current = settings(self.root)
         if (not current['enabled'] or os.environ.get('TELEGRAM_BOT_TOKEN') != self.token
                 or os.environ.get('TELEGRAM_APPROVAL_PIN') != self.pin
@@ -132,7 +147,7 @@ class Bot:
         cfg_digest = hashlib.sha256(json.dumps(self.cfg, sort_keys=True).encode()).hexdigest()
         binding = (
             row.get('args_digest')
-            if kind in {'action', 'action_2fa'}
+            if kind in {'action', 'action_2fa', 'vision_cloud', 'vision_send', 'voice_send'}
             else signature(row)
             if kind == 'job'
             else 'kill'
@@ -140,6 +155,8 @@ class Bot:
         self.studio.put('telegram-challenge', {'user': user, 'kind': kind, 'target': row.get('id'), 'binding': binding,
                         'cfg_digest': cfg_digest, 'expires': time.time() + self.cfg['challenge_seconds'],
                         'tries': 0, 'consumed': False, 'approved': False}, identifier)
+        if kind in {'vision_cloud', 'vision_send', 'voice_send'}:
+            return f'Exact {kind} digest {binding[:16]}. Confirm once: /confirm {identifier} YOUR_PIN. Expires shortly; no image or answer retained on disk.'
         return f'Review actual task/diff in local HUD. Target {row.get("id", "daemon")}, digest {binding[:12]}. Confirm once: /confirm {identifier} YOUR_PIN. Expires shortly; no arguments/code uploaded.'
 
     def confirm(self, user, identifier, supplied):
@@ -164,6 +181,14 @@ class Bot:
             self.studio.put('telegram-challenge', row, row['id'])
             if not correct:
                 raise ValueError('PIN refused')
+        if row['kind'] == 'voice_send':
+            if self._voice is None:
+                raise ValueError('Voice review expired/restarted')
+            return self._voice.confirm(user, row)
+        if row['kind'] in {'vision_cloud', 'vision_send'}:
+            if self._vision is None:
+                raise ValueError('Vision review expired/restarted; request a new review')
+            return self._vision.confirm(user, row)
         if row['kind'] == 'kill':
             return Daemon(self.studio).request('kill')
         if row['kind'] == 'action_2fa':
@@ -244,7 +269,11 @@ class Bot:
                 or any(k in message for k in ('forward_origin', 'forward_date', 'forward_from', 'via_bot'))
                 or type(message.get('date')) is not int or not -30 <= time.time() - message['date'] <= 120):
             return None
-        text = message.get('text')
+        voice_note = 'voice' in message
+        attachment = 'document' in message or 'photo' in message
+        if voice_note and attachment:
+            return None
+        text = '/voice-note' if voice_note else message.get('caption') if attachment else message.get('text')
         if not isinstance(text, str) or not 0 < len(text) <= 8000:
             return None
         with self.queue.locked():
@@ -255,19 +284,58 @@ class Bot:
             if count >= 20:
                 raise ValueError('Per-user command rate exceeded')
             self.studio.put('telegram-rate', {'minute': minute, 'calls': count + 1}, rate_key)
+        if voice_note:
+            if self._voice is None:
+                from .voice import TelegramVoice
+                self._voice = TelegramVoice(self)
+            return self._voice.receive(user, message)
+        if attachment:
+            if not text.startswith('/look '):
+                return 'For opt-in local image/PDF Q&A, attach it with a /look QUESTION caption. No attachment downloaded.'
+            if self._vision is None:
+                from ..vision.telegram import TelegramVision
+                self._vision = TelegramVision(self)
+            return self._vision.receive(user, message)
         command, _, rest = text.strip().partition(' ')
         if command == '/confirm':
             parts = rest.split()
             if len(parts) != 2:
                 raise ValueError('Challenge and PIN required')
             result = self.confirm(user, *parts)
+            if 'vision_prompt' in result:
+                return result['vision_prompt']
             return self.clean(json.dumps({'accepted': True, 'state': result.get('status', result.get('request', result.get('state'))),
                                          'note': 'Request accepted, not execution/readiness proof.'}))
         if self.pin in text or self.token in text:
             raise ValueError('Credentials are not task content')
+        if command == '/voice':
+            if self._voice is None:
+                from .voice import TelegramVoice
+                self._voice = TelegramVoice(self)
+            return self._voice.prepare(user, rest)
+        if command == '/approvals':
+            return self.clean(json.dumps([{'id': r['id'], 'tool': r['tool'], 'expires': r['expires']}
+                for r in Approvals(self.studio).items() if r['state'] == 'pending' and r['expires'] > time.time()][:15]))
+        if command == '/review':
+            return self.action_text(rest)
+        if command == '/brief':
+            rows = Inbox(self.studio).items()[:5]
+            return self.clean(json.dumps([{'id': r['id'], 'state': r.get('state'),
+                **({'summary': r.get('summary', '')[:500]} if self.cfg['allow_report_text'] else {})} for r in rows]))
+        if command in {'/vision-off', '/vision-status'}:
+            from ..vision.state import hard_off, status
+            if command == '/vision-off' and self._vision is not None:
+                self._vision.close()
+            return self.clean(json.dumps(hard_off(self.root) if command == '/vision-off' else status(self.root)))
         if command == '/status':
             state = Daemon(self.studio).status()
-            return json.dumps({k: state[k] for k in ('state', 'execution_enabled', 'lock_held')})
+            from ..hud.presence import Presence
+            hub = Presence(self.root)
+            shared = {}
+            if hub.enabled():
+                current = hub.snapshot()
+                shared = {'conversation_id': current['conversation_id'], 'active_mission': current['active_mission'], 'speaker': current['speaker']}
+            return json.dumps({k: state[k] for k in ('state', 'execution_enabled', 'lock_held')} | shared)
         if command == '/tasks':
             return json.dumps([{'id': r['id'], 'status': r['status']} for r in self.queue._jobs()[-20:]])
         if command == '/delegate':
@@ -276,7 +344,8 @@ class Bot:
         if command == '/approve':
             action = next((r for r in Approvals(self.studio).items() if r['id'] == rest and r['state'] == 'pending'), None)
             row = action or self.studio.find('jarvis-job', rest)
-            return self.challenge(user, 'action' if action else 'job', row)
+            details = self.action_text(rest) + '\n' if action and self.cfg['approval_details'] else ''
+            return details + self.challenge(user, 'action' if action else 'job', row)
         if command == '/reject':
             action = next((r for r in Approvals(self.studio).items() if r['id'] == rest), None)
             result = Approvals(self.studio).decide(rest, False) if action else self.queue.review(rest, 'reject')
@@ -293,6 +362,19 @@ class Bot:
                 result['agent_report_not_test_proof'] = row.get('result', {}).get('summary', '')[:1500]
             return self.clean(json.dumps(result))
         raise ValueError('Unknown literal Telegram command; no arbitrary chat/shell execution')
+
+    def action_text(self, identifier):
+        if not self.cfg['approval_details']:
+            raise ValueError('Exact action export is OFF; review in the local HUD')
+        row = self.studio.find('jarvis-approval', identifier)
+        job = self.studio.find('jarvis-job', row['job_id'])
+        if (row['state'] != 'pending' or row['expires'] <= time.time() or job['status'] != 'running'
+                or row['lease'] != job.get('lease')):
+            raise ValueError('Action is stale')
+        text = json.dumps({'id': row['id'], 'tool': row['tool'], 'arguments': row['arguments']}, ensure_ascii=False, sort_keys=True)
+        if len(text) > 2400 or self.clean(text) != text:
+            raise ValueError('Full exact action cannot fit safely in Telegram; review locally')
+        return text
 
     def poll_once(self):
         state = next((r for r in self.studio.items('telegram-state') if r['id'] == self.key), {'offset': 0})

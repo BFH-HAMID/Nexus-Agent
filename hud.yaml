@@ -6,3 +6,30 @@ host: 127.0.0.1
 port: 8790
 refresh_seconds: 2
 max_connections: 4
+
+# Shared HUD/PWA uses the ORIGINAL serve-token GUI, not the legacy adapter port.
+# All capabilities remain OFF until this operator-owned file is edited.
+presence:
+  enabled: false
+  devices_enabled: false
+  conversation_enabled: false
+  handoff_enabled: false
+  voice_enabled: false
+  push_enabled: false
+  world_enabled: false  # reuse cached World maps/charts; never fetch publishers here
+  device_scopes: [read]  # optionally chat, approve, voice, handoff, push
+  default_speaker: none # local means the existing CLI voice output
+  max_devices: 12
+  device_days: 30
+  history_turns: 20
+  retention_hours: 24
+  max_streams: 16
+  push_origins: []      # exact provider origins only; see docs/presence.md
+service:
+  enabled: false
+  host: 127.0.0.1
+  port: 8787
+  restart_initial_seconds: 2
+  restart_max_seconds: 60
+  log_bytes: 1048576
+  log_backups: 3

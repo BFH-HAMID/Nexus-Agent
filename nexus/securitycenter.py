@@ -403,9 +403,9 @@ def audit_action(state, action: str, client: str, data: dict[str, Any], *, risk:
 def note_denied(state, path: str, client: str, *, presented: bool = False) -> None:
     """A refused request is evidence — but a signed-out tab is not an attack.
 
-    A request that *presented* a token or cookie and was refused is always
-    recorded: that is a wrong credential, and wrong credentials are the thing
-    worth counting. A request with no credential at all is recorded once per
+    A request that *presented* a token or cookie and was refused is recorded
+    up to the per-workspace/client rate limit: wrong credentials are worth
+    counting. A request with no credential at all is recorded once per
     path per minute per client, so polling cannot flood the trail.
     """
     global _denied
@@ -414,9 +414,12 @@ def note_denied(state, path: str, client: str, *, presented: bool = False) -> No
             from .webapi import Limiter
 
             _denied = Limiter(limit=30, window=60.0)
-        if not _denied.allow(str(client)):
+        # One workspace's paired-device reconnects must not exhaust another
+        # workspace's audit budget (or signed-out-path deduplication).
+        caller = hashlib.sha256((str(Path(state.workspace).resolve()) + '\0' + str(client)).encode()).hexdigest()
+        if not _denied.allow(caller):
             return
-        key = f"{client}|{path}"
+        key = f"{caller}|{path}"
         now = time.time()
         with _audit_lock:
             if not presented and now - _denied_paths.get(key, 0.0) < 60.0:

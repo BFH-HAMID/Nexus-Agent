@@ -203,7 +203,14 @@ class ApprovalGate:
 
     # ------------------------------------------------------------------ #
     def check(self, spec: ToolSpec, args: dict[str, Any]) -> ApprovalDecision:
-        decision = self._checked(spec, args)
+        from .security_assistant.scope import tool_guard
+        root = self.permissions.root if self.permissions is not None else (getattr(self, '_workspace', None) or Path('.').resolve())
+        reason = tool_guard(root, spec, args)
+        decision = ApprovalDecision(False, reason=reason) if reason else self._checked(spec, args)
+        if decision.approved:
+            reason = tool_guard(root, spec, args)
+            if reason:
+                decision = ApprovalDecision(False, reason=reason)
         observer = getattr(self, 'decision_observer', None)
         if observer:
             observer(spec, args, decision)
@@ -316,7 +323,7 @@ class ApprovalGate:
         readonly = rule['readonly'] if rule is not None else spec.is_readonly_call(args)
         if rule is not None and rule['mode'] == 'READ_ONLY' and not readonly:
             return ApprovalDecision(False, reason='permissions.yaml: READ_ONLY refuses mutation/execution', risk_class=action_risk.value)
-        if readonly and risk_mode != 'fresh_approval':
+        if readonly and risk_mode != 'fresh_approval' and not getattr(self, 'force_fresh', False):
             return ApprovalDecision(True, scope="auto", reason="read-only", notify_after=notify_after, risk_class=action_risk.value)
 
         if self.mode == "plan":
@@ -330,7 +337,8 @@ class ApprovalGate:
             and not (name.startswith('mcp_') and not getattr(spec, 'risk_declared', True))
         )
         fresh = (
-            bool(blocked)
+            bool(getattr(self, 'force_fresh', False))
+            or bool(blocked)
             or fresh_confirmation_required(spec, args)
             or tainted_escalation
             or risk_forces_fresh
@@ -389,6 +397,10 @@ class ApprovalGate:
 def preview_args(spec: ToolSpec, args: dict[str, Any], limit: int = 400) -> str:
     """One-line human readable summary shown before y/N."""
     name = spec.name
+    from .computer_actions import PREPARED_TOOLS
+    from .security_assistant.tools import PREPARED as SECURITY_PREPARED
+    if name in PREPARED_TOOLS or name in SECURITY_PREPARED:
+        return json.dumps(args, ensure_ascii=False)
     if spec.approval_context is not None:
         return json.dumps({"operator_review": spec.approval_context, "arguments": args}, ensure_ascii=False)
     if name == "run_command":
@@ -433,6 +445,7 @@ def preview_args(spec: ToolSpec, args: dict[str, Any], limit: int = 400) -> str:
 class Tool:
     spec: ToolSpec
     handler: Callable[[dict[str, Any]], str]
+    prepare: Callable[[dict[str, Any]], dict[str, Any]] | None = None
 
 
 @dataclass
@@ -486,6 +499,7 @@ class ToolRegistry:
         readonly_subcommands: Sequence[str] = (),
         readonly_actions: Sequence[str] = (),
         approval_context: dict[str, Any] | None = None,
+        prepare: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
     ) -> None:
         risk_declared = risk is not None or read_only
         effective_risk = risk if risk is not None else (Risk.READ if read_only else Risk.WRITE)
@@ -494,7 +508,7 @@ class ToolRegistry:
                           risk=effective_risk, read_only=read_only,
                           readonly_subcommands=frozenset(readonly_subcommands), readonly_actions=frozenset(readonly_actions),
                           approval_context=approval_context, risk_declared=risk_declared),
-            handler=handler,
+            handler=handler, prepare=prepare,
         )
 
     def risk_class(self, name: str, args: dict[str, Any] | None = None):
@@ -551,6 +565,22 @@ class ToolRegistry:
             self._emit_failure(name, message)
             return message, True
 
+        if tool.prepare is not None:
+            try:
+                args = tool.prepare(args)
+            except (ValueError, OSError, TimeoutError, TypeError, KeyError, RecursionError) as exc:
+                # Only controlled validation messages; never dump backend exception
+                # details that could contain tokens, window text or native output.
+                message = 'DENIED: ' + (str(exc) if type(exc) is ValueError else 'Tool preparation unavailable')
+                try:
+                    from . import audit
+                    audit.record(self.ctx.workspace, 'security.preparation' if name.startswith('security_') else 'computer.action', target=name, result='refused-before-approval',
+                                 risk='danger', detail={'arguments_sha256': audit.args_digest(args)})
+                except (ValueError, OSError):
+                    pass  # still denied: an unavailable audit must never enable execution
+                self._emit_failure(name, message)
+                return message, True
+
         if (name.startswith('mcp_') or name in {'gh', 'gh_create_pr', 'gh_merge_pr', 'git', 'git_prepare'}
                 or (self.ctx.gate.permissions is not None and name in {'write_file', 'edit_file', 'office_file', 'browser_action', 'vscode_open', 'run_command', 'project_action'})):
             from .github_safety import scan_text
@@ -585,7 +615,8 @@ class ToolRegistry:
         explicit_idem_key = self.ctx.state.get("idempotency_key") or args.get("idempotency_key")
         idem_key: str | None = None
         idem_ledger: IdempotencyLedger | None = None
-        if (idempotency_scope or explicit_idem_key) and is_external_action(name, args):
+        if ((idempotency_scope or explicit_idem_key) and is_external_action(name, args)
+                and tool.prepare is None and not getattr(self.ctx.gate, 'force_fresh', False)):
             idem_scope = str(idempotency_scope or "tool")
             idem_key = compute_idempotency_key(
                 idem_scope,
@@ -652,8 +683,11 @@ class ToolRegistry:
             result = safe_output(result, {'GITHUB_TOKEN': token_from_environment(self.ctx.workspace)})
         except GitHubSafetyError:
             result = redact(result)
+        if tool.prepare is not None:
+            from .redaction import redact_text
+            result = redact_text(result, self.ctx.workspace)
         if not is_error:
-            if name.startswith("mcp_") or name == "browser_action":
+            if name.startswith("mcp_") or name in {"browser_action", "file_action", "home_action"}:
                 self.ctx.mark_tainted(name, flag_names(result))
             elif name.startswith("integration_"):
                 detected = list(flag_names(result))
@@ -676,6 +710,14 @@ class ToolRegistry:
                     rf_flags = flag_names(result)
                     if rf_flags:
                         self.ctx.mark_tainted(f"read_file:{args.get('path', '')}", rf_flags)
+        if not is_error:
+            try:
+                from .computer_workflows import record_success
+                record_success(self.ctx, name, args)
+            except (ValueError, OSError, TimeoutError):
+                # The effect already happened. Never report a replayable failure just
+                # because the optional draft recorder filled up or became unavailable.
+                self.ctx.emit(Event(EventType.STATUS, {'message': 'Action completed; semantic recording unavailable. Review the draft before reuse.'}))
         result = clip(result, self.ctx.max_output_chars)
         if not is_error and idem_ledger is not None and idem_key is not None:
             idem_ledger.record(
@@ -1213,6 +1255,8 @@ def build_tools(ctx: ToolContext, *, role: str = "general", include_ask_agent: b
 
     from .computer import register as register_computer
     register_computer(reg, ctx)
+    from .security_assistant.tools import register as register_security
+    register_security(reg, ctx)
     return reg
 
 
@@ -2039,6 +2083,7 @@ def tool_recall(ctx: ToolContext, args: dict[str, Any]) -> str:
 
 
 READ_ONLY_TOOLS = {
+    "security_status", "security_report", "security_monitor",
     "office_file",
     "list_files", "read_file", "grep", "git", "ask_agent", "finish", "skill_view", "recall",
 }

@@ -77,7 +77,8 @@ def _windows_owned(body, expected):
     fields = ['Actions/Exec/Command', 'Actions/Exec/Arguments', 'Actions/Exec/WorkingDirectory',
               'Principals/Principal/UserId', 'Principals/Principal/LogonType', 'Principals/Principal/RunLevel',
               'Triggers/LogonTrigger/UserId', 'Triggers/LogonTrigger/Enabled',
-              'Settings/MultipleInstancesPolicy', 'Settings/ExecutionTimeLimit']
+              'Settings/MultipleInstancesPolicy', 'Settings/ExecutionTimeLimit',
+              'Settings/RestartOnFailure/Interval', 'Settings/RestartOnFailure/Count']
     for field in fields:
         query = '/'.join('t:' + part for part in field.split('/'))
         if current.findtext(query, default='', namespaces=ns) != template.findtext(query, default='', namespaces=ns):
@@ -97,8 +98,8 @@ def _windows_state(name):
     return int(value)
 
 
-def inspect(workspace, platform, user=''):
-    data = manifest(workspace, platform, user)
+def inspect(workspace, platform, user='', *, target='jarvis'):
+    data = manifest(workspace, platform, user, target=target)
     name = data['filename']
     result = {'filename': name, 'platform': platform, 'supported': False, 'removable': False,
               'notice': 'Read-only inspection. Registration/manager state is not daemon task readiness.'}
@@ -144,8 +145,8 @@ def inspect(workspace, platform, user=''):
         return {**result, 'reason': 'Manager/file query unavailable or unsafe. Private output withheld; no removal authorized.'}
 
 
-def remove(workspace, platform, user='', *, confirmation=''):
-    before = inspect(workspace, platform, user)
+def remove(workspace, platform, user='', *, confirmation='', target='jarvis'):
+    before = inspect(workspace, platform, user, target=target)
     if not before['removable'] or confirmation != before['confirmation']:
         raise ValueError('Fresh exact observed-registration removal confirmation required')
     name = before['filename']
@@ -168,7 +169,7 @@ def remove(workspace, platform, user='', *, confirmation=''):
                     raise ValueError('Manager refused end')
             if _windows_state(name) != 1:
                 raise ValueError('Task still queued/running; preserve registration')
-            checked = inspect(workspace, platform, user)
+            checked = inspect(workspace, platform, user, target=target)
             if not checked['removable'] or checked.get('states', {}).get('task_state') != 'disabled':
                 raise ValueError('Task ownership/state changed during removal')
             code, _ = _run(['schtasks.exe', '/Delete', '/TN', Path(name).stem, '/F'])
@@ -176,13 +177,13 @@ def remove(workspace, platform, user='', *, confirmation=''):
             if code:
                 raise ValueError('Manager refused deletion')
         if platform == 'systemd':
-            checked = inspect(workspace, platform, user)
+            checked = inspect(workspace, platform, user, target=target)
             if (not checked['removable'] or checked.get('states', {}).get('ActiveState') not in {'inactive', 'failed'}
                     or checked.get('states', {}).get('UnitFileState') != 'disabled'):
                 raise ValueError('Unit ownership/overrides/stop state changed during removal')
             path = Path.home() / '.config/systemd/user' / name
             current, _ = _file(path)
-            if current != manifest(workspace, platform, user)['content'].encode():
+            if current != manifest(workspace, platform, user, target=target)['content'].encode():
                 raise ValueError('Unit changed during removal; preserve it')
             path.unlink()
             outcomes.append({'step': 'remove-unit-file', 'accepted': True})

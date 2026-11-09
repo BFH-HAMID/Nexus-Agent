@@ -1,0 +1,46 @@
+# Operator-owned. All capabilities are OFF. Agent file tools cannot edit this file.
+# No environment variable, --yes flag, API request or detected text can enable vision.
+# See docs/vision.md for prerequisites, exact approvals and privacy limitations.
+schema: 1
+enabled: false
+vlm:
+  enabled: false
+  provider: ollama             # ollama | gemini; explicitly choose, never fallback
+  model: qwen2-vl:7b           # exact installed local model tag; install it yourself
+  base_url: http://127.0.0.1:11434
+  allow_cloud: false           # Gemini also needs a fresh per-upload approval
+  timeout_seconds: 30
+  max_output_tokens: 1200
+screen:
+  enabled: false              # also requires context.yaml enabled + screenshots
+  denylist: []                # extends mandatory password/banking/private-window blocks
+files:
+  enabled: false
+  hud: false
+  telegram: false
+  voice: false
+  max_bytes: 10000000
+  max_pages: 8
+  max_pixels: 16000000
+camera:
+  enabled: false              # only an explicitly approved, bounded CLI session opens it
+  device: 0
+  weights: ''                 # trusted local YOLOv8 .pt file; never auto-downloaded
+  classes: [person]
+  confidence: 0.6
+  fps: 1.0                   # 0.1–10; slow inference lowers actual FPS, never bursts
+  max_frames: 300
+  max_seconds: 300
+  width: 640
+  height: 480
+  location: door
+  events: false              # also requires proactive.yaml enabled; local HUD only
+  cooldown_seconds: 60
+  store_frames: false        # no frames on disk unless explicitly enabled here
+  max_storage_frames: 100
+  max_storage_bytes: 20000000 # stops at quota; no silent deletion/rolling archive
+faces:
+  enabled: false             # separate vision-faces extra; no biometric authentication
+  owner: ''                  # optional local display name for a greeting
+  tolerance: 0.5             # advisory only; recognition can be wrong
+  max_people: 20

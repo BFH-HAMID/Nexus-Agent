@@ -1,7 +1,9 @@
 /** Prompt 5 acceptance: Computer Control is permissions-first, every mutation
  *  carries its own typed token, and the panic path latches and can be cleared.
  *
- *  The suite leaves the studio policy locked and the workspace as it found it. */
+ *  Requires an isolated workspace with computer.files enabled for tests/browser
+ *  by its operator. Defaults stay OFF. The suite uses fresh one-use reviews and
+ *  leaves the studio policy locked; do not run against personal data. */
 import {test, before, after} from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
@@ -63,9 +65,9 @@ async function resetScratch() {
 async function writeScratch(page, text) {
   let revision = 'missing';
   try { revision = (await api(page, '/api/computer/file/preview', {path: scratch})).revision; } catch { /* new file */ }
-  return api(page, '/api/computer/file/write', {
-    path: scratch, text, revision, confirmation: `WRITE ${scratch}`,
-  });
+  const payload = {path: scratch, text, revision, confirmation: `WRITE ${scratch}`};
+  const proof = await api(page, '/api/computer/action/review', {operation: 'file/write', payload});
+  return api(page, '/api/computer/file/write', {...payload, approval_id: proof.id, approval: proof.confirmation});
 }
 
 async function setLevels(page, files, browserLevel = 'off') {
@@ -73,7 +75,7 @@ async function setLevels(page, files, browserLevel = 'off') {
   return api(page, '/api/computer/settings', {
     profile: files === 'off' ? 'locked' : files === 'read' ? 'read-only' : 'review',
     levels: {files, browser: browserLevel},
-    scopes: {roots: state.store.settings.scopes.roots, origins: state.store.settings.scopes.origins},
+    scopes: {roots: ['tests/browser'], origins: state.store.settings.scopes.origins},
     revision: state.store.revision,
     confirmation: 'SAVE COMPUTER POLICY',
   });
@@ -104,17 +106,17 @@ test('the overview reads the real policy and never invents a capability', async 
   const {page, context, errors} = await open();
   try {
     const state = await api(page, '/api/computer/state');
-    assert.equal(await page.locator('#ccCapabilities .computer-cap').count(), 7);
+    assert.equal(await page.locator('#ccCapabilities .computer-cap').count(), state.capabilities.length);
     const cards = await page.locator('#ccCapabilities .computer-cap').evaluateAll((nodes) => nodes.map((node) => ({
       id: node.dataset.cap, level: node.querySelector('.computer-chip').textContent,
     })));
     assert.deepEqual(cards.map((card) => card.id),
-      ['files', 'browser', 'terminal', 'office', 'screen', 'apps', 'vscode']);
+      ['files', 'browser', 'terminal', 'office', 'screen', 'apps', 'vscode', 'workflows', 'smart_home']);
     const files = cards.find((card) => card.id === 'files');
     assert.equal(files.level.trim().toLowerCase(),
       state.capabilities.find((row) => row.id === 'files').level.toLowerCase());
     const screenText = await page.locator('[data-cap="screen"]').innerText();
-    assert.match(screenText, /Unavailable|No display/);
+    assert.match(screenText, /Unavailable|No display|disabled|opt-in|foreground/i);
     assert.match(await page.locator('#ccUpdated').innerText(), /^Read from the server at \d/);
     assert.equal(await page.locator('#ccPolicy dt').count() >= 5, true, 'policy facts come from permissions.yaml');
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth), 0);
@@ -179,8 +181,8 @@ test('files are scoped, previewed, written with a token and undone', async () =>
     await page.locator('#ccText').fill('two\n');
     await page.locator('#ccWrite').click();
     await page.waitForSelector('#ccConfirmRow:not([hidden])');
-    assert.match(await page.locator('#ccConfirmLabel').innerText(), /WRITE tests\/browser\/\.cc-suite\.txt/);
-    await page.locator('#ccConfirm').fill(`WRITE ${scratch}`);
+    assert.match(await page.locator('#ccConfirmLabel').innerText(), /ALLOW COMPUTER/);
+    await page.locator('#ccConfirm').fill(await page.locator('#ccConfirm').getAttribute('placeholder'));
     await page.locator('#ccConfirmGo').click();
     await page.waitForFunction(() => document.getElementById('ccFileStatus').dataset.tone === 'ok');
     const preview = await api(page, '/api/computer/file/preview', {path: scratch});
@@ -193,7 +195,7 @@ test('files are scoped, previewed, written with a token and undone', async () =>
     const row = page.locator('#ccSnapshots .computer-list-row', {hasText: `#${snapshot.id.slice(0, 8)}`}).first();
     await row.locator('button').click();
     await page.waitForSelector('#ccConfirmRow:not([hidden])', {timeout: 10000});
-    await page.locator('#ccConfirm').fill(`RESTORE ${snapshot.id}`);
+    await page.locator('#ccConfirm').fill(await page.locator('#ccConfirm').getAttribute('placeholder'));
     await page.locator('#ccConfirmGo').click();
     await page.waitForFunction(() => document.getElementById('ccFileStatus').textContent.includes('Restored'),
       null, {timeout: 15000});
@@ -220,7 +222,7 @@ test('trash and restore move the real file and stay inside the workspace', async
     await page.waitForFunction(() => document.getElementById('ccPreviewName').textContent.includes('.cc-suite.txt'));
     await page.locator('#ccTrashButton').click();
     await page.waitForSelector('#ccConfirmRow:not([hidden])');
-    await page.locator('#ccConfirm').fill(`TRASH ${scratch}`);
+    await page.locator('#ccConfirm').fill(await page.locator('#ccConfirm').getAttribute('placeholder'));
     await page.locator('#ccConfirmGo').click();
     await page.waitForFunction(() => document.getElementById('ccFileStatus').textContent.includes('trash'));
     const trash = await api(page, '/api/computer/trash');
@@ -230,15 +232,16 @@ test('trash and restore move the real file and stay inside the workspace', async
     await fs.access(path.resolve('.cc-suite.txt')).then(() => { throw new Error('file should be gone'); },
       () => {});
     await page.locator('#ccSnapshots').scrollIntoViewIfNeeded();
-    const restoreButton = page.locator('#ccTrash .computer-list-row button').first();
+    const restoreButton = page.locator('#ccTrash .computer-list-row', {hasText: scratch}).first().locator('button');
     await restoreButton.click();
     await page.waitForSelector('#ccConfirmRow:not([hidden])');
-    await page.locator('#ccConfirm').fill(`RESTORE ${entry.id}`);
+    await page.locator('#ccConfirm').fill(await page.locator('#ccConfirm').getAttribute('placeholder'));
     await page.locator('#ccConfirmGo').click();
     await page.waitForFunction(() => document.getElementById('ccFileStatus').textContent.includes('Restored'));
     assert.equal(await fs.readFile(path.resolve('.cc-suite.txt'), 'utf8'), 'trash me\n');
     assert.deepEqual(errors, []);
   } finally {
+    await setLevels(page, 'off').catch(() => {});
     await resetScratch();
     await context.close();
   }

@@ -481,6 +481,7 @@ class PlaybackQueue:
         extra_secrets: Iterable[str] = (),
         on_sentence_spoken: Callable[[str], None] | None = None,
         on_first_audio: Callable[[float], None] | None = None,
+        playback_allowed: Callable[[], bool] | None = None,
     ) -> None:
         self.provider = provider
         self.player = player or AudioOutputPlayer()
@@ -488,6 +489,7 @@ class PlaybackQueue:
         self.extra_secrets = tuple(extra_secrets) or provider.extra_secrets
         self.on_sentence_spoken = on_sentence_spoken
         self.on_first_audio = on_first_audio
+        self.playback_allowed = playback_allowed
         self.interrupt = threading.Event()
         self._queue: queue.Queue[QueuedSpeechItem | None] = queue.Queue()
         self._worker: threading.Thread | None = None
@@ -598,11 +600,13 @@ class PlaybackQueue:
         while not self._queue.empty():
             item = self._queue.get_nowait()
             try:
-                if item is None or self.interrupt.is_set():
+                if item is None or self.interrupt.is_set() or self.playback_allowed and not self.playback_allowed():
                     continue
                 with self._lock:
                     self._active_item = item
                 clip = self.provider.synthesize(item.text, language=item.language or language, rate=item.rate or rate)
+                if self.interrupt.is_set() or self.playback_allowed and not self.playback_allowed():
+                    continue
                 self._record_first_audio()
                 interrupted = self.player.play(clip, self.interrupt)
                 if interrupted:
@@ -645,12 +649,12 @@ class PlaybackQueue:
             try:
                 if item is None:
                     return
-                if self.interrupt.is_set():
+                if self.interrupt.is_set() or self.playback_allowed and not self.playback_allowed():
                     continue
                 with self._lock:
                     self._active_item = item
                 clip = self.provider.synthesize(item.text, language=item.language, rate=item.rate)
-                if self.interrupt.is_set():
+                if self.interrupt.is_set() or self.playback_allowed and not self.playback_allowed():
                     continue
                 self._record_first_audio()
                 interrupted = self.player.play(clip, self.interrupt)

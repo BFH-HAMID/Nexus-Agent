@@ -237,7 +237,14 @@ class VoicePipeline:
         safe = sanitize_tts_text(text, workspace=self.workspace)
         if not safe:
             return
+        from ..hud.presence import Presence
+        hub = Presence(self.workspace)
+        if hub.speaker() != 'local':
+            hub.say(safe, language=language)
+            return
         clip = self.tts.synthesize(safe, language=language, rate=self.config.tts.speaking_rate)
+        if hub.speaker() != 'local':
+            return  # Handoff during synthesis: do not play or retry on another device.
         self.player.play(clip, self._interrupt_event)
 
     def transition(self, new_state: VoiceState, **detail: Any) -> VoiceStateEvent:
@@ -260,6 +267,9 @@ class VoicePipeline:
                 write_hud_state(self.workspace, {"enabled": self.config.enabled, **event.to_dict()})
             except OSError:
                 pass
+        if self.config.enabled:
+            from ..hud.presence import publish_voice
+            publish_voice(self.workspace, new_state.value, transcript=str(detail.get('transcript') or ''))
         return event
 
     def interrupt_speech(self) -> list[str]:
@@ -397,14 +407,18 @@ class VoicePipeline:
                 metrics.tts_first_audio_ms = round((perf_now - t_turn_start) * 1000.0, 2)
                 metrics.e2e_first_audio_ms = metrics.tts_first_audio_ms
 
+        from ..hud.presence import Presence
+        presence = Presence(self.workspace)
         playback = PlaybackQueue(
             self.tts,
             self.player,
             workspace=self.workspace,
             on_first_audio=_on_first_audio,
+            playback_allowed=lambda: presence.speaker() == 'local',
         )
         self._playback_queue = playback
         spoken_sentences: list[str] = []
+        routed_sentences: list[str] = []
         speaking_started = False
         barge_monitor: FullDuplexMonitor | None = None
         stop_monitor = threading.Event()
@@ -458,6 +472,11 @@ class VoicePipeline:
                 safe_sentence = sanitize_tts_text(sentence, workspace=self.workspace)
                 if not safe_sentence:
                     continue
+                if presence.speaker() != 'local':
+                    playback.barge_in()
+                    presence.say(safe_sentence, language=language)
+                    routed_sentences.append(safe_sentence)
+                    continue
                 if not speaking_started:
                     if on_start_speaking is not None:
                         on_start_speaking()
@@ -480,7 +499,7 @@ class VoicePipeline:
             return list(playback.spoken_sentences), True
         if playback.last_error is not None:
             raise playback.last_error
-        return list(playback.spoken_sentences) or spoken_sentences, False
+        return list(playback.spoken_sentences) or spoken_sentences or routed_sentences, False
 
     def process_frames(
         self,
@@ -1252,11 +1271,17 @@ def build_agent_handler(
         return cb(spec, args, risk, preview)
 
     def _handle(transcript: TranscriptResult) -> Iterable[str] | str:
+        from ..hud.presence import Presence
+        presence = Presence(ws)
+        shared_turn = None
+        shared_history = None
         token_queue: queue.Queue[str | None] = queue.Queue()
         done_text: list[str] = []
         errors: list[BaseException] = []
 
         def _agent_emit(event: Event) -> None:
+            if shared_turn:
+                presence.agent_event(shared_turn, event.to_json())
             if emit is not None:
                 emit(event)
             if event.type is EventType.TEXT_DELTA:
@@ -1290,17 +1315,61 @@ def build_agent_handler(
             if gate_check is not None:
                 agent.gate.voice_speaker_check = gate_check
 
+        from ..computer_workflows import voice_request
+        command = voice_request(ws, transcript.text)
+        if command is not None:
+            # Only literal operator aliases; never interpret OCR, webpages, device
+            # responses or learned routines as commands/permission changes.
+            if read_only:
+                agent.gate.mode = 'plan'
+            _context, tools, _specs = agent.tools_for(agent.active_role, read_only=read_only)
+            output, error = tools.call(*command)
+            if error:
+                raise VoiceError(output)
+            return 'Reviewed routine completed.' if command[0] == 'workflow_run' else 'Reviewed device request sent. Physical state is not independently verified.'
+
+        from ..vision.service import LOOK_REQUEST, SCREEN_REQUEST, VisionService
+        if LOOK_REQUEST.fullmatch(transcript.text.strip()) or SCREEN_REQUEST.search(transcript.text):
+            # A literal user vision request never sends its untrusted answer back
+            # through agent tools. Preserve read-only and speaker checks on capture.
+            if pipeline is not None and pipeline.config.tts.provider not in {'piper', 'kokoro'}:
+                raise VoiceError('Vision answers require explicitly local Piper/Kokoro TTS; no automatic cloud speech')
+            if read_only:
+                agent.gate.mode = 'plan'
+            observed = VisionService(ws).look(transcript.text, gate=agent.gate, channel='voice')
+            if observed is not None:
+                refs = observed.get('references', [])
+                citations = ' References: ' + '; '.join(
+                    f"page {r['page']}, region {r['region']}" for r in refs[:8]) if refs else ''
+                return str(observed['answer']) + citations
+
+        if presence.enabled('voice_enabled') and presence.enabled('conversation_enabled'):
+            shared_history = presence.history()
+            shared_turn = presence.begin(transcript.text, source='voice')
+        kwargs = {'history': shared_history} if shared_history is not None else {}
         if not stream:
-            result = agent.run(transcript.text, read_only=read_only, extra_system=extra_sys)
-            return result.text or result.summary or result.stopped_reason or "Done."
+            try:
+                result = agent.run(transcript.text, read_only=read_only, extra_system=extra_sys, **kwargs)
+                final = result.text or result.summary or result.stopped_reason or "Done."
+                if shared_turn:
+                    presence.finish(shared_turn, final, ok=result.ok)
+                return final
+            except BaseException:
+                if shared_turn:
+                    presence.finish(shared_turn, ok=False)
+                raise
 
         def _worker() -> None:
             try:
-                result = agent.run(transcript.text, read_only=read_only, extra_system=extra_sys)
+                result = agent.run(transcript.text, read_only=read_only, extra_system=extra_sys, **kwargs)
+                if shared_turn:
+                    presence.finish(shared_turn, result.text or result.summary, ok=result.ok)
                 final = result.text or result.summary or result.stopped_reason or ""
                 if final:
                     done_text.append(final)
             except BaseException as exc:  # pragma: no cover - surfaced to consumer
+                if shared_turn:
+                    presence.finish(shared_turn, ok=False)
                 errors.append(exc)
             finally:
                 token_queue.put(None)

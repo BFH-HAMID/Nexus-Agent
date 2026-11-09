@@ -605,6 +605,9 @@ def test_pause_resume_cancel_and_secret_redaction(repo: Path):
 
     # Start in background, pause while step1 is executing, then allow step1 to finish cleanly.
     chief.start_background(mission.id, auto_approve=True)
+    from nexus.chief import _get_runtime
+    runtime = _get_runtime(repo, mission.id)
+    assert runtime is not None and runtime.thread is not None
     assert step1_entered.wait(timeout=3.0)
     paused = chief.pause(mission.id)
     assert paused.status == "paused"
@@ -623,7 +626,12 @@ def test_pause_resume_cancel_and_secret_redaction(repo: Path):
     # Any secret surfaced in step finish summary is redacted on disk.
     assert "sk-1234567890" not in cur.steps[0].handoff_summary
 
-    # Resume to completion.
+    # Step status is persisted before the background worker unwinds. An early
+    # resume correctly acknowledges the still-live worker with "running"; wait
+    # for it to exit before testing the synchronous resume-to-completion branch.
+    runtime.thread.join(timeout=3.0)
+    assert not runtime.thread.is_alive()
+    assert _get_runtime(repo, mission.id) is None
     resumed = chief.resume(mission.id)
     assert resumed.status == "done"
     assert (repo / "p2.txt").exists()

@@ -1509,6 +1509,19 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         _render_doctor(checks, args)
         return 1
 
+    try:
+        from .always_on import health as service_health
+        from .hud.presence_policy import load as hud_policy
+        hud = hud_policy(workspace)
+        observed = service_health(workspace)
+        add("shared presence", None, "enabled" if hud['presence']['enabled'] else "OFF in hud.yaml")
+        add("always-on service", None if not hud['service']['enabled'] else observed['heartbeat_fresh'] and observed['child_running'],
+            observed['state'], "nexus service -C . health; inspect the reviewed OS user-service registration")
+    except (ValueError, OSError):
+        add("HUD/service policy", False, "Invalid policy or unsafe private state", "inspect operator-owned hud.yaml")
+    if getattr(args, 'offline', False):
+        return _render_doctor(checks, args)
+
     add("workspace", True, str(workspace))
     add("roles", len(config.roles) > 0, f"{len(config.roles)} roles registered",
         "add roles to roles.yaml or .nexus/roles.yaml")
@@ -2306,6 +2319,8 @@ def build_parser() -> argparse.ArgumentParser:
     add_telegram_parser(sub)
     from .context.cli import add_parser as add_context_parser
     add_context_parser(sub)
+    from .vision.cli import add_parser as add_vision_parser
+    add_vision_parser(sub)
     from .voice.cli import add_parser as add_voice_parser
     add_voice_parser(sub)
     from .evaluation.cli import add_parser as add_evaluation_parser
@@ -2368,6 +2383,10 @@ def build_parser() -> argparse.ArgumentParser:
     add_github_parser(sub)
     from .computer_cli import add_parser as add_computer_parser
     add_computer_parser(sub)
+    from .security_assistant.cli import add_parser as add_security_parser
+    add_security_parser(sub)
+    from .always_on import add_parser as add_service_parser
+    add_service_parser(sub)
     from .jarvis.cli import add_parser as add_jarvis_parser
     add_jarvis_parser(sub)
 
@@ -2418,6 +2437,7 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("doctor", help="health check")
     p.add_argument("--workspace", "-C")
     p.add_argument("--json", action="store_true")
+    p.add_argument("--offline", action="store_true", help="local policy/service health only; no provider/network/shell probes")
     p.set_defaults(func=cmd_doctor)
 
     p = sub.add_parser("serve", help="HTTP+SSE server for the VS Code sidebar")

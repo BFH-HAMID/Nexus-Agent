@@ -28,11 +28,8 @@ import json
 import os
 import re
 import shutil
-import subprocess
-import sys
 import threading
 import time
-import uuid
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
@@ -43,7 +40,7 @@ SETTINGS_FILE = "settings.json"
 TRASH_DIR = "trash"
 HISTORY_DIR = "history"
 MAX_LEVELS = ("off", "read", "ask", "auto")
-CAPABILITIES = ("files", "browser", "terminal", "office", "screen", "apps", "vscode")
+CAPABILITIES = ("files", "browser", "terminal", "office", "screen", "apps", "vscode", "workflows", "smart_home")
 OWNED = ("files", "browser")
 DEFAULT_LEVELS = {"files": "off", "browser": "off"}
 DEFAULT_PROFILE = "locked"
@@ -83,7 +80,8 @@ def _text(value: Any, limit: int, label: str = "Text") -> str:
 
 
 def _store(workspace: Path) -> Path:
-    return Path(workspace) / STORE_DIR
+    from .computer_actions import safe_local
+    return safe_local(workspace, STORE_DIR)
 
 
 def settings_path(workspace: Path) -> Path:
@@ -99,6 +97,8 @@ def history_path(workspace: Path) -> Path:
 
 
 def _atomic_bytes(path: Path, data: bytes, mode: int = 0o600) -> None:
+    if any(p.is_symlink() for p in (path, *path.parents)):
+        raise ValueError('Computer state must not contain symlinks')
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, temporary = __import__("tempfile").mkstemp(dir=path.parent, prefix=".computer-", suffix=".tmp")
     try:
@@ -214,6 +214,8 @@ def _history_snapshot(workspace: Path, settings: dict[str, Any], reason: str) ->
     if not settings_path(workspace).exists():
         return None
     directory = history_path(workspace)
+    if directory.is_symlink():
+        raise ValueError('Computer history must not be a symlink')
     directory.mkdir(parents=True, exist_ok=True)
     stamp = time.strftime("%Y%m%dT%H%M%S", time.gmtime())
     version = f"{stamp}-{revision_of(settings)[:6]}"
@@ -265,13 +267,15 @@ def _playwright() -> tuple[bool, str]:
 
 
 def _screen() -> tuple[bool, str]:
-    display = os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")
-    tool = next((name for name in ("grim", "scrot", "gnome-screenshot", "screencapture") if shutil.which(name)), "")
-    if not display:
-        return False, "No display session (DISPLAY/WAYLAND_DISPLAY is unset) — screen view is unavailable here."
-    if not tool:
-        return False, "A display exists but no supported capture tool is installed."
-    return True, f"Display {display}; capture would use {tool} (not started by this page)."
+    import importlib.util
+    if os.name != 'nt' and (not os.environ.get('DISPLAY') or os.environ.get('WAYLAND_DISPLAY')):
+        return False, 'No supported X11 display session (DISPLAY missing or Wayland); screen view is unavailable here.'
+    requirements = ['PIL', 'pytesseract'] + ([] if os.name == 'nt' else ['mss'])
+    if not all(importlib.util.find_spec(name) for name in requirements) or not shutil.which('tesseract'):
+        return False, 'Install the context extra and native Tesseract. No unredacted capture fallback.'
+    if os.name != 'nt' and not all(shutil.which(name) for name in ('xprop', 'xwininfo')):
+        return False, 'Verified X11 foreground identity requires xprop and xwininfo.'
+    return True, 'Native foreground capture dependencies present; actual privacy/identity readiness is checked per approved request.'
 
 
 def _apps() -> tuple[bool, str]:
@@ -309,14 +313,17 @@ def capabilities(state) -> list[dict[str, Any]]:
     worker_ok, worker_note = _browser_worker_ok(workspace)
     rows = []
 
-    files_ceiling = "read" if default_mode == "READ_ONLY" else "ask"
+    file_cfg = computer.get('files') or {}
+    files_ceiling = ('read' if default_mode == 'READ_ONLY' else 'ask') if file_cfg.get('enabled') and file_cfg.get('roots') else 'off'
     files_reason = ("permissions.yaml default is READ_ONLY, so writes stay unavailable."
                     if files_ceiling == "read" else "Every change is one reviewed request with an exact token.")
+    if files_ceiling == "off":
+        files_reason = "Enable computer.files and explicit roots in operator-owned permissions.yaml first."
     files_stored = store["levels"]["files"]
     rows.append({
         "id": "files", "owned": True, "level": _clip(files_stored, files_ceiling), "stored": files_stored,
         "ceiling": files_ceiling, "managed_by": "this page + permissions.yaml default",
-        "available": True, "reason": files_reason,
+        "available": files_ceiling != "off", "reason": files_reason,
         "levels": list(MAX_LEVELS),
         "auto_note": (
             "Auto applies file changes without a typed confirmation; every change is still "
@@ -328,7 +335,7 @@ def capabilities(state) -> list[dict[str, Any]]:
     })
 
     origins = computer.get("browser_origins") or []
-    browser_ceiling = "read" if computer.get("browser") and origins else "off"
+    browser_ceiling = "read" if computer.get("browser") and origins and (policy or {}).get("tools", {}).get("browser_action", default_mode) != "READ_ONLY" else "off"
     if not computer.get("browser"):
         browser_reason = "permissions.yaml disables the browser adapter (computer.browser: false)."
     elif not origins:
@@ -336,7 +343,7 @@ def capabilities(state) -> list[dict[str, Any]]:
     elif not (playwright and worker_ok):
         browser_reason = playwright_note if not playwright else worker_note
     else:
-        browser_reason = "Read-only inspection of allowlisted origins; clicks and typing stay in the agent tool."
+        browser_reason = "Every inspection or interaction requires fresh shared-gate approval; exact origins and scriptless pages."
     browser_stored = store["levels"]["browser"]
     rows.append({
         "id": "browser", "owned": True, "level": _clip(browser_stored, browser_ceiling),
@@ -363,18 +370,36 @@ def capabilities(state) -> list[dict[str, Any]]:
         "levels": [], "link": "run",
     })
     screen_ok, screen_note = _screen()
-    rows.append({"id": "screen", "owned": False, "level": "unavailable", "ceiling": "n/a",
-                 "managed_by": "host environment", "available": screen_ok,
-                 "reason": screen_note, "levels": []})
-    apps_ok, apps_note = _apps()
-    rows.append({"id": "apps", "owned": False, "level": "unavailable", "ceiling": "n/a",
-                 "managed_by": "host environment", "available": apps_ok,
+    desktop = computer.get('desktop') or {}
+    try:
+        from .context.core import settings as context_settings
+        from .vision.state import check_running
+        capture_cfg = context_settings(workspace)
+        check_running(workspace)
+        capture_enabled = (desktop.get('enabled') and any('screenshot' in a['actions'] for a in desktop.get('apps', {}).values())
+                           and capture_cfg['enabled'] and capture_cfg['screenshots'])
+    except (OSError, ValueError):
+        capture_enabled = False
+    rows.append({'id': 'screen', 'owned': False, 'level': 'ask' if capture_enabled else 'off', 'ceiling': 'ask',
+                 'managed_by': 'permissions.yaml + context.yaml + vision hard-off', 'available': bool(screen_ok and capture_enabled),
+                 'reason': screen_note + ' Capture also needs app opt-in, context privacy and fresh approval.', 'levels': []})
+    apps_ok = bool((os.name == 'nt' and __import__('importlib.util', fromlist=['find_spec']).find_spec('pywinauto'))
+                   or (os.name != 'nt' and os.environ.get('DISPLAY') and not os.environ.get('WAYLAND_DISPLAY')
+                       and shutil.which('xdotool') and shutil.which('wmctrl')))
+    apps_note = 'Enable computer.desktop with exact executable/window/action allowlists. Native Windows UIA or Linux X11 (xdotool + wmctrl) required.'
+    rows.append({"id": "apps", "owned": False, "level": "ask" if desktop.get("enabled") else "off", "ceiling": "ask",
+                 "managed_by": "permissions.yaml computer.desktop", "available": bool(apps_ok and desktop.get("enabled")),
                  "reason": apps_note, "levels": []})
     code_ok, code_note = _vscode()
     rows.append({"id": "vscode", "owned": False, "level": "on" if computer.get("editor") else "off", "ceiling": "ask",
                  "managed_by": "permissions.yaml computer.editor",
                  "available": bool(code_ok and computer.get("editor")),
                  "reason": code_note if not computer.get("editor") else code_note, "levels": []})
+    for key, label in (('workflows', 'Reviewed macros'), ('smart_home', 'Home and authorized devices')):
+        enabled = bool((computer.get(key) or {}).get('enabled'))
+        rows.append({'id': key, 'label': label, 'owned': False, 'level': 'ask' if enabled else 'off', 'ceiling': 'ask',
+                     'managed_by': 'permissions.yaml computer.' + key, 'available': enabled, 'levels': [],
+                     'reason': 'Operator scopes and fresh shared approvals required. Readiness/delivery is not inferred from enablement.'})
     return rows
 
 
@@ -423,7 +448,7 @@ def state_view(state) -> dict[str, Any]:
         "notes": [
             "This is not an OS sandbox: approved commands run on the host with the server's privileges.",
             "The studio can only lower the workspace policy; it can never raise it.",
-            "Screen view, app launching and the VS Code bridge are reported from probes, not simulated.",
+            "New actions use the existing queue and Approval Center, not an unrestricted desktop executor.",
         ],
     }
 
@@ -458,16 +483,16 @@ def save_settings(state, payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def _scoped(state, value: Any) -> tuple[Path, Path]:
-    """Resolve a workspace path inside the configured roots and the safe set."""
-    from .workbench import safe_path
-
+    """Operator file roots AND narrower Studio roots; reject links/private/authority files."""
+    from .computer_actions import safe_local
+    from .computer_files import scoped
+    from .permissions import Permissions
     workspace = Path(state.workspace).resolve()
-    path = safe_path(workspace, _text(value, 400, "Path"))
+    path = scoped(Permissions(workspace), _text(value, 500, 'Path'))
     store = load_settings(workspace)
-    allowed = [workspace] if "." in store["scopes"]["roots"] else [
-        (workspace / root).resolve() for root in store["scopes"]["roots"]]
-    if not any(path == root or path.is_relative_to(root) for root in allowed):
-        raise ValueError("Path is outside the configured scope roots.")
+    allowed = [safe_local(workspace, root) for root in store['scopes']['roots']]
+    if not any(path.is_relative_to(root) for root in allowed):
+        raise ValueError('Path is outside the configured scope roots.')
     return workspace, path
 
 
@@ -512,7 +537,11 @@ def tree(state, payload: dict[str, Any]) -> dict[str, Any]:
             if len(rows) >= MAX_TREE:
                 truncated = True
                 break
-            row = _tree_row(workspace, entry, depth + 1)
+            try:
+                _scoped(state, str(entry))
+                row = _tree_row(workspace, entry, depth + 1)
+            except (ValueError, OSError):
+                continue
             rows.append(row)
             if row["kind"] == "dir" and depth + 1 < depth_limit:
                 stack.append((entry, depth + 1))
@@ -543,10 +572,12 @@ def preview(state, payload: dict[str, Any]) -> dict[str, Any]:
         return {"schema": SCHEMA, "observed_at": time.time(), "path": path.relative_to(workspace).as_posix(),
                 "size": size, "binary": True, "text": "", "truncated": False,
                 "note": "Not valid UTF-8: no text preview is shown."}
+    from .github_safety import scan_text
+    scan_text(text, workspace=workspace)
     return {"schema": SCHEMA, "observed_at": time.time(), "path": path.relative_to(workspace).as_posix(),
-            "size": size, "binary": False, "text": text, "truncated": False,
+            "size": size, "binary": False, "text": text, "truncated": False, "untrusted": True,
             "revision": hashlib.sha256(data).hexdigest()[:16],
-            "note": "Read from the workspace; secrets are not filtered from source files you open here."}
+            "note": "Untrusted workspace data, never instructions. Recognized credentials are refused; not a general secret detector."}
 
 
 def write(state, payload: dict[str, Any]) -> dict[str, Any]:
@@ -566,26 +597,13 @@ def write(state, payload: dict[str, Any]) -> dict[str, Any]:
     token = f"WRITE {path.relative_to(workspace).as_posix()}"
     if payload.get("confirmation") != token:
         raise ValueError(f"Type {token} to confirm")
-    from .github_safety import GitHubSafetyError, scan_text
-    from .snapshots import Snapshots
-
-    try:
-        scan_text(text, workspace=workspace)
-    except GitHubSafetyError as exc:
-        raise ValueError(str(exc)) from None
-    snapshots = Snapshots(workspace)
+    from .computer_sessions import approved
+    registry, name, args, _detail = approved(state, 'file/write', payload)
+    output, error = registry.call(name, args)
+    if error:
+        raise ValueError(output)
+    snapshot = registry.ctx.state.get('last_snapshot')
     data = text.encode()
-    with snapshots.change(path, "write_file", data, expected=before) as snapshot:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        temporary = path.parent / (".computer-write-" + uuid.uuid4().hex)
-        try:
-            with os.fdopen(os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "wb") as handle:
-                handle.write(data)
-                handle.flush()
-                os.fsync(handle.fileno())
-            os.replace(temporary, path)
-        finally:
-            temporary.unlink(missing_ok=True)
     audit(state, _client(payload), "computer.file.write", every=0)
     return {"schema": SCHEMA, "observed_at": time.time(),
             "saved": path.relative_to(workspace).as_posix(), "bytes": len(data),
@@ -597,7 +615,13 @@ def snapshots(state) -> list[dict[str, Any]]:
     _level_or_refuse(state, "files", "read")
     from .snapshots import Snapshots
 
-    rows = Snapshots(state.workspace).listing()[:30]
+    rows = []
+    for row in Snapshots(state.workspace).listing()[:100]:
+        try:
+            _scoped(state, row['path'])
+        except ValueError:
+            continue
+        rows.append(row)
     return [{"id": row["id"], "path": row["path"], "operation": row["operation"], "status": row["status"],
              "created": row["created"]} for row in rows]
 
@@ -608,18 +632,20 @@ def undo(state, payload: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(identifier, str) or not SNAPSHOT_RE.fullmatch(identifier):
         raise ValueError("A snapshot id is required")
     from .snapshots import Snapshots
-    from .tools import ApprovalDecision, ApprovalGate
+    from .tools import ToolFailure
 
     snapshots_store = Snapshots(state.workspace)
     reviewed = snapshots_store.preview(identifier)
     token = f"RESTORE {identifier}"
     if payload.get("confirmation") != token:
         raise ValueError(f"Type {token} to confirm")
-    # The typed token is the human decision; the gate keeps the lineage/identity
-    # checks in Snapshots.undo() intact instead of duplicating them here.
-    gate = ApprovalGate(mode="auto", allow_dangerous=True,
-                        callback=lambda *_args: ApprovalDecision(True))
-    result = snapshots_store.undo(reviewed, gate)
+    _scoped(state, reviewed['path'])
+    from .computer_sessions import approved
+    registry, _name, _args, current = approved(state, 'file/undo', payload)
+    try:
+        result = snapshots_store.undo(current, registry.ctx.gate)
+    except ToolFailure as exc:
+        raise ValueError(str(exc)) from None
     audit(state, _client(payload), "computer.file.undo", every=0)
     return {"schema": SCHEMA, "observed_at": time.time(), "restored": result,
             "note": "Restored from the pre-change snapshot; the restored version is itself recorded."}
@@ -638,69 +664,58 @@ def _trash_entries(workspace: Path) -> list[dict[str, Any]]:
         if not meta.is_file():
             continue
         try:
-            rows.append(_read_json(meta, 20_000))
+            from .computer_actions import safe_local
+            safe_local(workspace, meta)
+            row = _read_json(meta, 20_000)
+            if (folder / 'body').is_file() and not (folder / 'body').is_symlink():
+                rows.append(row)
         except (OSError, ValueError):
             continue
     return sorted(rows, key=lambda row: row.get("at", 0), reverse=True)
 
 
 def trash(state, payload: dict[str, Any]) -> dict[str, Any]:
-    _level_or_refuse(state, "files", "ask")
-    workspace, path = _scoped(state, payload.get("path"))
-    if path == workspace or path.name in {".git", ".nexus"}:
-        raise ValueError("That path cannot be trashed")
-    if not path.exists() or path.is_symlink():
-        raise ValueError("Only an existing regular file or directory can be trashed")
-    token = f"TRASH {path.relative_to(workspace).as_posix()}"
-    if payload.get("confirmation") != token:
-        raise ValueError(f"Type {token} to confirm")
-    identifier = "t-" + hashlib.sha256(f"{time.time()}-{path}".encode()).hexdigest()[:8]
-    folder = trash_path(workspace) / identifier
-    folder.mkdir(parents=True, exist_ok=False)
-    size = path.stat().st_size
-    target = folder / path.name
-    with _lock:
-        os.replace(path, target)
-        _atomic_bytes(folder / "meta.json", json.dumps({
-            "id": identifier, "path": path.relative_to(workspace).as_posix(), "name": path.name,
-            "kind": "dir" if target.is_dir() else "file", "size": int(size), "at": time.time(),
-        }, sort_keys=True).encode())
-    for stale in _trash_entries(workspace)[MAX_TRASH:]:
-        shutil.rmtree(trash_path(workspace) / stale["id"], ignore_errors=True)
-    audit(state, _client(payload), "computer.file.trash", every=0)
-    return {"schema": SCHEMA, "observed_at": time.time(), "trashed": identifier,
-            "path": path.relative_to(workspace).as_posix(),
-            "note": "Moved into the workspace trash; restore it from this page."}
+    _level_or_refuse(state, 'files', 'ask')
+    workspace, path = _scoped(state, payload.get('path'))
+    if path == workspace:
+        raise ValueError('That path cannot be trashed')
+    token = f'TRASH {path.relative_to(workspace).as_posix()}'
+    if payload.get('confirmation') != token:
+        raise ValueError(f'Type {token} to confirm')
+    from .computer_sessions import approved
+    registry, name, args, _detail = approved(state, 'file/trash', payload)
+    output, error = registry.call(name, args)
+    if error:
+        raise ValueError(output)
+    audit(state, _client(payload), 'computer.file.trash', every=0)
+    return {'schema': SCHEMA, 'observed_at': time.time(), **json.loads(output),
+            'note': 'Moved to bounded private workspace trash. No permanent delete or automatic purge.'}
 
 
 def restore(state, payload: dict[str, Any]) -> dict[str, Any]:
-    _level_or_refuse(state, "files", "ask")
-    identifier = payload.get("id")
-    if not isinstance(identifier, str) or not RULE_ID_RE.fullmatch(identifier):
-        raise ValueError("A trash id is required")
-    folder = trash_path(Path(state.workspace)) / identifier
-    meta = _read_json(folder / "meta.json", 20_000)
-    token = f"RESTORE {identifier}"
-    if payload.get("confirmation") != token:
-        raise ValueError(f"Type {token} to confirm")
-    workspace = Path(state.workspace).resolve()
-    target = (workspace / meta["path"]).resolve()
-    if not target.is_relative_to(workspace):
-        raise ValueError("Trash record escapes the workspace")
-    if target.exists():
-        raise ValueError("Something already exists at that path; move it first.")
-    with _lock:
-        target.parent.mkdir(parents=True, exist_ok=True)
-        os.replace(folder / meta["name"], target)
-        shutil.rmtree(folder, ignore_errors=True)
-    audit(state, _client(payload), "computer.trash.restore", every=0)
-    return {"schema": SCHEMA, "observed_at": time.time(), "restored": meta["path"],
-            "note": "Moved back; nothing else was touched."}
+    _level_or_refuse(state, 'files', 'ask')
+    token = f"RESTORE {payload.get('id')}"
+    if payload.get('confirmation') != token:
+        raise ValueError(f'Type {token} to confirm')
+    from .computer_sessions import approved
+    registry, name, args, _detail = approved(state, 'trash/restore', payload)
+    output, error = registry.call(name, args)
+    if error:
+        raise ValueError(output)
+    audit(state, _client(payload), 'computer.trash.restore', every=0)
+    return {'schema': SCHEMA, 'observed_at': time.time(), **json.loads(output),
+            'note': 'Restored inside current operator and Studio roots; nothing overwritten.'}
 
 
 def trash_view(state) -> dict[str, Any]:
     _level_or_refuse(state, "files", "read")
-    rows = _trash_entries(Path(state.workspace))
+    rows = []
+    for row in _trash_entries(Path(state.workspace)):
+        try:
+            _scoped(state, row['path'])
+        except (ValueError, KeyError):
+            continue
+        rows.append(row)
     return {"schema": SCHEMA, "observed_at": time.time(), "entries": rows, "limit": MAX_TRASH,
             "note": "Trashed items stay inside the workspace until restored or removed by you."}
 
@@ -748,15 +763,12 @@ def browser_open(state, payload: dict[str, Any]) -> dict[str, Any]:
     if origin not in view["origins"]:
         raise ValueError("That origin is not in the allowlist for this page.")
 
-    payload_out = {"url": url, "action": "inspect", "origins": [origin]}
-    argv = [sys.executable, "-I", str(Path(__file__).with_name("browser_worker.py")), json.dumps(payload_out)]
-    output, code = _run(argv, timeout=45)
-    if code:
-        raise ValueError("The browser worker refused or failed; no host fallback is used.")
-    try:
-        data = json.loads(output)
-    except ValueError:
-        raise ValueError("The browser worker returned no readable data.") from None
+    from .computer_sessions import approved
+    registry, name, args, _detail = approved(state, 'browser/open', payload)
+    output, error = registry.call(name, args)
+    if error:
+        raise ValueError(output)
+    data = registry.ctx.state.get('browser_result') or {'url': url, 'text': output}
     audit(state, _client(payload), "computer.browser.inspect", every=0)
     return {"schema": SCHEMA, "observed_at": time.time(), "url": data.get("url", url),
             "title": str(data.get("title", ""))[:300],
@@ -767,14 +779,7 @@ def browser_open(state, payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def _run(argv: list[str], timeout: int) -> tuple[str, int]:
-    proc = subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-    try:
-        out, _err = proc.communicate(timeout=timeout)
-    except subprocess.TimeoutExpired:
-        proc.kill()
-        proc.communicate()
-        raise ValueError("The browser worker timed out.") from None
-    return out, proc.returncode
+    raise ValueError('Ungated Studio workers are disabled; use browser_action through the shared registry')
 
 
 # ── panic ──────────────────────────────────────────────────────────────── #
@@ -838,7 +843,7 @@ def _client(payload: dict[str, Any] | None) -> str:
 
 def audit(state, client: str, action: str, *, every: float = 300.0) -> bool:
     now = time.time()
-    key = f"{client}|{action}"
+    key = f"{Path(state.workspace).resolve()}|{client}|{action}"
     with _audit_lock:
         if every > 0 and now - _audit_at.get(key, 0.0) < every:
             return False

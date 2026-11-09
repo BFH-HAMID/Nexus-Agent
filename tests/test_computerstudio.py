@@ -30,6 +30,8 @@ TOKEN = "computer-studio-test-token"
 
 @pytest.fixture()
 def state(repo: Path):
+    # Explicit operator opt-in; the shipped/default file adapter remains OFF.
+    (repo / 'permissions.yaml').write_text(yaml.safe_dump({'schema': 1, 'computer': {'files': {'enabled': True, 'roots': ['.']}}}))
     created = ServerState(repo, token=TOKEN, quiet=True)
     try:
         yield created
@@ -56,7 +58,13 @@ def _write(state, path: str, text: str, **overrides):
         target.read_bytes()).hexdigest()[:16]
     payload = {"path": path, "text": text, "confirmation": f"WRITE {path}", "revision": revision}
     payload.update(overrides)
-    return studio.write(state, payload)
+    return _reviewed(state, 'file/write', payload, studio.write)
+
+
+def _reviewed(state, operation, payload, call):
+    from nexus.computer_sessions import review
+    challenge = review(state, {'operation': operation, 'payload': payload})
+    return call(state, {**payload, 'approval_id': challenge['id'], 'approval': challenge['confirmation']})
 
 
 # ── policy store ───────────────────────────────────────────────────────── #
@@ -126,7 +134,7 @@ def test_capabilities_report_the_real_policy(state, repo: Path):
     assert rows["browser"]["available"] is False
     assert rows["terminal"]["reason"].startswith("Shell backend: host")
     assert rows["screen"]["available"] is False and "DISPLAY" in rows["screen"]["reason"]
-    assert {"files", "browser", "terminal", "office", "screen", "apps", "vscode"} == set(rows)
+    assert {"files", "browser", "terminal", "office", "screen", "apps", "vscode", "workflows", "smart_home"} == set(rows)
 
 
 def test_owned_capabilities_offer_the_full_ladder(state, repo: Path):
@@ -147,7 +155,7 @@ def test_auto_is_stored_but_capped_by_the_workspace_policy(state, repo: Path):
 
 
 def test_read_only_permissions_cap_the_studio_at_read(state, repo: Path):
-    (repo / "permissions.yaml").write_text(yaml.safe_dump({"schema": 1, "default": "READ_ONLY"}))
+    (repo / "permissions.yaml").write_text(yaml.safe_dump({"schema": 1, "default": "READ_ONLY", "computer": {"files": {"enabled": True, "roots": ["."]}}}))
     _save(state, levels={"files": "ask", "browser": "off"})
     assert studio.effective(state, "files") == "read"
     with pytest.raises(ValueError, match="needs ask"):
@@ -246,7 +254,7 @@ def test_write_and_undo_roundtrip_through_the_snapshot_store(state, repo: Path):
     second = _write(state, "notes.txt", "second\n")
     with pytest.raises(ValueError, match="RESTORE"):
         studio.undo(state, {"id": second["snapshot"], "confirmation": "RESTORE nope"})
-    studio.undo(state, {"id": second["snapshot"], "confirmation": f"RESTORE {second['snapshot']}"})
+    _reviewed(state, 'file/undo', {"id": second["snapshot"], "confirmation": f"RESTORE {second['snapshot']}"}, studio.undo)
     assert (repo / "notes.txt").read_text() == "first\n"
 
 
@@ -259,12 +267,12 @@ def test_write_refuses_credentials(state, repo: Path):
 def test_trash_and_restore_move_the_real_file(state, repo: Path):
     _save(state, levels={"files": "ask", "browser": "off"})
     (repo / "old.txt").write_text("keep me\n")
-    body = studio.trash(state, {"path": "old.txt", "confirmation": "TRASH old.txt"})
+    body = _reviewed(state, 'file/trash', {"path": "old.txt", "confirmation": "TRASH old.txt"}, studio.trash)
     assert not (repo / "old.txt").exists()
     assert (Path(state.workspace) / studio.STORE_DIR / studio.TRASH_DIR / body["trashed"]).is_dir()
     with pytest.raises(ValueError, match="RESTORE"):
         studio.restore(state, {"id": body["trashed"], "confirmation": "RESTORE wrong"})
-    studio.restore(state, {"id": body["trashed"], "confirmation": f"RESTORE {body['trashed']}"})
+    _reviewed(state, 'trash/restore', {"id": body["trashed"], "confirmation": f"RESTORE {body['trashed']}"}, studio.restore)
     assert (repo / "old.txt").read_text() == "keep me\n"
 
 
@@ -385,7 +393,7 @@ def test_state_uses_the_structured_envelope(live, repo: Path):
     assert status == 200 and body["ok"] is True
     data = body["data"]
     assert data["store"]["settings"]["levels"] == {"files": "off", "browser": "off"}
-    assert len(data["capabilities"]) == 7
+    assert len(data["capabilities"]) == 9
     assert any(row["action"] == "computer.state" for row in webapi.read_audit(repo))
 
 

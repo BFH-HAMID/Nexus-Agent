@@ -65,6 +65,16 @@ Docker copy execution are implemented. See [computer setup, scope and platform
 acceptance gates](docs/computer-control.md); live Windows/desktop/Docker acceptance
 is not claimed.
 
+**Task 12 — Environment control:** opt-in Linux X11/Windows UIA app control,
+scriptless origin-locked browser search/draft/extract (separate form-submit approval),
+scoped organize/rename/backup/duplicates/recoverable trash, operator-pinned YAML
+macros with fresh approval per step, and exact-device Home Assistant/TLS MQTT.
+Phone support uses authorized companion notifications, not invasive hooks. Computer
+Studio now queues these tools through the existing Run/Approval Center; its legacy
+file/browser mutations require one-use, payload-bound reviews. All new switches
+remain **OFF** in `permissions.yaml`. See [enablement, CLI/voice examples, tests
+and limits](docs/computer-control.md).
+
 ### Jarvis daemon (Module 4)
 
 `nexus jarvis -C WORKSPACE start|stop|pause|resume|kill|daemon-status` controls a
@@ -374,6 +384,7 @@ export GEMINI_MODEL=gemini-3.6-flash
 | `nexus local [--pull MODEL]` | Ollama status: Hermes, uncensored and local models, and pull them |
 | `nexus prompt <role>` | print the exact system prompt a role gets |
 | `nexus doctor [--json]` | keys, endpoints, models, `gh`, repo state |
+| `nexus security -C WORKSPACE status` | OFF-by-default defensive monitoring, scoped tests and proposal-only responses; [guide](docs/defensive-security.md) |
 | `nexus serve [--demo] [--yes]` | local HTTP+SSE server for the sidebar/panel |
 | `nexus gui` (alias `nexus panel`) | open the live GUI dashboard — watch routing, thinking and every tool call |
 | `nexus skills [list\|show\|import\|curate]` | the agent's skills: procedural memory it wrote itself |
@@ -533,6 +544,10 @@ $ nexus task 'run nmap against my lab box and try privilege escalation'
 ⇄ role: pentesting -> agent: openrouter-uncensored [keyword] hits: nmap, privilege escalation, pentest
 → agent: openrouter-uncensored  model: dolphin-mistral-24b-venice-edition  provider: openrouter  tools: text
 ```
+
+The preceding example illustrates **role selection only**, not permission to run
+a scanner. Raw scanner/exploit commands are refused; use the separately allowlisted
+and freshly reviewed [defensive TCP check](docs/defensive-security.md).
 
 **Step 2 — LLM classifier fallback (only if nothing matched).** The roadmap prompt, verbatim:
 
@@ -983,3 +998,78 @@ The original `nexus gui` includes category filters, searchable/favourite control
 ### One-command updates
 
 Run `nexus update` in your existing environment after stopping Nexus processes. Clean official `main` checkouts fast-forward safely; package installations use a pinned official GitHub archive. `nexus update --check` checks without installing; `--extras hud,mcp,context` updates selected optional dependencies. On Windows a worker waits for the launcher to exit and reports actual completion separately. Local code changes are never force-cleaned. See [updating and recovery](docs/updating.md) for safety limits, Windows receipts and first-install requirements.
+
+
+## Defensive security assistant (Task 14)
+
+`nexus security -C WORKSPACE status|monitor|watch|export|scan|respond|analyze|roles`
+adds opt-in observation for SSH failures, fail2ban/ufw events, new TCP listeners,
+users/cron/systemd changes, selected-file integrity, local package-CVE snapshots
+and public-certificate expiry. Incidents have severity, deduplication/cooldowns,
+read-only normalized evidence, JSON/Markdown timelines and optional local Piper
+speech plus the existing owner Mission Control HUD alerts/DND.
+
+All switches remain **OFF** in operator-owned [`security.yaml`](security.yaml).
+Use only owned or explicitly authorized hosts. Active TCP checks require literal
+IP/port allowlists **and fresh approval**; raw scanners/exploits are refused.
+Enabling defensive mode also refuses opaque shell/Git/MCP/browser/desktop relays
+in that workspace—use a separate trusted security workspace when appropriate.
+IP blocks, account-disable and staged public SSH key rotations are **DANGEROUS
+proposals only**, each with exact command/rollback review; nothing applies them.
+Existing defensive roles provide separately reviewed, tool-free reports with no
+provider fallback. No service or external notification is started automatically.
+
+See [enablement, input schemas, approval boundaries, exports, tests and known
+limits](docs/defensive-security.md). Optional certificate/SSH public-key validation
+uses `.[security]`. Offline tests are not live host, firewall, audio or incident
+response acceptance.
+
+
+## Shared HUD, mobile presence and service (Task 13)
+
+Open **Shared HUD** in the existing dashboard for English/Bangla conversation and
+voice state, measured microphone waveform, mission DAG/cost, exact approval cards,
+briefs, capture indicators and the same World widget using its cache-only adapter.
+An authenticated SSE channel and bounded workspace state connect the HUD/PWA and
+local voice pipeline. Revocable scoped device tokens never grant administration;
+conversation/mission handoff does not transfer permission or execute a task.
+
+Every new switch is **OFF** in operator-owned `hud.yaml` / `telegram.yaml`.
+The PWA has static-shell caching and separately reviewed generic push; recordings
+become drafts, not approvals. Optional Telegram notes use local STT/TTS and one-use
+PIN-reviewed sends. `nexus service -C WORKSPACE export|install|status|remove` provides
+reviewed systemd-user / Windows-logon-task setup, with bounded crash backoff,
+private rotating lifecycle logs, `health` and `nexus doctor` integration.
+
+See [enablement, pairing, TLS tunnels, handoff, service commands, tests and
+limits](docs/presence.md). Nothing is installed or exposed automatically. Offline
+fixtures/Chromium checks are not real-device, push-delivery or native-service
+acceptance; those require operator testing.
+
+
+## Vision and perception (Task 11)
+
+Vision is **OFF by default** in operator-owned [`vision.yaml`](vision.yaml).
+The new local-first pipeline adds on-demand foreground screen explanations,
+image/PDF Q&A with page/region references, bounded local YOLOv8 camera sessions,
+and separately opted-in consensual face recognition with native-keyring-backed
+encrypted templates. No camera or model starts just by opening the HUD.
+
+- Use `nexus vision -C . status`, `ask`, `screen`, or `camera`; face management is
+  `nexus vision -C . faces list|enroll|delete`.
+- The authenticated HUD/main dashboard accepts ephemeral uploads. Private
+  whitelisted Telegram attachments and literal voice “look at this” requests
+  use the same policy boundary.
+- Camera/screen indicators reflect capture leases; **Vision hard off** (or
+  `nexus vision -C . off`) is durable, works independently of YAML, and applies
+  to legacy screenshot paths too. Resume needs fresh approval and starts nothing.
+- Cloud upload, capture, enrollment, deletion and outbound answers retain fresh
+  approval gates; `--yes` cannot bypass them. Camera/face pipelines never use a
+  cloud provider. Cloud Q&A is for explicitly attested non-person material with
+  a fail-closed local face preflight; detection is not proof that no face exists.
+- OCR, pixels and VLM answers remain untrusted data, not tool instructions.
+  Proactive person/owner/unknown events are local HUD advisories, not authentication.
+
+See [Vision setup, privacy boundaries, commands and offline tests](docs/vision.md).
+Extras are split into `vision` (camera/YOLO), `vision-documents` (images/PDF),
+`vision-faces` (biometrics/encryption), and the existing `context` (screen OCR).

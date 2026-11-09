@@ -181,13 +181,24 @@ def read_active_mission(workspace: Path | str | None) -> dict[str, Any]:
     ws = Path(workspace).resolve()
     info: dict[str, Any] = {}
     try:
+        from ..hud.presence import Presence
+        presence = Presence(ws)
+        if presence.enabled('handoff_enabled') and presence.enabled('voice_enabled'):
+            selected = presence.snapshot()['active_mission']
+            if selected:
+                from ..chief import load_mission
+                mission = load_mission(ws, selected)
+                info.update(mission_id=mission.id, task=presence.clean(mission.goal), state=mission.status)
+    except (ValueError, OSError, KeyError):
+        pass  # Observation only; no task resume or approval transfer.
+    try:
         from ..assistant.memory import PersonalMemory
 
         pm = PersonalMemory(ws)
         if pm.enabled:
             active = pm.active_state()
             if isinstance(active, dict) and active:
-                info.update(active)
+                info = {**active, **info}
     except Exception:
         pass
     try:
@@ -228,6 +239,8 @@ class ConversationState:
         self._next_turn_id = 1
         self.pending_clarification: PendingClarification | None = None
         self.last_language: str = "en"
+        self._shared_turn_id = ''
+        self._shared_fingerprint = ''
 
     def active_mission(self) -> dict[str, Any]:
         if self.mission_provider is not None:
@@ -400,7 +413,43 @@ class ConversationState:
             active_mission_note=res.active_mission_note,
         )
 
+    def _clear_shared(self):
+        if self._shared_fingerprint:
+            self.turns.clear()
+            self.pending_clarification = None
+            self._shared_turn_id = self._shared_fingerprint = ''
+
+    def _sync_shared(self):
+        if self.workspace is None:
+            return
+        try:
+            import hashlib
+            import json
+
+            from ..hud.presence import Presence
+            presence = Presence(self.workspace)
+            if not (presence.enabled('voice_enabled') and presence.enabled('conversation_enabled')):
+                self._clear_shared()
+                return
+            rows = [row for row in presence.snapshot()['turns'] if row['status'] in {'done', 'error', 'interrupted'}]
+            rows = rows[-self.max_turns:]
+            # ID alone misses retention of older turns and credential re-redaction.
+            fingerprint = hashlib.sha256(json.dumps([(r['id'], r['user'], r['assistant'], r['status'])
+                                                      for r in rows], ensure_ascii=False).encode()).hexdigest()
+            if fingerprint == self._shared_fingerprint:
+                return
+            self.turns.clear()
+            self.pending_clarification = None
+            self._shared_turn_id = rows[-1]['id'] if rows else ''
+            self._shared_fingerprint = fingerprint
+            for row in rows:
+                # Text references only, not executed command/grant/speaker authority.
+                self.add_turn(row['user'], row['assistant'])
+        except (ValueError, OSError, KeyError, TypeError, TimeoutError):
+            self._clear_shared()  # Invalid/off shared state cannot retain imported references.
+
     def resolve_reference(self, utterance: str, *, language: str = "en") -> ReferenceResolution:
+        self._sync_shared()
         text = " ".join((utterance or "").split()).strip()
         if not text:
             return ReferenceResolution(resolved_text="")

@@ -71,6 +71,13 @@ server can itself proxy elsewhere; Nexus cannot certify its internals.
 
 ## Screenshots and vision are distinct consent boundaries
 
+The newer [vision pipeline](vision.md) adds operator-owned `vision.yaml`, direct
+local Ollama/Gemini adapters, page/region references, shared capture indicators
+and a durable hard-off latch. When enabled it is used by this command too; the
+legacy context adapter below retains its explicit opt-in and public APIs. Every
+actual capture now has pre/post metadata audit entries. `nexus vision off` stops
+both paths, even if context capture is still enabled.
+
 Install `.[context]` and the native **Tesseract OCR executable** yourself. No implicit
 OS package install, privilege elevation or screenshot upload occurs. For local vision,
 set `local_vision_agent` to an existing loopback HTTP OpenAI-compatible vision model.
@@ -78,7 +85,7 @@ set `local_vision_agent` to an existing loopback HTTP OpenAI-compatible vision m
 ```powershell
 nexus context -C . vision
 # Separately authorized hosted vision, only when explicitly requested:
-nexus context -C . vision --cloud-agent YOUR_EXISTING_VISION_AGENT
+nexus context -C . vision --cloud-agent YOUR_EXISTING_VISION_AGENT --no-people
 ```
 
 Each capture uses the existing DANGEROUS ApprovalGate with a fresh exact CLI phrase,
@@ -97,8 +104,11 @@ are repeated. `this window` can invoke the same locally configured vision path t
 the agent after fresh capture approval; plan/read-only runs do not auto-capture.
 
 Cloud mode requires **another** fresh approval bound to the exact JPEG SHA, size,
-agent and endpoint; approving local capture never grants upload permission. Both
-local and cloud use the **existing model adapter**, with a short private HTTP client,
+agent and endpoint; approving local capture never grants upload permission. Cloud
+also requires a no-people attestation and successful local face preflight (install
+`vision-faces`). Detected faces or unavailable checks refuse upload. Face detection
+is best effort, not a certification; use local vision if uncertain. In the legacy
+context-only path, both local and cloud use the **existing model adapter**, with a short private HTTP client,
 no ambient proxies/redirects, and a per-wire guard that refuses retries/fallbacks,
 expired images or revoked policy. An in-flight request cannot be unsent. Only
 OpenAI-compatible vision endpoints are enabled here (Gemini/OpenRouter/Ollama as

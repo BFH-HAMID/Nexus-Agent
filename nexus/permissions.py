@@ -18,7 +18,8 @@ import yaml
 MODES = {'READ_ONLY', 'ASK_EVERY_TIME', 'AUTO_ALLOW'}
 # Tool families that always take a fresh decision, whatever the mode says.
 FORCED_REVIEW = frozenset({'run_command', 'git', 'gh', 'git_prepare', 'office_file',
-                           'vscode_open', 'browser_action', 'integration_gmail_send'})
+                           'vscode_open', 'browser_action', 'integration_gmail_send', 'desktop_action', 'file_action',
+                           'workflow_run', 'workflow_record', 'home_action'})
 
 
 class Permissions:
@@ -45,10 +46,13 @@ class Permissions:
         from .limits import parse_limits_policy
         from .sandbox import parse_sandbox_policy
         from .second_factor import parse_second_factor_policy
+        computer = settings(data.get('computer', {}))
+        from .github_safety import scan_text
+        scan_text(json.dumps(computer), workspace=self.root)
         return {
             'default': data.get('default', 'ASK_EVERY_TIME'),
             'tools': rules,
-            'computer': settings(data.get('computer', {})),
+            'computer': computer,
             'sandbox': parse_sandbox_policy(data.get('sandbox')),
             'second_factor': parse_second_factor_policy(data.get('second_factor')),
             'limits': parse_limits_policy(data.get('limits')),
@@ -90,9 +94,55 @@ class Permissions:
 
     def operator_control(self, path):
         target = (self.root / path).resolve() if isinstance(path, str) and not Path(path).is_absolute() else Path(path)
-        controls = [self.root / name for name in ('permissions.yaml', 'autonomy.yaml', 'context.yaml', 'memory.yaml', 'mcp.yaml', 'telegram.yaml', 'hud.yaml', 'widget.yaml', 'voice.yaml', 'persona.yaml', 'chief.yaml', 'proactive.yaml')]
+        controls = [self.root / name for name in ('permissions.yaml', 'autonomy.yaml', 'context.yaml', 'memory.yaml', 'mcp.yaml', 'telegram.yaml', 'hud.yaml', 'widget.yaml', 'voice.yaml', 'persona.yaml', 'chief.yaml', 'proactive.yaml', 'vision.yaml', 'security.yaml')]
         if any(target == p or (target.exists() and p.exists() and os.path.samefile(target, p)) for p in controls):
             return True
+        # Deserialized local detector weights are operator-trusted executable input,
+        # not files a model may swap beneath an unchanged vision policy.
+        from .vision.policy import load_policy as vision_policy
+        weights = vision_policy(self.root)['camera']['weights']
+        if weights:
+            model = (self.root / Path(weights).expanduser()).resolve()
+            if target == model or (target.exists() and model.exists() and os.path.samefile(target, model)):
+                return True
+        # Public-key rotation inputs are operator-staged response artifacts,
+        # never model-editable authority, including hardlink aliases while OFF.
+        from .security_assistant.policy import load as security_policy
+        security = security_policy(self.root)
+        for value in security['account_state_files'].values():
+            artifact = (self.root / Path(value).expanduser()).resolve()
+            if target == artifact or (target.exists() and artifact.exists() and os.path.samefile(target, artifact)):
+                return True
+        for rotation in security['rotation_paths'].values():
+            for value in rotation.values():
+                artifact = (self.root / Path(value).expanduser()).resolve()
+                if target == artifact or (target.exists() and artifact.exists() and os.path.samefile(target, artifact)):
+                    return True
+        # Executable macro files and workspace app launch artifacts are operator
+        # authority, not mutable agent data (also protected while disabled).
+        computer = self.load()['computer']
+        directories = {self.root / 'computer-macros', self.root / computer['workflows']['directory']}
+        for directory in directories:
+            if target.is_relative_to(directory.resolve()):
+                return True
+            if target.exists() and target.stat().st_nlink > 1 and directory.is_dir():
+                for index, artifact in enumerate(directory.rglob('*')):
+                    if index >= 1000:
+                        raise ValueError('Macro hardlink review budget exceeded')
+                    if artifact.is_file() and os.path.samefile(target, artifact):
+                        return True
+        for app in computer['desktop']['apps'].values():
+            # Fixed launch argv can name local documents/scripts/configuration.
+            # Protect those artifacts too; editing a launcher input must not change
+            # an approved app action beneath an unchanged operator allowlist.
+            artifacts = [Path(app['executable']).resolve()]
+            for argument in app['args']:
+                value = argument.split('=', 1)[-1] if '=' in argument else argument
+                if value and not value.startswith('-') and '://' not in value:
+                    artifacts.append((self.root / value).resolve())
+            for artifact in artifacts:
+                if target == artifact or (target.exists() and artifact.exists() and os.path.samefile(target, artifact)):
+                    return True
         # Plugin code/manifests are operator-owned, even before enable. File tools
         # must not turn an approved plugin into new code under an unchanged name.
         from .jarvis.sources import bounded
@@ -128,15 +178,35 @@ class Permissions:
                     path = self.path(value or '.')
                     if not readonly and self.operator_control(path):
                         raise ValueError('Permission policy is operator-owned; agent edits are forbidden')
+        from .computer_actions import PREPARED_TOOLS, digest
+        computer_digest = None
+        if spec.name in PREPARED_TOOLS or spec.name == 'workflow_record':
+            feature = {'desktop_action': 'desktop', 'file_action': 'files', 'workflow_run': 'workflows',
+                       'workflow_record': 'workflows', 'home_action': 'smart_home', 'browser_action': 'browser'}[spec.name]
+            enabled = config['computer'][feature]
+            if not (enabled if type(enabled) is bool else enabled['enabled']):
+                raise ValueError('Computer capability is disabled by the operator')
+            computer_digest = digest(config)
+            if '_review' in args and (not isinstance(args['_review'], dict) or args['_review'].get('policy_sha256') != computer_digest):
+                raise ValueError('Computer policy changed during preparation/review')
+        from .security_assistant.policy import digest as security_digest
+        from .security_assistant.policy import load as security_policy
+        security_sha256 = security_digest(security_policy(self.root))
         forced = not readonly and spec.name in FORCED_REVIEW
         return {'mode': mode, 'readonly': readonly, 'forced': forced,
-                'second_factor': config['second_factor'], 'limits': config['limits']}
+                'second_factor': config['second_factor'], 'limits': config['limits'], 'security_sha256': security_sha256,
+                **({'computer_sha256': computer_digest} if computer_digest is not None else {})}
 
     def audit(self, spec, args, rule, decision):
         """One hash-linked line in the shared trail (see securitycenter.append_event)."""
         from . import audit as auditlog
         from . import securitycenter
         now = round(time.time(), 3)
+        from .computer_actions import PREPARED_TOOLS
+        redacted = auditlog.redact_args(args, self.root)
+        if spec.name in PREPARED_TOOLS:
+            redacted = {k: args[k] for k in ('action', 'app', 'device', 'adapter', 'name') if k in args}
+            redacted['bodies'] = 'omitted; arguments_sha256 identifies the exact reviewed request'
         event = {'at': now, 'when': auditlog.utc_iso(now), 'who': 'agent',
                  'what': 'permission.decision', 'tool': spec.name, 'mode': rule['mode'],
                  'approved': bool(decision.approved), 'reason': decision.reason[:500],
@@ -145,5 +215,5 @@ class Permissions:
                  'result': 'approved' if decision.approved else 'denied',
                  'risk': getattr(getattr(spec, 'risk', None), 'value', 'low'),
                  'actor': 'agent',
-                 'detail': {'mode': rule['mode'], 'redacted_args': auditlog.redact_args(args, self.root)}}
+                 'detail': {'mode': rule['mode'], 'redacted_args': redacted}}
         securitycenter.append_event(self.root, event)

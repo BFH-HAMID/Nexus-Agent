@@ -829,6 +829,7 @@ def _clean_safe(workspace: Path, text: Any, limit: int = 320) -> str:
 def _default_state() -> dict[str, Any]:
     return {
         "schema": 1,
+        "vision_events": {},
         "brief_last_date": "",
         "last_brief": None,
         "monitor_states": {},
@@ -2698,6 +2699,51 @@ class ProactiveEngine:
 
     def config(self) -> ProactiveConfig:
         return load_proactive_config(self.workspace)
+
+    def receive_vision_event(self, event: dict[str, Any]) -> dict[str, Any]:
+        """Local advisory events only: never tasks, approvals, sends or biometric auth."""
+        from ..vision.policy import VisionError, recheck, require
+
+        vision = require(self.workspace, 'camera')
+        cfg = self.config()
+        if not vision['camera']['events'] or not cfg.enabled:
+            return {'accepted': False, 'reason': 'vision events or proactive engine disabled'}
+        if not isinstance(event, dict) or set(event) - {'kind', 'label', 'location'}:
+            raise VisionError('Invalid vision event')
+        location = vision['camera']['location']
+        if event.get('location') != location:
+            raise VisionError('Vision event location outside operator policy')
+        kind = event.get('kind')
+        if kind == 'object' and event.get('label') in vision['camera']['classes']:
+            message = f"{event['label'].capitalize()} at {location} (local detector; unverified)."
+            key = 'object:' + event['label']
+        elif kind in {'unknown_person', 'owner_greeting'} and vision['faces']['enabled']:
+            key = kind
+            message = ('Unknown person detected; recognition may be wrong.' if kind == 'unknown_person'
+                       else 'Welcome back, ' + (vision['faces']['owner'] or 'owner') + '. Local match, not authentication.')
+        else:
+            raise VisionError('Unsupported vision event')
+        ts = self.clock()
+        accepted = [False]
+        def reserve(data):
+            rows = dict(data.get('vision_events') or {})
+            prior = rows.get(key)
+            if prior is not None and ts - prior < vision['camera']['cooldown_seconds']:
+                return
+            rows[key] = ts
+            data['vision_events'] = dict(list(rows.items())[-100:])
+            accepted[0] = True
+        recheck(self.workspace, vision)
+        self.store.update(reserve)
+        if not accepted[0]:
+            return {'accepted': False, 'reason': 'cooldown'}
+        recheck(self.workspace, vision)
+        # Do NOT inherit Telegram/desktop/cloud-TTS routing from ordinary alerts:
+        # those send/launch effects require their own fresh human approval.
+        delivery = self.channels.dispatch(title='Local vision', message=message, severity='info',
+            source='vision', channels_override=['hud_toast'], rate_limit_speech=True,
+            extra_hud_data={'kind': kind, 'untrusted': True, 'authentication': False}, now=ts, cfg=cfg)
+        return {'accepted': True, 'notification': delivery, 'untrusted': True}
 
     def _ensure_enabled(self) -> ProactiveConfig:
         cfg = self.config()

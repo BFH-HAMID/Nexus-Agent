@@ -45,12 +45,12 @@
           <ul class="assistant-list" id="asMemoryRows"></ul></div></section>
 
       <section class="assistant-card"><div class="assistant-cardhead"><h2>Documents, images & cited research</h2><span class="assistant-chip">no tools for source text</span></div>
-        <div class="assistant-cardbody"><p class="assistant-note">Uploads are bounded and their content is untrusted data. Choose cloud only when the selected model is actually remote; the server checks again.</p>
-          <div class="assistant-grid"><label class="assistant-field assistant-field-wide"><span>Image or document (10 MB max)</span><input id="asUpload" type="file" accept=".png,.jpg,.jpeg,.webp,.txt,.md,.csv,.json,.log,.pdf,.docx,.pptx,.xlsx"></label>
-            <label class="assistant-field"><span>Processing location</span><select id="asVisionLocation"><option value="cloud">Cloud model</option><option value="local">Local model</option></select></label>
-            <label class="assistant-field"><span>Agent (blank = server default)</span><input id="asVisionAgent" placeholder="gemini / local-agent"></label>
+        <div class="assistant-cardbody"><p class="assistant-note">Vision is OFF until enabled in operator-owned vision.yaml. Uploads stay in memory; image and document text is untrusted data. Cloud requires a fresh exact review and no people. Camera/face pipelines are local-only.</p>
+          <div class="assistant-grid"><label class="assistant-field assistant-field-wide"><span>Image or document (10 MB max)</span><input id="asUpload" type="file" accept=".png,.jpg,.jpeg,.webp,.txt,.md,.csv,.json,.log,.pdf"></label>
+            <label class="assistant-field"><span>Processing location</span><select id="asVisionLocation"><option value="local">Local model (YAML)</option><option value="cloud">Gemini (explicit YAML opt-in)</option></select></label>
+            <label class="assistant-field"><span>PDF pages (optional)</span><input id="asVisionPages" placeholder="1,3"></label>
             <label class="assistant-field assistant-field-wide"><span>Question</span><textarea id="asVisionQuestion">Answer only from this upload. What does it say?</textarea></label></div>
-          <div class="assistant-row"><button class="btn" id="asAnalyze" type="button">Analyze upload</button></div><pre class="assistant-output" id="asVisionOut" hidden></pre>
+          <label class="assistant-note"><input id="asVisionNoPeople" type="checkbox"> I attest cloud uploads contain no people/faces; detection is best effort</label><label class="assistant-field"><span>Region (optional normalized left,top,right,bottom)</span><input id="asVisionRegion" placeholder="0,0,1,1"></label><div class="assistant-row"><button class="btn" id="asAnalyze" type="button">Analyze upload</button><button class="btn ghost" id="asVisionVoice" type="button">Use voice question</button><button class="btn danger" id="asVisionOff" type="button">Vision hard off</button><span id="asVisionStatus" role="status">Camera / screen unknown</span></div><pre class="assistant-output" id="asVisionOut" hidden></pre>
           <hr style="border:0;border-top:1px solid var(--line,rgba(148,180,169,.15));margin:18px 0">
           <div class="assistant-grid"><label class="assistant-field assistant-field-wide"><span>Research question</span><input id="asResearchQuestion"></label>
             <label class="assistant-field assistant-field-wide"><span>Exact HTTPS URLs, one per line</span><textarea id="asResearchUrls" placeholder="https://example.com/source"></textarea></label>
@@ -83,10 +83,10 @@
           <div class="assistant-row"><button class="btn ghost" id="asDraftPreview" type="button">Preview draft</button><button class="btn" id="asSendPreview" type="button">Preview send</button><button class="btn" id="asEmailExecute" type="button" disabled>Execute reviewed email</button><button class="btn ghost" id="asVoiceEmail" type="button" disabled>Voice approve</button></div><p class="assistant-note" id="asEmailState" style="margin-top:9px">No pending email challenge.</p></div></section>
 
       <section class="assistant-card"><div class="assistant-cardhead"><h2>Backups, access & sync</h2><span class="assistant-chip" id="asSync">not synced yet</span></div>
-        <div class="assistant-cardbody"><p class="assistant-note">Backups exclude .nexus, secrets, VCS and caches. Restore never overwrites. Phone and laptop share revisioned state through this server; no third-party sync service is used.</p>
-          <div class="assistant-row"><button class="btn" id="asBackup" type="button">Create backup</button><button class="btn ghost" id="asOpenComputer" type="button">Desktop controls</button></div>
+        <div class="assistant-cardbody"><p class="assistant-note">Backups need operator-enabled file roots in permissions.yaml and exclude private paths. Backup and restore buttons only queue a request: review it in Approvals, then inspect the final run result. Restore never overwrites; its destination must be inside an allowed root. Phone and laptop share state through this server.</p>
+          <div class="assistant-row"><button class="btn" id="asBackup" type="button">Queue backup</button><button class="btn ghost" id="asOpenComputer" type="button">Desktop controls</button></div>
           <div class="assistant-grid" style="margin-top:10px"><label class="assistant-field"><span>Backup id</span><input id="asBackupId"></label><label class="assistant-field"><span>New restore directory</span><input id="asRestoreTarget" value="restored"></label></div>
-          <div class="assistant-row"><button class="btn ghost" id="asRestore" type="button">Restore without overwrite</button></div><pre class="assistant-output" id="asBackupOut" hidden></pre>
+          <div class="assistant-row"><button class="btn ghost" id="asRestore" type="button">Queue restore without overwrite</button><button class="btn ghost" id="asAutomationApprovals" type="button">Open approvals</button></div><pre class="assistant-output" id="asBackupOut" hidden></pre>
           <div class="assistant-sync" style="margin-top:14px"><span id="asSyncDetail">Authenticated revision polling · personal responses not cached offline</span><span id="asRevision">r0</span></div></div></section>
 
       <section class="assistant-card"><div class="assistant-cardhead"><h2>Capability boundaries</h2><span class="assistant-chip">adapters ≠ verified hardware</span></div><div class="assistant-cardbody"><div class="assistant-capabilities" id="asCapabilities"></div></div></section>
@@ -184,22 +184,32 @@
     let binary='';const bytes=new Uint8Array(buffer);for(let i=0;i<bytes.length;i+=8192)binary+=String.fromCharCode(...bytes.subarray(i,i+8192));return btoa(binary);
   }
   /* Every acquisition error stops already-granted tracks before it is reported. */
+  let micGeneration=0, micPending=false;
   async function acquireMic() {
-    const stream=await navigator.mediaDevices.getUserMedia({audio:{channelCount:1,echoCancellation:true,noiseSuppression:true},video:false});
+    if(state.mic || micPending)return false;
+    const generation=++micGeneration;micPending=true;let stream,context;
+    state.chunks=[];state.audioBase64='';
     try {
-      const context=new (window.AudioContext||window.webkitAudioContext)();await context.resume();const source=context.createMediaStreamSource(stream);
-      const processor=context.createScriptProcessor(4096,1,1),mute=context.createGain();mute.gain.value=0;
+      stream=await navigator.mediaDevices.getUserMedia({audio:{channelCount:1,echoCancellation:true,noiseSuppression:true},video:false});
+      if(generation!==micGeneration){stream.getTracks().forEach(track=>track.stop());return false;}
+      context=new (window.AudioContext||window.webkitAudioContext)();await context.resume();
+      if(generation!==micGeneration){stream.getTracks().forEach(track=>track.stop());await context.close();return false;}
+      const source=context.createMediaStreamSource(stream),processor=context.createScriptProcessor(4096,1,1),mute=context.createGain();mute.gain.value=0;
       source.connect(processor);processor.connect(mute);mute.connect(context.destination);processor.onaudioprocess=e=>{if(state.chunks.length<1100)state.chunks.push(new Float32Array(e.inputBuffer.getChannelData(0)));};
       state.mic=stream;state.processor=processor;state.audioContext=context;waveformFrom(context,source,'live microphone · local only');
-      $('asMicStart').disabled=true;$('asMicStop').disabled=false;$('asVoiceChip').textContent='recording · max 30 s';$('asVoiceState').textContent='Recording locally. Stop before transcription or verification.';
-      setTimeout(()=>{if(state.mic===stream)stopMic();},30000);
-    } catch(e) { stream.getTracks().forEach(track=>track.stop());throw e; }
+      $('asMicStart').disabled=true;$('asMicStop').disabled=false;$('asTranscribe').disabled=true;$('asVerify').disabled=true;$('asVoiceChip').textContent='recording · max 30 s';$('asVoiceState').textContent='Recording locally. Stop before transcription or verification.';
+      window.dispatchEvent(new CustomEvent('nexus:microphone',{detail:{active:true}}));
+      setTimeout(()=>{if(state.mic===stream)stopMic();},30000);return true;
+    } catch(e) {stream?.getTracks().forEach(track=>track.stop());context?.close().catch(()=>{});throw e;}
+    finally {micPending=false;}
   }
   function stopMic() {
+    ++micGeneration; // A late getUserMedia grant must not revive a released PTT.
     const stream=state.mic;if(!stream)return null;state.mic=null;stream.getTracks().forEach(track=>track.stop());state.processor?.disconnect();
     const rate=state.audioContext?.sampleRate||48000,length=state.chunks.reduce((n,a)=>n+a.length,0),samples=new Float32Array(length);let offset=0;for(const chunk of state.chunks){samples.set(chunk,offset);offset+=chunk.length;}
     state.audioContext?.close().catch(()=>{});state.audioContext=null;state.processor=null;state.chunks=[];stopWave('recording ready · not uploaded');
-    if(!samples.length)return null;state.audioBase64=encodeWav(samples,rate);$('asMicStart').disabled=false;$('asMicStop').disabled=true;$('asTranscribe').disabled=false;$('asVerify').disabled=false;$('asVoiceChip').textContent='draft audio ready';$('asVoiceState').textContent='WAV draft is in this tab only. Choose exactly what to send.';return state.audioBase64;
+    state.audioBase64=samples.length?encodeWav(samples,rate):'';$('asMicStart').disabled=false;$('asMicStop').disabled=true;$('asTranscribe').disabled=!state.audioBase64;$('asVerify').disabled=!state.audioBase64;$('asVoiceChip').textContent='draft audio ready';$('asVoiceState').textContent='WAV draft is in this tab only. Choose exactly what to send.';
+    window.dispatchEvent(new CustomEvent('nexus:microphone',{detail:{active:false}}));return state.audioBase64||null;
   }
   async function playClip(clip) {
     if(state.mic)stopMic();stopSpeech(false);const bytes=Uint8Array.from(atob(clip.audio_base64),c=>c.charCodeAt(0));const blob=new Blob([bytes],{type:clip.format==='mp3'?'audio/mpeg':'audio/wav'}),url=URL.createObjectURL(blob),audio=new Audio(url);state.playback={audio,url};
@@ -252,7 +262,28 @@
   $('asBriefSchedule').onclick=()=>guard(async()=>{const enabled=!state.overview?.brief_schedule?.enabled;await action('brief/schedule',enabled?'SCHEDULE MORNING BRIEF':'DISABLE MORNING BRIEF',{enabled,time:$('asBriefTime').value,timezone:$('asBriefZone').value});await loadOverview();});
 
   function fileBase64(file) { if(!file||file.size>10000000)throw Error('Choose one file no larger than 10 MB.');return new Promise((resolve,reject)=>{const reader=new FileReader();reader.onerror=()=>reject(Error('Could not read upload'));reader.onload=()=>resolve(String(reader.result).slice(String(reader.result).indexOf(',')+1));reader.readAsDataURL(file);}); }
-  $('asAnalyze').onclick=()=>guard(async()=>{const file=$('asUpload').files[0],encoded=await fileBase64(file),cloud=$('asVisionLocation').value==='cloud';const result=await action('vision/ask',cloud?'UPLOAD DOCUMENT TO CLOUD':'ANALYZE UPLOAD',{name:file.name,file_base64:encoded,question:$('asVisionQuestion').value,agent:$('asVisionAgent').value||null});output('asVisionOut',result);});
+  async function refreshVision() {
+    try { const v=await gui.api('/api/vision/status');$('asVisionStatus').textContent=`Camera: ${v.camera.state} · Screen: ${v.screen.state}${v.stopped?' · HARD OFF / stop requested':''}${v.enabled===false?' · policy OFF':''}${v.screen.last_capture?' · last screen '+new Date(v.screen.last_capture*1000).toLocaleTimeString():''}`; }
+    catch (_) { $('asVisionStatus').textContent='Camera / screen UNKNOWN · authenticated server required'; }
+  }
+  $('asVisionOff').onclick=()=>guard(async()=>{await gui.api('/api/vision/off',{});await refreshVision();});
+  $('asVisionVoice').onclick=()=>{ $('asVisionQuestion').value=$('asVoiceText').value; };
+  $('asAnalyze').onclick=()=>guard(async()=>{
+    const file=$('asUpload').files[0];if(!file)throw Error('Choose an image/PDF first.');
+    const encoded=await fileBase64(file),cloud=$('asVisionLocation').value==='cloud';
+    const numbers=id=>$(id).value.trim()?$(id).value.split(',').map(x=>Number(x.trim())):null;
+    const body={name:file.name,file_base64:encoded,question:$('asVisionQuestion').value,cloud,no_people:$('asVisionNoPeople').checked,pages:numbers('asVisionPages'),region:numbers('asVisionRegion')};
+    if(cloud){
+      if(!body.no_people)throw Error('No people/faces may be uploaded. Use local vision if unsure.');
+      const preview=await gui.api('/api/vision/preview',body);output('asVisionOut',preview.review);
+      const code=await confirmation(preview.challenge.confirmation);if(code!==preview.challenge.confirmation)return;
+      body.challenge=preview.challenge;body.confirmation=code;
+      body.second_factor=prompt('Separate permissions.yaml PIN if required; otherwise leave blank.')||'';
+    }
+    output('asVisionOut',await gui.api('/api/vision/ask',body));$('asUpload').value='';await refreshVision();
+  });
+  setInterval(()=>{if(state.visible&&!document.hidden)refreshVision();},2000);
+
   $('asResearch').onclick=()=>guard(async()=>{const urls=$('asResearchUrls').value.split(/\n/).map(x=>x.trim()).filter(Boolean),allowed_domains=$('asResearchDomains').value.split(',').map(x=>x.trim()).filter(Boolean);output('asResearchOut',await action('research','RESEARCH WEB',{question:$('asResearchQuestion').value,urls,allowed_domains}));});
 
   function emailBody(stage) { return {to:$('asEmailTo').value,subject:$('asEmailSubject').value,body:$('asEmailBody').value}; }
@@ -261,16 +292,25 @@
   $('asEmailExecute').onclick=()=>guard(async()=>{const pending=state.pendingEmail;if(!pending)return;const code=pending.challenge.confirmation,result=await action('email/'+pending.stage+'/execute',code,{...pending.body,challenge:pending.challenge});if(result){$('asEmailState').textContent='External write acknowledged by Google. Review the returned result; replay of this challenge is refused.';state.pendingEmail=null;$('asEmailExecute').disabled=true;$('asVoiceEmail').disabled=true;output('asDataOut',result);}});
   $('asVoiceEmail').onclick=()=>guard(async()=>{const pending=state.pendingEmail;if(!pending)return;const audio=state.audioBase64||stopMic();if(!audio)throw Error('Record your fresh voice decision first.');const result=await gui.api('/api/assistant/voice/email',{...pending.body,stage:pending.stage,challenge:pending.challenge,audio_base64:audio,model:$('asWhisperModel').value});output('asDataOut',result);if(result.decision?.approved){state.pendingEmail=null;$('asEmailExecute').disabled=true;$('asVoiceEmail').disabled=true;$('asEmailState').textContent='Verified speaker and exact challenge accepted; Google write executed in the same server request.';}else{$('asEmailState').textContent='Voice approval refused or cancelled; no email was written.';}});
   $('asDataRead').onclick=()=>guard(async()=>{const source=$('asDataSource').value,result=await action('data/'+source,'READ PERSONAL DATA',{query:$('asDataQuery').value,vault:$('asDataVault').value});output('asDataOut',result);});
-  $('asBackup').onclick=()=>guard(async()=>{const result=await action('automation/backup','CREATE BACKUP',{});if(result)$('asBackupId').value=result.id;output('asBackupOut',result);});
-  $('asRestore').onclick=()=>guard(async()=>{const id=$('asBackupId').value;output('asBackupOut',await action('automation/restore','RESTORE BACKUP '+id,{id,target:$('asRestoreTarget').value}));});
+  function queuedAutomation(result) {
+    if(!result)return;
+    output('asBackupOut',`Task ${result.task_id} queued for fresh approval, not a completed backup/restore. Open Approvals and inspect the final result in Runs.\n`+JSON.stringify(result,null,2));
+  }
+  $('asBackup').onclick=()=>guard(async()=>{const result=await action('automation/backup','CREATE BACKUP',{});if(result)$('asBackupId').value=result.id;queuedAutomation(result);});
+  $('asRestore').onclick=()=>guard(async()=>{const id=$('asBackupId').value;queuedAutomation(await action('automation/restore','RESTORE BACKUP '+id,{id,target:$('asRestoreTarget').value}));});
+  $('asAutomationApprovals').onclick=()=>gui.show('approvals');
   $('asOpenComputer').onclick=()=>gui.show('computer');
 
   window.addEventListener('beforeinstallprompt',event=>{event.preventDefault();state.installPrompt=event;$('asInstall').hidden=false;});
   $('asInstall').onclick=async()=>{if(!state.installPrompt)return;await state.installPrompt.prompt();state.installPrompt=null;$('asInstall').hidden=true;};
   if('serviceWorker' in navigator)navigator.serviceWorker.register('/assistant-sw.js').catch(()=>{ $('asSyncDetail').textContent='Online sync works; offline app-shell registration is unavailable.'; });
-  window.addEventListener('nexus:view',event=>{state.visible=event.detail==='assistant';if(state.visible)guard(()=>loadOverview());});
+  window.addEventListener('nexus:view',event=>{state.visible=event.detail==='assistant';if(state.visible){guard(()=>loadOverview());refreshVision();}});
   setInterval(()=>{if(state.visible&&!document.hidden)guard(()=>loadOverview(true));},20000);
   window.addEventListener('pagehide',()=>{if(state.mic)stopMic();stopSpeech();});
-  if(gui.view==='assistant')guard(()=>loadOverview());
-  window.nexusAssistant={load:loadOverview,state:()=>({microphone:!!state.mic,draftAudio:!!state.audioBase64,liveVoice:state.liveEnabled,pendingEmail:!!state.pendingEmail,cursor:state.cursor}),stop:()=>{if(state.mic)stopMic();stopSpeech();}};
+  if(gui.view==='assistant'){guard(()=>loadOverview());refreshVision();}
+  window.nexusAssistant={load:loadOverview,state:()=>({microphone:!!state.mic,draftAudio:!!state.audioBase64,liveVoice:state.liveEnabled,pendingEmail:!!state.pendingEmail,cursor:state.cursor}),
+    startRecording:acquireMic,stopRecording:stopMic,draftAudio:()=>state.audioBase64,
+    discardAudio:()=>{stopMic();state.audioBase64='';state.chunks=[];},
+    waveform:()=>{if(!state.analyser)return null;const values=new Uint8Array(state.analyser.fftSize);state.analyser.getByteTimeDomainData(values);return values;},
+    stop:()=>{stopMic();stopSpeech();}};
 })();

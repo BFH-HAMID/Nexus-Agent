@@ -12,13 +12,16 @@ python -m pip install -e ".[voice]"          # faster-whisper, Edge TTS, microph
 python -m pip install -e ".[voice-wake]"     # openWakeWord / Porcupine
 python -m pip install -e ".[voice-offline]"  # Piper / Kokoro Python packages
 python -m pip install -e ".[voice-speaker]"  # Resemblyzer speaker templates
-python -m pip install -e ".[vision]"         # camera, YOLO and face adapters
+python -m pip install -e ".[vision]"         # camera + YOLO, NOT face recognition
+python -m pip install -e ".[vision-documents]" # in-memory image/PDF Q&A
+python -m pip install -e ".[vision-faces]"    # separate opt-in biometrics + encryption
 python -m pip install -e ".[smart-home]"     # TLS MQTT
 ```
 
 Use an existing local faster-whisper model directory and local YOLO/Piper/wake-word
-models. Nexus does not silently download model weights. `xdotool`/`ydotool` are OS
-packages; Windows uses `pywinauto`. Playwright remains in the separate `computer`
+models. Nexus does not silently download model weights. `xdotool` + `wmctrl` are native X11 OS
+packages; Windows uses the lazy `desktop` extra (`pywinauto`). Wayland/global-input
+fallback is refused when app identity cannot be verified. Playwright remains in the separate `computer`
 extra and is disabled by default.
 
 ## Voice
@@ -140,15 +143,21 @@ server token and a reviewed HTTPS proxy. No service is installed implicitly.
 
 ## Vision, research and automation
 
+Vision commands now use operator-owned `vision.yaml` (all switches OFF), the
+shared no-tool service, fresh approvals and the durable hard-off latch. Read
+[vision setup and limits](vision.md) before enabling it. Legacy names remain;
+legacy `--confirm` phrases do not replace fresh interactive review.
+
 ```bash
 nexus assistant vision ask document.pdf --query 'What is the deadline?'
 nexus assistant vision ask screenshot.png --query 'Explain this error'
 nexus assistant vision screen --query 'Describe visible errors briefly.'
-nexus assistant vision camera --weights /models/yolov8n.pt --faces \
-  --confirm 'CAPTURE CAMERA FRAME'
-nexus assistant vision enroll-face owner.jpg --name owner --confirm 'ENROLL FACE owner'
-nexus assistant vision recognize-face group.jpg --confirm 'RECOGNIZE FACE'
-nexus assistant vision forget-face --name owner --confirm 'FORGET FACE owner'
+nexus assistant vision camera --weights /models/yolov8n.pt --faces # must match vision.yaml
+nexus assistant vision enroll-face owner.jpg --name owner --consent # then fresh review
+nexus assistant vision recognize-face group.jpg # requires faces opt-in; advisory only
+nexus assistant vision forget-face --name owner # then fresh deletion review
+nexus vision -C . faces list
+nexus vision -C . off
 
 nexus assistant research 'What changed?' --url https://example.com/source \
   --domain example.com
@@ -164,11 +173,23 @@ is released immediately. Research requires exact HTTPS URLs plus a domain
 allowlist and returns source citations. Backups exclude `.nexus`, VCS, caches and
 known secrets; restore never overwrites a non-empty destination.
 
-Desktop execution additionally requires `NEXUS_DESKTOP_ENABLED=1` and exact
-per-action confirmation. Home Assistant requires an entity allowlist; MQTT uses
-TLS and a topic-prefix allowlist. Both require a fresh preview challenge before a
-service call or publish. Workflow recording stores reviewed pointer semantics,
-not raw keystrokes or passwords; replay reviews every action.
+Desktop, backup/restore, macro and smart-home entry points now require explicit
+operator-owned `permissions.yaml` scopes and the shared approval gate.
+`NEXUS_DESKTOP_ENABLED` cannot enable control; old `--confirm` phrases alone are
+not sufficient. The public classes/CLI names remain as guarded compatibility
+facades. Home Assistant uses exact device/service allowlists; TLS MQTT uses exact
+operator-fixed topic/action payload maps, **not topic prefixes**. Locks, alarms,
+garage doors and companion-phone notifications always need fresh approval.
+
+Workflow recording stores successful approved semantic actions in an **unreviewed
+draft**, with typed bodies replaced by required parameters. The operator must
+review, manually promote a named YAML file and pin its SHA-256 in `permissions.yaml`
+before replay. Every replay step is freshly approved in the same role registry.
+Assistant dashboard automation queues the existing live Run/Approval Center rather
+than treating a static confirmation string as authority. See
+[environment control setup and limits](computer-control.md) for exact YAML,
+record/replay, literal voice aliases, phone API boundaries and recovery.
+
 
 ## Dashboard and PWA
 

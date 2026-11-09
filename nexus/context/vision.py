@@ -22,9 +22,15 @@ def consent(gate, name, args):
 
 
 def scrub(image, root):
-    import pytesseract
-    from PIL import ImageDraw
-    data = pytesseract.image_to_data(image, output_type=pytesseract.Output.DICT, timeout=3)
+    try:
+        import pytesseract
+        from PIL import ImageDraw
+    except ImportError:
+        raise ValueError('Screen OCR requires nexus-agent[context] and native Tesseract OCR') from None
+    try:
+        data = pytesseract.image_to_data(image, output_type=pytesseract.Output.DICT, timeout=3)
+    except Exception:
+        raise ValueError('Screen OCR failed or Tesseract is unavailable; image discarded') from None
     lines = {}
     for i, _text in enumerate(data['text']):
         key = (data['block_num'][i], data['par_num'][i], data['line_num'][i])
@@ -43,9 +49,17 @@ def scrub(image, root):
 
 
 def capture(context, gate):
+    from ..tools import ApprovalGate
+    from ..vision.state import CaptureLease, control
     cfg = settings(context.root)
     if not cfg['enabled'] or not cfg['screenshots']:
         raise ValueError('Screenshot collection disabled')
+    gate = gate if gate is not None else ApprovalGate()
+    if gate.permissions is None:
+        gate.permissions = Permissions(context.root)
+    elif gate.permissions.root != context.root:
+        raise ValueError('Capture gate workspace mismatch')
+    epoch = control(context.root)['epoch']
     before = context.desktop()
     consent(gate, 'context_capture', {'workspace': str(context.root), 'window': clean(before['title'], context.root), 'policy': context.digest(),
                                       'destination': 'memory only; foreground window; OCR redaction required'})
@@ -53,33 +67,61 @@ def capture(context, gate):
         raise ValueError('Context/window changed during approval')
     import os
 
-    from PIL import Image
+    try:
+        from PIL import Image
+    except ImportError:
+        raise ValueError('Screen capture requires nexus-agent[context] and native Tesseract OCR') from None
     monitor = before.get('bounds', {})
     if not monitor or min(monitor['width'], monitor['height']) <= 0 or monitor['width'] * monitor['height'] > 16000000:
         raise ValueError('Window geometry/pixel budget refused')
-    if os.name == 'nt':
-        from PIL import ImageGrab
-        image = ImageGrab.grab(window=before['handle']).convert('RGB')
-    else:
-        import mss
-        with mss.mss() as screen:
-            shot = screen.grab(monitor)
-            image = Image.frombytes('RGB', shot.size, shot.rgb)
-    if image.width * image.height > 16000000:
-        raise ValueError('Captured image exceeds pixel budget')
-    # OCR before resizing so small text is not deliberately made unreadable.
-    image = scrub(image, context.root)
-    image.thumbnail((1280, 720))
-    buf = io.BytesIO()
-    image.save(buf, 'JPEG', quality=80)
-    payload = buf.getvalue()
-    if len(payload) > 512000 or context.desktop() != before or settings(context.root) != cfg:
-        raise ValueError('Capture changed or exceeded budget')
-    return bytearray(payload)
+    with CaptureLease(context.root, 'screen', epoch=epoch) as lease:
+        image = None
+        try:
+            with lease.frame():
+                if settings(context.root) != cfg or context.desktop() != before:
+                    raise ValueError('Context/window changed before capture')
+                if os.name == 'nt':
+                    from PIL import ImageGrab
+                    image = ImageGrab.grab(window=before['handle']).convert('RGB')
+                else:
+                    try:
+                        import mss
+                    except ImportError:
+                        raise ValueError('Screen capture requires nexus-agent[context]') from None
+                    with mss.mss() as screen:
+                        shot = screen.grab(monitor)
+                        image = Image.frombytes('RGB', shot.size, shot.rgb)
+            if image.width * image.height > 16000000:
+                raise ValueError('Captured image exceeds pixel budget')
+            # OCR before resizing; no OCR body is logged, retained or treated as instructions.
+            image = scrub(image, context.root)
+            from ..untrusted import flag_names
+            gate.mark_tainted('vision:ocr', flag_names(image.info.pop('nexus_ocr_text', '')))
+            lease.check()
+            image.thumbnail((1280, 720))
+            buf = io.BytesIO()
+            image.save(buf, 'JPEG', quality=80)
+            payload = buf.getvalue()
+            if len(payload) > 512000 or context.desktop() != before or settings(context.root) != cfg:
+                raise ValueError('Capture changed or exceeded budget')
+            lease.check()
+            return bytearray(payload)
+        finally:
+            if image is not None:
+                image.close()
 
 
 def describe(context, gate, config, registry, *, cloud_agent=None,
-             question='Describe visible errors briefly.'):
+             question='Describe visible errors briefly.', no_people=False):
+    from ..vision.policy import load_policy
+    from ..vision.state import check_running, control
+    check_running(context.root)
+    epoch = control(context.root)['epoch']
+    vision_policy = load_policy(context.root)
+    if vision_policy['enabled'] and vision_policy['screen']['enabled']:
+        from ..vision.service import VisionService
+        return VisionService(context.root).screen(question, gate=gate, cloud=bool(cloud_agent),
+                                                 no_people=no_people, context=context)
     cfg = settings(context.root)
     name = cloud_agent or cfg['local_vision_agent']
     agent = config.agents.get(name)
@@ -90,7 +132,12 @@ def describe(context, gate, config, registry, *, cloud_agent=None,
         raise ValueError('Explicit HTTPS cloud endpoint required; no URL credentials/query')
     from ..github_safety import scan_text
     scan_text(agent.effective_base_url, workspace=context.root)
-    gate.permissions = Permissions(context.root)
+    from ..tools import ApprovalGate
+    gate = gate if gate is not None else ApprovalGate()
+    if gate.permissions is None:
+        gate.permissions = Permissions(context.root)
+    elif gate.permissions.root != context.root:
+        raise ValueError('Capture gate workspace mismatch')
     policy_digest = context.digest()
     payload = capture(context, gate)
     expires = time.monotonic() + cfg['ttl_seconds']
@@ -103,11 +150,16 @@ def describe(context, gate, config, registry, *, cloud_agent=None,
     try:
         digest = hashlib.sha256(payload).hexdigest()
         if cloud_agent:
+            if no_people is not True:
+                raise ValueError('Cloud vision requires a no-people attestation; use local vision if uncertain')
+            from ..vision.media import Page, assert_no_faces
+            assert_no_faces([Page(1, bytes(payload))])
             consent(gate, 'context_cloud_upload', {'agent': name, 'endpoint': agent.effective_base_url, 'sha256': digest,
                                                    'bytes': len(payload), 'model': agent.model, 'credential_env': agent.api_key_env or 'provider default environment', 'warning': 'OCR is best effort; image can still contain private pixels'})
         prior = registry.wire_guard
         sends = []
         def guard(actual, wire):
+            check_running(context.root, epoch)
             if actual != name or sends or time.monotonic() >= expires or not payload or context.digest() != policy_digest:
                 raise ValueError('No screenshot retry/fallback or changed privacy policy allowed')
             context.desktop()  # Recheck private-window blocklist before any wire.
@@ -133,8 +185,10 @@ def describe(context, gate, config, registry, *, cloud_agent=None,
                 [Message('user', [TextBlock(question), ImageBlock(base64.b64encode(payload).decode())])], max_tokens=512)
             from ..untrusted import flag_names
             from ..untrusted import wrap as wrap_untrusted
+            check_running(context.root, epoch)
             summary = clean(completion.text[:4096], context.root)
             wrapped_summary, flags = wrap_untrusted(summary, source=f'vision:{name}', kind='vision')
+            gate.mark_tainted('vision:answer', flags)
             return {
                 'summary': summary,
                 'wrapped_summary': wrapped_summary,

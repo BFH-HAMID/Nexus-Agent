@@ -22,6 +22,8 @@
 <link rel="stylesheet" href="/dashboard/shell.css" />
 <link rel="stylesheet" href="/dashboard/settings.css" />
 <link rel="stylesheet" href="/dashboard/assistant.css" />
+<link rel="stylesheet" href="/dashboard/presence.css" />
+<link rel="apple-touch-icon" href="/dashboard/presence-192.png" />
 </head>
 <body>
 
@@ -77,6 +79,10 @@
 
   <nav class="gui-navigation sidebar-nav" id="sidebarNav" aria-label="Dashboard sections" role="tablist">
     <p class="nav-group" data-i18n="group.operate">Operate</p>
+    <button class="nav-item" type="button" role="tab" data-gui-tab="presence" data-nav-id="presence" aria-selected="false" aria-label="Shared HUD" data-i18n-aria="nav.presence">
+      <svg class="ic" aria-hidden="true"><use href="#i-radar"/></svg>
+      <span class="nav-label" data-i18n="nav.presence">Shared HUD</span><span class="nav-label-short" aria-hidden="true">HUD</span>
+    </button>
     <button class="nav-item" type="button" role="tab" data-gui-tab="mission" data-nav-id="mission" aria-selected="false" aria-label="Mission Control" data-i18n-aria="nav.missionAria">
       <svg class="ic" aria-hidden="true"><use href="#i-radar"/></svg>
       <span class="nav-label" data-i18n="nav.mission">Mission Control</span><span class="nav-label-short" aria-hidden="true" data-i18n="nav.missionShort">Mission</span>
@@ -161,6 +167,9 @@
 <div class="nav-scrim" id="navScrim" hidden></div>
 
 <nav class="tabbar" id="tabbar" aria-label="Primary sections" role="tablist">
+  <button class="presence-tab" type="button" role="tab" data-nav="presence" aria-selected="false" aria-label="Shared HUD" data-i18n-aria="nav.presence">
+    <svg class="ic" aria-hidden="true"><use href="#i-radar"/></svg><span data-i18n="nav.presence">Shared HUD</span>
+  </button>
   <button type="button" role="tab" data-nav="mission" aria-selected="true" aria-label="Mission Control" data-i18n-aria="nav.missionAria">
     <svg class="ic" aria-hidden="true"><use href="#i-radar"/></svg><span data-i18n="nav.missionShort">Mission</span>
   </button>
@@ -497,7 +506,7 @@
   <section class="gui-modules ops-page" id="view-operations" data-gui-view="operations" hidden>
     <div class="ops-status">
       <span id="connection" data-i18n="ops.loading">Loading operations</span>
-      <span id="context-state"></span>
+      <span id="context-state"></span><span id="vision-state" role="status" aria-live="polite">Camera / screen unknown</span><button id="vision-off" class="danger" type="button">Vision hard off</button>
       <span id="connection-help" class="muted" data-i18n="ops.loadingHelp">Loading operations through the same Nexus GUI session.</span>
       <span id="privacy-state" class="muted"></span>
     </div>
@@ -560,7 +569,13 @@
           <p class="muted" data-i18n="ops.lifecycleNote">Lifecycle requests are not readiness acknowledgements. Dangerous or external actions still require fresh approval.</p>
         </section>
 
-        <section id="new-task" class="ops-card">
+        <section id="vision-input"><h2>Local-first image / PDF questions</h2>
+<p class="muted">OFF until enabled in operator-owned vision.yaml. In-memory uploads only. Evidence and answers are untrusted, never tasks. Cloud requires a fresh exact review and no people; use local vision if unsure.</p>
+<label>Image / PDF / text note (10 MB maximum)<input id="vision-file" type="file" accept=".png,.jpg,.jpeg,.webp,.pdf,.txt,.md,.log,.csv,.json"></label>
+<label>Question<input id="vision-question" maxlength="4000" value="Explain this image or document. Cite pages and regions."></label>
+<div class="inline"><label>PDF pages (optional, comma separated)<input id="vision-pages" placeholder="1,3"></label><label>Region (optional, normalized left,top,right,bottom)<input id="vision-region" placeholder="0,0,1,1"></label></div>
+<div class="inline"><label><input id="vision-cloud" type="checkbox"> Explicit Gemini upload (must match YAML)</label><label><input id="vision-no-people" type="checkbox"> I attest this contains no people or faces</label><button id="vision-ask">Analyze selected upload</button></div><pre id="vision-answer" hidden></pre></section>
+<section id="new-task" class="ops-card">
           <div class="section-title"><h2 data-i18n="ops.newTask">New task</h2></div>
           <p class="muted" data-i18n="ops.newTaskNote">Describe a task, queue it, then review and approve it below. Tool actions keep their own approval gates.</p>
           <form id="delegate">
@@ -819,6 +834,7 @@
 <script src="/dashboard/cost.js"></script>
 <script src="/dashboard/channels.js"></script>
 <script src="/dashboard/assistant.js"></script>
+<script src="/dashboard/presence.js"></script>
 <script src="/dashboard/worlddesk.js"></script>
 <script src="/dashboard/settings.js"></script>
 </body>

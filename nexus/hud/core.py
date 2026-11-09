@@ -30,7 +30,7 @@ def settings(root):
         value = yaml.safe_load(path.read_text(encoding='utf-8')) if path.exists() else {}
     except yaml.YAMLError:
         raise ValueError('Invalid HUD YAML') from None
-    defaults = {'schema': 1, 'host': '127.0.0.1', 'port': 8790, 'refresh_seconds': 2, 'max_connections': 4}
+    defaults = {'schema': 1, 'host': '127.0.0.1', 'port': 8790, 'refresh_seconds': 2, 'max_connections': 4, 'presence': {}, 'service': {}}
     if not isinstance(value, dict) or set(value) - set(defaults):
         raise ValueError('Unknown HUD setting')
     cfg = {**defaults, **value}
@@ -39,6 +39,8 @@ def settings(root):
     for key, low, high in [('port', 1024, 65535), ('refresh_seconds', 1, 30), ('max_connections', 1, 8)]:
         if type(cfg[key]) is not int or not low <= cfg[key] <= high:
             raise ValueError('Invalid HUD limit')
+    from .presence_policy import sections
+    cfg.update(sections(cfg))
     return cfg
 
 
@@ -107,6 +109,8 @@ class HUD:
         from ..chief import chief_hud_summary
         from ..jarvis.proactive import ProactiveEngine
         from ..monitoring import collect_self_monitoring
+        from ..security_assistant.service import summary as defensive_summary
+        from ..vision.state import status as vision_status
         from ..voice.config import read_hud_state
         try:
             proactive_state = ProactiveEngine(self.queue.root, studio=self.studio).status()
@@ -115,8 +119,9 @@ class HUD:
         return self.clean({'observed_at': time.time(), 'source': 'existing Studio/Jarvis plus local psutil; not demo data',
                            'context': Context(self.queue.root, self.studio).status(),
                            'voice': read_hud_state(self.queue.root),
+                           'vision': vision_status(self.queue.root),
                            'chief': chief_hud_summary(self.queue.root),
-                           'proactive': proactive_state,
+                           'proactive': proactive_state, 'defensive_security': defensive_summary(self.queue.root),
                            'monitoring': collect_self_monitoring(self.queue.root, studio=self.studio, sessions=self.sessions),
                            'hardware': {'cpu_percent': psutil.cpu_percent(interval=None), 'memory_percent': psutil.virtual_memory().percent,
                                         'disk_free_bytes': disk.free},

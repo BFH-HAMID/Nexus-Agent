@@ -12,7 +12,7 @@ def secrets(workspace=None, env=None):
     values = set()
     for source in (os.environ, env or {}):
         for name, value in source.items():
-            if (re.search(r'(?i)(?:TOKEN|API_KEY|SECRET|PASSWORD|AUTHORIZATION|_PIN)$', name)
+            if (re.search(r'(?i)(?:TOKEN|API_KEY|PRIVATE_KEY|SECRET|PASSWORD|AUTHORIZATION|_PIN)$', name)
                     and isinstance(value, str) and 6 <= len(value) <= 4096):
                 values.add(value)
     if workspace is not None:
@@ -110,11 +110,22 @@ def install_log_redaction(
 
 
 class StreamMask:
-    def __init__(self, values):
+    def __init__(self, values, *, hold_words=False):
         self.values = values
         self.pending = ''
+        # Shared transcripts must not publish part of an unknown device/API token
+        # before its pattern is complete. Legacy stream callers keep their timing.
+        self.hold_words = hold_words
+        self._discard_word = False
 
     def feed(self, text, *, final=False):
+        if self._discard_word:
+            boundary = re.search(r'\s', text)
+            if not boundary:
+                self._discard_word = not final
+                return ''
+            text = text[boundary.start():]
+            self._discard_word = False
         text = self.pending + text
         for value in self.values:
             text = text.replace(value, '[REDACTED_SECRET]')
@@ -127,6 +138,17 @@ class StreamMask:
         if final:
             self.pending = ''
             # A capped/truncated credential prefix is also sensitive.
-            return mask(text[:-keep] + '[REDACTED_PREFIX]' if keep >= 8 else text, self.values)
+            text = text[:-keep] + '[REDACTED_PREFIX]' if keep >= 8 else text
+            if self.hold_words:
+                text = re.sub(r'(?<![A-Za-z0-9_-])nd1_[a-f0-9]{0,24}(?:_[A-Za-z0-9_-]{0,43})?(?![A-Za-z0-9_-])',
+                              '[REDACTED_SECRET]', text)
+            return mask(text, self.values)
+        if self.hold_words:
+            word = re.search(r'\S+$', text)
+            keep = max(keep, len(word[0]) if word else 0)
+            if keep > 4096:
+                self.pending = ''
+                self._discard_word = True
+                return mask(text[:-keep] + '[REDACTED_LONG_TOKEN]', self.values)
         self.pending = text[-keep:] if keep else ''
         return mask(text[:-keep] if keep else text, self.values)
