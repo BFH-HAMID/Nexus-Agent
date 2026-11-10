@@ -1,19 +1,28 @@
-# Nexus Agent
+<p align="center">
+  <img src="assets/nexus-hero.png" alt="Nexus Agent hero banner" width="100%"/>
+</p>
 
-*This is my personal work station.*
+<p align="center">
+  <a href="https://github.com/BFH-HAMID/Nexus-Agent/actions/workflows/ci.yml">
+    <img src="https://img.shields.io/github/actions/workflow/status/BFH-HAMID/Nexus-Agent/ci.yml?label=CI&style=for-the-badge" alt="CI status"/>
+  </a>
+  <a href="LICENSE">
+    <img src="https://img.shields.io/badge/license-MIT-blue?style=for-the-badge" alt="License"/>
+  </a>
+  <a href="https://github.com/BFH-HAMID/Nexus-Agent/releases">
+    <img src="https://img.shields.io/github/v/release/BFH-HAMID/Nexus-Agent?style=for-the-badge" alt="Release"/>
+  </a>
+  <img src="https://img.shields.io/badge/python-3.10+-blue?style=for-the-badge" alt="Python 3.10+"/>
+  <img src="https://img.shields.io/badge/offline-first-green?style=for-the-badge" alt="Offline first"/>
+</p>
 
-**One CLI / VS Code agent, a whole team of specialists behind it.**
-
-You describe a task. Nexus routes it to the right *employee* — `frontend`, `backend`,
-`pentesting`, `docs`, `trading`, `osint`, 111 curated of them (1000 with the imported and security
-packs in `roles.d/`) — and that role runs on the model that fits it best:
-**Gemini** for real code edits, **DeepSeek** for cheap bulk work, **OpenRouter** for hosted
-open / uncensored models used in authorized offensive-security research. Then it uses tools
-(files, shell, git, GitHub), asks you before anything destructive, and can open the PR for you.
-
-Three API providers, one key each — and **no `.env` file**: paste keys once with
-`nexus keys set gemini|deepseek|openrouter`, they are stored in
-`~/.config/nexus/keys.json` (mode `600`, outside the repo).
+<p align="center">
+  <b>One CLI / VS Code agent, a whole team of specialists behind it.</b><br/>
+  You describe a task. Nexus routes it to the right employee — <i>frontend</i>, <i>backend</i>,
+  <i>pentesting</i>, <i>docs</i>, <i>trading</i>, <i>osint</i>, 111 curated roles (1000 with imported packs) —
+  each running on the model that fits it best. Then it uses tools (files, shell, git, GitHub),
+  <b>asks you before anything destructive</b>, and can open the PR for you.
+</p>
 
 <p align="center">
   <img src="assets/nexus-routing.svg" alt="Nexus role → agent routing animation" width="720"/>
@@ -23,7 +32,162 @@ Three API providers, one key each — and **no `.env` file**: paste keys once wi
 
 <!-- end hero -->
 
-## GitHub automation (Module 2)
+## Table of Contents
+
+- [What is Nexus](#what-is-nexus)
+- [Key Features](#key-features)
+- [Quick Start — 60 Seconds](#quick-start--60-seconds)
+- [System Architecture](#system-architecture)
+- [Approval Gate](#approval-gate)
+- [GitHub Automation (Module 2)](#github-automation-module-2)
+- [Permissioned Computer Tools (Module 3 Core)](#permissioned-computer-tools-module-3-core)
+- [Jarvis Daemon (Module 4)](#jarvis-daemon-module-4)
+- [Jarvis Mode Quick Start](#jarvis-mode-quick-start-safe-default-config)
+- [Durable Delegation (Module 5 First Slice)](#durable-delegation-module-5-first-slice)
+- [Opt-in Personal Assistant](#opt-in-personal-assistant)
+- [Opt-in Multi-Role Project Planning (Module 1 Preview)](#opt-in-multi-role-project-planning-module-1-preview)
+- [Router Logic (Phase 2)](#router-logic-phase-2)
+- [Tools & the Approval Gate](#tools--the-approval-gate)
+- [GitHub Workflow (Phase 4)](#github-workflow-phase-4)
+- [GUI Dashboard (The Deck)](#gui-dashboard-the-deck)
+- [VS Code (Phase 5)](#vs-code-phase-5)
+- [Pipelines (Phase 6) and Memory (Phase 7)](#pipelines-phase-6-and-memory-phase-7)
+- [Learning: It Grows With You (Hermes Loop)](#learning-it-grows-with-you-hermes-loop)
+- [Project Layout](#project-layout)
+- [Dashboard Workbench](#dashboard-workbench)
+- [Configuration](#configuration)
+- [Roadmap Status](#roadmap-status)
+- [Testing & Development](#testing--development)
+- [Safety & Ethics Note](#safety--ethics-note)
+- [অনুবাদ: বাংলা বিভাগ (Bangla Section)](#অনুবাদ-বাংলা-কোর্টার-bangla-section)
+- [License](#license)
+
+---
+
+## What is Nexus
+
+**Nexus Agent** is a personal AI CLI agent that routes your tasks to specialist roles, each running on the model best suited for the job:
+
+| Job | Agent | Model | Cost |
+| --- | --- | --- | --- |
+| Real code edits (frontend/backend/…) | `gemini` | `gemini-3.8-flash` | free tier |
+| Routing / classification | `gemini-flash` | `gemini-3.5-flash-lite` | free tier |
+| Bulk work (docs, QA, business, trading) | `deepseek` | `deepseek-flash` | ~$0.15/M in |
+| Hosted open models | `openrouter` | `openrouter/free` (free-models router) | **$0** |
+| Lowest-latency hosted | `openrouter-fast` | `nvidia/nemotron-3.5-lightning:free` | **$0** |
+| Hermes without a GPU | `hermes-free` | `nousresearch/hermes-3-llama-3.1-405b:free` | **$0** |
+| Local Hermes (no key at all) | `hermes` | `hermes3:8b` via Ollama | **$0**, offline |
+
+Three API providers, one key each — and **no `.env` file**: paste keys once with
+`nexus keys set gemini\|deepseek\|openrouter`, they are stored in
+`~/.config/nexus/keys.json` (mode `600`, outside the repo).
+
+## Key Features
+
+<p align="center">
+  <img src="assets/architecture.svg" alt="Nexus Agent system architecture" width="100%"/>
+</p>
+
+- **Smart routing** — Keyword fast-match + LLM classifier fallback picks the right role automatically
+- **1000+ specialist roles** — 111 curated + 852 imported + 37 security specialists
+- **Multi-provider support** — Gemini, DeepSeek, OpenRouter, Ollama (local, no key)
+- **Approval gate** — Read tools never prompt; write tools prompt unless `--yes`; danger tools always prompt
+- **Jarvis mode** — Background worker with emergency stop, local-first runtime, scheduled missions
+- **Voice pipeline** — Wake word, STT, TTS with Bangla+English support; local stop phrase
+- **Offline first** — `--demo` runs fully scripted with zero tokens; local Ollama lane needs no key
+- **VS Code integration** — Tasks, launch configs, sidebar extension with Approve/Deny buttons
+- **Self-learning** — Skills, memory, recall, curator loop (Hermes-compatible)
+- **Defensive security** — Opt-in SSH/fail2ban/UFW monitoring, package-CVE snapshots, certificate expiry
+
+## Quick Start — 60 Seconds
+
+### Windows (PowerShell)
+
+```powershell
+$installer = Join-Path $env:TEMP 'nexus-install.ps1'
+Invoke-WebRequest `
+  -Uri 'https://raw.githubusercontent.com/BFH-HAMID/Nexus-Agent/4670f4b05dfb767cdcaff0b16ca3f9a2490ed1d2/install.ps1' `
+  -OutFile $installer
+
+# Review $installer before running it, then:
+Unblock-File $installer
+& $installer
+nexus --demo
+```
+
+### macOS / Linux
+
+```bash
+git clone https://github.com/BFH-HAMID/Nexus-Agent && cd Nexus-Agent
+python -m venv .venv && . .venv/bin/activate
+pip install -e .
+
+nexus doctor                                   # what's reachable, what's missing
+nexus roles                                    # meet the team (1000 roles)
+nexus roles --show pentesting                  # persona + keywords + agent
+nexus addagent --list                          # the imported packs in roles.d/
+nexus task 'add pagination to the users api' --demo --yes
+```
+
+`--demo` runs a **scripted, offline** version of the full loop — same routing, same tools, same
+approval gate, same event stream, zero tokens. It writes `demo/nexus-demo-notes.md` so you can
+see the diff and the PR-shaped output. Perfect for the VS Code sidebar on a fresh checkout.
+
+### One command is the whole interface
+
+Once installed, **typing `nexus` and pressing Enter opens the agent** — banner, live status,
+prompt, streaming answers, everything. No subcommand, no flags, no `nexus chat` to remember:
+
+```bash
+nexus                      # → the agent (this is all you need)
+nexus --demo               # same, offline and scripted (no key needed)
+nexus gui                  # the same agent in the browser dashboard
+```
+
+Inside the REPL, `/help` lists everything (`/gui` starts the dashboard, `/local` checks Ollama,
+`/keys` sets a key, `/roles` shows the team). Type a task in plain English and Nexus routes it.
+
+`nexus keys set` prompts (input is hidden), stores the key with `chmod 600`, and never writes
+anything into the repository. Prefer environment variables? `export GEMINI_API_KEY=...` works too
+and always wins over the store. A pre-existing `.env` file is still read if present, but nothing
+requires one.
+
+Only one provider key? Fine: agents whose provider has no key fall back along
+`gemini ⇄ deepseek ⇄ openrouter`, so a single key runs the whole roster.
+
+## System Architecture
+
+<p align="center">
+  <img src="assets/architecture.svg" alt="Nexus Agent architecture with animated data flow" width="100%"/>
+</p>
+
+The data flow is:
+
+1. **You** send a task via CLI, VS Code, or GUI
+2. **Router** matches keywords (instant, no LLM) or falls back to a narrowed LLM classifier
+3. **Role Registry** maps the role to an agent (persona + model + tools)
+4. **Tool Layer** executes with the approval gate guarding every mutation
+5. **Result** streams back — written to memory and skills for next time
+
+## Approval Gate
+
+<p align="center">
+  <img src="assets/approval-gate.svg" alt="Three-layer approval gate" width="100%"/>
+</p>
+
+Three independent layers keep Nexus safe:
+
+| Risk | Examples | Behaviour |
+| --- | --- | --- |
+| `read` | `read_file`, `grep`, `list_files`, `git status/diff/log` | never prompts |
+| `write` | `write_file`, `edit_file`, `run_command`, `git commit`, `gh pr create` | prompts unless `--yes` |
+| `danger` | `delete_file`, `gh pr merge/close` | always prompts; `--yes` will **not** skip it |
+
+1. **Path guard** — every path resolves inside the workspace; escapes are refused unless you pass `--allow-outside`.
+2. **Deny list** — `rm -rf /`, `sudo rm`, `mkfs`, `dd of=/dev/…`, fork bombs, `git push --force`, `curl … | sh`, `npm publish`, `drop database`, … are refused outright.
+3. **Approval modes** — `ask` (default), `auto` (`--yes`), `plan` (`--plan` / `nexus ask`: mutating tools are removed from the registry *and* the gate refuses them).
+
+## GitHub Automation (Module 2)
 
 The dashboard/direct-task GitHub transport now requires server-side
 `GITHUB_TOKEN` (environment or `.env`), and those review-first commit flows enforce
@@ -48,7 +212,7 @@ Supported flows are offline integration-tested; live GitHub/native Windows accep
 has not been performed. General shell containment is Module 3, not a GitHub feature.
 No new autonomy is enabled.
 
-### Permissioned computer tools (Module 3 core)
+## Permissioned Computer Tools (Module 3 Core)
 
 `permissions.yaml` is now consumed by the existing agent approval gate. Default
 `ASK_EVERY_TIME`, `READ_ONLY` and bounded `AUTO_ALLOW` cannot bypass existing role/tool
@@ -75,7 +239,7 @@ file/browser mutations require one-use, payload-bound reviews. All new switches
 remain **OFF** in `permissions.yaml`. See [enablement, CLI/voice examples, tests
 and limits](docs/computer-control.md).
 
-### Jarvis daemon (Module 4)
+## Jarvis Daemon (Module 4)
 
 `nexus jarvis -C WORKSPACE start|stop|pause|resume|kill|daemon-status` controls a
 single-instance, crash-aware daemon. Existing Studio state persists priority jobs,
@@ -91,7 +255,93 @@ tests; nothing is installed or remotely mutated implicitly. Module 5 implementat
 and default-OFF context. Native/live acceptance boundaries remain explicit.
 See [setup, commands, safety boundaries and acceptance](docs/jarvis.md).
 
-### Durable delegation (Module 5 first slice)
+## Jarvis Mode Quick Start (Safe Default Config)
+
+Jarvis mode is Nexus's opt-in background worker: a Chief-of-Staff orchestrator
+with a local-first runtime, emergency stop, and scheduled missions. Everything
+ships **OFF** — you opt in by editing operator-owned YAML files.
+
+<p align="center">
+  <img src="assets/jarvis-flow.svg" alt="Jarvis Mode mission flow" width="100%"/>
+</p>
+
+### 1. Install
+
+```bash
+git clone https://github.com/BFH-HAMID/Nexus-Agent && cd Nexus-Agent
+python -m venv .venv && . .venv/bin/activate
+pip install -e ".[dev,hud,voice]"
+```
+
+### 2. Safe default config (copy from `jarvis-mode.example/`)
+
+```bash
+cp jarvis-mode.example/voice.yaml .
+cp jarvis-mode.example/persona.yaml .
+cp jarvis-mode.example/autonomy.yaml .
+cp jarvis-mode.example/permissions.yaml .
+cp jarvis-mode.example/security.yaml .
+```
+
+Review each file, then flip the switches you want — one at a time:
+
+- `chief.yaml enabled: true` — multi-agent mission orchestrator
+- `autonomy.yaml runtime.enabled: true` — local model execution (L2/L3 only)
+- `permissions.yaml second_factor.enabled: true` — PIN/Telegram for dangerous actions
+- `security.yaml enabled: true` — passive defensive monitoring
+- `voice.yaml enabled: true` — wake-word / STT / TTS voice pipeline
+- `proactive.yaml enabled: true` — morning brief, reminders, monitors
+
+### 3. Verify with `nexus doctor`
+
+```bash
+nexus doctor
+```
+
+Check every optional component shows the state you expect, and the security
+posture (autonomy level, second factor, defensive mode, local runtime).
+
+### 4. Run a mission
+
+```bash
+# Plan a multi-role build (pauses for "Go?" approval)
+nexus chief "Build a landing page for my cafe" --plan-only
+
+# Execute after approval
+nexus chief "Build a landing page for my cafe" --confirm GO
+
+# Voice stop (works even if LLM is unreachable)
+nexus stop --all
+
+# Resume (operator-only)
+nexus resume
+```
+
+### 5. Voice (optional)
+
+<p align="center">
+  <img src="assets/voice-pipeline.svg" alt="Voice pipeline flow" width="100%"/>
+</p>
+
+```bash
+# Stop everything by voice — matched locally, no LLM needed
+"Nexus, stop everything"
+
+# Resume requires CLI
+nexus resume
+```
+
+Every new capability is OFF by default and enabled only through an
+operator-owned YAML file. Agents cannot edit these files. `--yes` never
+bypasses `permissions.yaml`.
+
+See [Jarvis daemon](docs/jarvis.md), [Chief-of-Staff](docs/chief.md),
+[Proactive assistant](docs/proactive.md), [Voice](docs/voice.md),
+[Personal integrations](docs/integrations-personal.md),
+[Environment control](docs/environment.md), [Security assistant](docs/security-assistant.md),
+and [Vision](docs/vision.md) for full details.
+
+## Durable Delegation (Module 5 First Slice)
 
 `nexus delegate -C WORKSPACE create "TASK" --max-seconds 60` creates an
 approval-pending Jarvis job. `tasks|status|report|cancel|resume` use actual persisted
@@ -99,27 +349,7 @@ jobs and per-attempt tool checkpoints. Parent-enforced deadlines, one-shot 80% t
 alerts and explicit reapproval on recovery are implemented; tools are never replayed
 from checkpoints. The subsequent Module 5 integrations are now implemented; see their guides. See [delegation safety/setup](docs/delegation.md).
 
-### One original Nexus GUI: chat, operations and World
-
-```powershell
-python -m pip install -e .
-nexus gui -C .
-```
-
-Open **http://127.0.0.1:8787/dashboard**. The original Run/chat, models/roles,
-GitHub repository workflow, Workbench, Studio and settings remain. Native tabs add
-**Operations & approvals** (real worker lifecycle, queued tasks, approvals,
-autonomy, measured usage/logs/diagnostics) and **World, news & weather** (globe,
-public news, crypto and forecasts). No iframe, extra server or second login.
-`nexus panel`, `nexus hud` and old dashboard URLs are compatibility aliases for
-this same GUI; do not start them as additional dashboards. **Roles, agents & teams**
-adds reviewed role instructions/model/tool editing, agent/provider configuration,
-and ordered Red/Blue teams using the existing pipelines. Context stays OFF;
-external/destructive actions still need approval. **GitHub off / No repository**
-lets you work without a remote repo attachment; that choice survives reload.
-See [GUI setup and security](docs/gui.md).
-
-### Opt-in personal assistant
+## Opt-in Personal Assistant
 
 `nexus assistant` adds Bangla/English wake-word/STT/TTS adapters, verified-speaker
 fresh voice approvals, screenshot/upload/camera perception, Google/Notion/Obsidian
@@ -137,15 +367,15 @@ default. See [setup, commands and the live-acceptance boundary](docs/assistant.m
 Hardware, biometrics, OAuth delivery, MQTT and multi-device use are not claimed as
 CI-verified merely because their adapters and deterministic tests are present.
 
-## Opt-in multi-role project planning (Module 1 preview)
+## Opt-in Multi-Role Project Planning (Module 1 Preview)
 
 A new `nexus orchestrate` path reuses the existing roles, model adapters, learning
 storage and Studio workflows: local FAISS indexing, hybrid top-15 retrieval,
 validated 3–7-role selection, and a phase DAG with bounded reviewer/repair gates.
 It does not execute projects until you explicitly run a saved Studio workflow.
 
-```powershell
-.\.venv\Scripts\python.exe -m pip install -e ".[orchestrator]"
+```bash
+.\\.venv\\Scripts\\python.exe -m pip install -e ".[orchestrator]"
 nexus orchestrate --encoder lexical-hash index
 nexus orchestrate --encoder lexical-hash plan "Build an e-commerce website with login, admin panel and payment" --save-workflow
 ```
@@ -158,8 +388,7 @@ extension. See [usage, boundaries and verification](docs/orchestration.md), the
 [Chief-of-Staff multi-agent orchestrator](docs/chief.md), and the
 [full rollout/acceptance ledger](docs/agent-extension-plan.md).
 
-
-```
+```text
                          ┌─────────────────────────┐
                          │        User (you)        │
                          │  VS Code / Terminal CLI   │
@@ -201,338 +430,7 @@ uncensored model, frontend/backend need strong reasoning and reliable tool calli
 (docs, QA, marketing, trading scripts) should go to the cheapest provider. Every agent also
 declares a `fallback:`, so a run keeps going even if one provider has no key or is down.
 
----
-
-## Try it in 60 seconds (no API key needed)
-
-### Windows (PowerShell)
-
-Download, review, and run the Windows installer. Its `raw.githubusercontent.com` URL is pinned
-to a full commit hash—not the moving `main` branch—and the installer also installs Nexus from
-a pinned source commit. It creates an isolated virtual environment and needs no administrator
-rights.
-
-```powershell
-$installer = Join-Path $env:TEMP 'nexus-install.ps1'
-Invoke-WebRequest `
-  -Uri 'https://raw.githubusercontent.com/BFH-HAMID/Nexus-Agent/4670f4b05dfb767cdcaff0b16ca3f9a2490ed1d2/install.ps1' `
-  -OutFile $installer
-
-# Review $installer before running it, then:
-Unblock-File $installer
-& $installer
-nexus --demo
-```
-
-### macOS / Linux
-
-```bash
-git clone https://github.com/BFH-HAMID/Nexus-Agent && cd Nexus-Agent
-python -m venv .venv && . .venv/bin/activate
-pip install -e .
-
-nexus doctor                                   # what's reachable, what's missing
-nexus roles                                    # meet the team (1000 roles)
-nexus roles --show pentesting                  # persona + keywords + agent
-nexus addagent --list                          # the imported packs in roles.d/
-nexus task 'add pagination to the users api' --demo --yes
-```
-
-`--demo` runs a **scripted, offline** version of the full loop — same routing, same tools, same
-approval gate, same event stream, zero tokens. It writes `demo/nexus-demo-notes.md` so you can
-see the diff and the PR-shaped output. Perfect for the VS Code sidebar on a fresh checkout.
-
-Then make it real — one command, no `.env` file to create:
-
-```bash
-nexus keys set gemini         # paste the key (hidden). or: deepseek / openrouter
-nexus keys                    # ✓ gemini  AIzaSy…9fQ  (~/.config/nexus/keys.json)
-nexus keys test               # calls /models on every configured provider
-nexus doctor                  # ✓ key:gemini   ✓ agent:gemini reachable
-nexus chat                    # REPL with /commands
-nexus task 'add cursor pagination to /api/users and cover it with tests'
-```
-
-### One command is the whole interface
-
-Once installed, **typing `nexus` and pressing Enter opens the agent** — banner, live status,
-prompt, streaming answers, everything. No subcommand, no flags, no `nexus chat` to remember:
-
-```bash
-nexus                      # → the agent (this is all you need)
-nexus --demo               # same, offline and scripted (no key needed)
-nexus gui                  # the same agent in the browser dashboard
-```
-
-Inside the REPL, `/help` lists everything (`/gui` starts the dashboard, `/local` checks Ollama,
-`/keys` sets a key, `/roles` shows the team). Type a task in plain English and Nexus routes it.
-
-`nexus keys set` prompts (input is hidden), stores the key with `chmod 600`, and never writes
-anything into the repository. Prefer environment variables? `export GEMINI_API_KEY=...` works too
-and always wins over the store. A pre-existing `.env` file is still read if present, but nothing
-requires one.
-
-Only one provider key? Fine: agents whose provider has no key fall back along
-`gemini ⇄ deepseek ⇄ openrouter`, so a single key runs the whole roster.
-### Fast & free by default
-
-Every default path is picked for latency first, price second:
-
-| Job | Agent | Model | Cost |
-| --- | --- | --- | --- |
-| Real code edits (frontend/backend/…) | `gemini` | `gemini-3.8-flash` | free tier |
-| Routing / classification | `gemini-flash` | `gemini-3.5-flash-lite` | free tier |
-| Bulk work (docs, QA, business, trading) | `deepseek` | `deepseek-flash` | ~$0.15/M in |
-| Hosted open models | `openrouter` | `openrouter/free` (free-models router) | **$0** |
-| Lowest-latency hosted | `openrouter-fast` | `nvidia/nemotron-3.5-lightning:free` | **$0** |
-| Hermes without a GPU | `hermes-free` | `nousresearch/hermes-3-llama-3.1-405b:free` | **$0** |
-| Local Hermes (no key at all) | `hermes` | `hermes3:8b` via Ollama | **$0**, offline |
-
-Three things make it feel fast, not just cheap:
-
-* **Streaming is on** (`settings.stream: true`, `NEXUS_STREAM=0` to disable). Tokens hit the
-  terminal — and the GUI — while the model is still writing, instead of after the full answer.
-  The spinner shows the live elapsed time per turn.
-* **One connection per provider** (httpx keep-alive), a 0.6 s retry backoff, and the keyword
-  router first: most tasks never make a classifier call at all.
-* **Cheap classifier, fast fallbacks.** `router_agent: gemini-flash` and a `fallback:` edge on
-  every agent mean a rate-limited free tier degrades to the next fast endpoint instead of failing.
-
- `NEXUS_NO_PROMPT=1`
-(or `--no-key-prompt`) disables the first-run key prompt for CI/scripts.
-
-### Local models (optional): Ollama, Hermes, uncensored
-
-The API providers are the default, but the **local lanes still ship** and need **no key at all**:
-
-| Agent | Model (env override) | Use |
-| --- | --- | --- |
-| `hermes` | `${HERMES_MODEL:-hermes3:8b}` | free worker for docs / QA / business (native tools) |
-| `hermes-big` | `${HERMES_BIG_MODEL:-hermes3:70b}` | same, if you have the VRAM |
-| `ollama` | `${OLLAMA_MODEL:-llama3.1:8b}` | generic local chat / offline fallback |
-| `ollama-uncensored` | `${OLLAMA_UNCENSORED_MODEL:-dolphin-mixtral:latest}` | uncensored, `tool_mode: text` |
-| `hermes-free` | `${HERMES_FREE_MODEL:-nousresearch/hermes-3-llama-3.1-405b:free}` | **hosted** Hermes, $0, no Ollama needed |
-
-Four curated roles point at these lanes out of the box — `local-worker` (hermes),
-`local-heavy` (hermes-big), `uncensored-local` (ollama-uncensored) and `local-chat` (ollama) —
-so they show up in `nexus roles`, the GUI and the router; no manual `/agent` switch required.
-
-```bash
-ollama serve                  # once, in the background
-ollama pull hermes3:8b
-ollama pull dolphin-mixtral
-
-nexus local                   # what Ollama has, what is missing, the exact pull commands
-nexus local --pull hermes3:8b # let Nexus pull it for you
-nexus doctor                  # ? agent:hermes  (optional: offline is a warning, not a failure)
-nexus agents                  # shows the local lanes, whether they are running, and their fallbacks
-
-# per session / per role
-nexus chat                    # then:  /agent hermes    (or /role qa before)
-nexus task 'write the changelog' --role docs      # docs -> deepseek; force local with /agent
-
-# whole roster local-first (every role -> its local equivalent, router included)
-NEXUS_PREFER_LOCAL=1 nexus task 'refactor the parser'
-```
-
-Two rules keep this safe:
-
-1. **A dead local server never breaks a run.** `hermes → hermes-free` (hosted, $0) `→ deepseek`,
-   `hermes-big → hermes-free`, `ollama-uncensored → openrouter-uncensored`, `ollama → gemini`.
-   You see `⚠ agent hermes failed … ⇢ falling back to agent 'hermes-free'` and the work continues.
-2. **Local agents are `optional: true`.** `nexus doctor` marks them `?` (not `✗`), so an offline
-   laptop still reports "all good" as long as one API key is configured.
-
-`prefer_local: true` in `agents.yaml` (or `NEXUS_PREFER_LOCAL=1`) maps the tiers like this:
-`gemini → hermes`, `gemini-big → hermes-big`, `gemini-flash → ollama`, `deepseek → hermes`,
-`deepseek-pro → hermes-big`, `openrouter → ollama`, `openrouter-uncensored → ollama-uncensored`.
-Set it back to `false` and the roster is hosted again — same roles, same fallbacks.
-
-Need a model list or a different model id?
-
-```bash
-nexus models                  # what the default provider actually serves right now
-nexus models deepseek         # same for one agent
-# override without editing YAML:
-export GEMINI_MODEL=gemini-3.6-flash
-```
-
----
-
-## Commands
-
-| Command | What it does |
-| --- | --- |
-| `nexus` / `nexus chat` | interactive REPL with `/commands` |
-| `nexus task "<task>"` | one-shot autonomous run (route → tools → summary) |
-| `nexus ask "<question>"` | read-only run — plan mode, nothing is written |
-| `nexus task "<task>" --plan` | same as `ask`: produces a plan, refuses mutations |
-| `nexus task "<task>" --role backend` | skip routing, force a specialist |
-| `nexus task "<task>" --yes` | auto-approve non-dangerous tool calls |
-| `nexus task "<task>" --demo` | scripted offline run (no keys, no models) |
-| `nexus pipeline ship-feature "<task>"` | multi-role handoff run |
-| `nexus pipeline --list` | show available pipelines |
-| `nexus roles [--search x \| --show x \| --category x \| --json]` | the team |
-| `nexus addagent <github-url>` | import a repo's agents/skills as new roles |
-| `nexus addagent --list` | show installed import packs + role counts |
-| `nexus agents` | configured model endpoints, key state and which roles use them |
-| `nexus keys [list]` | API keys: where they come from, masked, never printed in full |
-| `nexus keys set <gemini\|deepseek\|openrouter>` | paste a key once (no `.env` file) |
-| `nexus keys test [provider]` | live check that the key + endpoint work |
-| `nexus keys remove <provider>` | delete a stored key |
-| `nexus models [agent]` | list the model ids the provider serves |
-| `nexus local [--pull MODEL]` | Ollama status: Hermes, uncensored and local models, and pull them |
-| `nexus prompt <role>` | print the exact system prompt a role gets |
-| `nexus doctor [--json]` | keys, endpoints, models, `gh`, repo state |
-| `nexus security -C WORKSPACE status` | OFF-by-default defensive monitoring, scoped tests and proposal-only responses; [guide](docs/defensive-security.md) |
-| `nexus serve [--demo] [--yes]` | local HTTP+SSE server for the sidebar/panel |
-| `nexus gui` (alias `nexus panel`) | open the live GUI dashboard — watch routing, thinking and every tool call |
-| `nexus skills [list\|show\|import\|curate]` | the agent's skills: procedural memory it wrote itself |
-| `nexus learn "<what>" \| <file> \| <dir> \| <url>` | turn work or documentation into a reusable skill |
-| `nexus recall [query]` | full-text search over your own past runs |
-| `nexus memory [add\|remove\|import]` | long-term `MEMORY.md` + `USER.md` |
-| `nexus hermes [status\|install\|sync\|run]` | bridge to `NousResearch/hermes-agent` |
-| `nexus update` | safely update from trusted GitHub main and install dependencies in the current Python environment |
-| `nexus init` | drop `.nexus/roles.yaml` + `.vscode/` into any project (no `.env`) |
-| `nexus task ... --json` | machine-readable result (CI friendly) |
-
-### REPL commands
-
-```
-/help  /role <name>  /auto [on|off]  /agent <name>  /model <id>
-/ask <q>  /plan <task>  /task <task>  /pipeline <name> <task>
-/roles [needle]  /addagent <github-url>  /agents  /tools  /system [role]
-/keys [set <provider>]  /models [agent]
-/memory [role]  /remember <text>  /memory global
-/skills  /skill <name> [task]  /<skill-name> [task]  /learn [what]  /curate  /recall [query]
-/local [--pull]  /gui [port]
-/doctor  /stats  /compact  /clear  /new  /save [file]  /exit
-```
-
-Everything that does not start with `/` is a chat turn.
-
----
-
-## The team (Phase 3 — 111 curated roles, 1000 with packs)
-
-The curated core is 111 hand-written specialists:
-
-| Category | Count | Examples | Default agent |
-| --- | --- | --- | --- |
-| development | 39 | frontend, backend, database, devops, mobile, blockchain, embedded, debugging, refactoring, architecture | `gemini` (bulk: `deepseek`) |
-| security | 14 | pentesting, osint, security-audit, malware-analysis, reverse-engineering, forensics, cryptography, devsecops | `gemini` / `openrouter-uncensored` |
-| business | 17 | marketing, seo, copywriting, sales, finance, legal-draft, hr, product-management | `deepseek` |
-| creative | 12 | design, branding, content-writing, video-script, translation, presentation | `deepseek` |
-| data-ai | 10 | data-science, ai-engineering, data-engineering, ml-ops, nlp, computer-vision | `gemini` |
-| qa | 5 | qa, test-automation, performance-testing, chaos-engineering, release-engineering | `deepseek` |
-| docs | 4 | docs, developer-experience, tutorial-writing, ux-writing | `deepseek` |
-| trading | 4 | trading, quant-research, defi-analyst, risk-management | `deepseek` |
-| general | 2 | general (fallback), assistant | *default agent* |
-
-On top of that, `roles.d/` ships **852 agents imported from five public repos**
-(see [`/addagent`](#grow-the-team-addagent)), plus **37 security practitioner specializations**, for **1000 specialists** total:
-
-| Pack | Roles | From |
-| --- | --- | --- |
-| `agency-agents` | 283 | [msitarzewski/agency-agents](https://github.com/msitarzewski/agency-agents) — a full AI agency |
-| `ecc` | 426 | [affaan-m/ecc](https://github.com/affaan-m/ecc) — agent-harness skills + subagents |
-| `awesome-llm-apps` | 123 | [shubhamsaboo/awesome-llm-apps](https://github.com/shubhamsaboo/awesome-llm-apps) — reference agent/RAG apps |
-| `superpowers` | 15 | [obra/superpowers](https://github.com/obra/superpowers) — dev-methodology skills |
-| `rea` | 5 | [morluto/rea](https://github.com/morluto/rea) — reverse-engineering skills |
-| `security-practitioners` | 37 | [Security role audit and common rules](docs/security-roles.md) — fifteen existing equivalents preserved |
-
-`nexus roles` prints the live table; `nexus roles -s <needle>` searches all 1000.
-Full list of the curated core with personas: [`docs/roles.md`](docs/roles.md).
-
-All 1000 specialists are also grouped by workflow into **48 teams** (Red/Blue, DevSecOps,
-Vulnerability Research, QA, AI/ML, Platform, business, content and domain teams). That roster
-is data, not prose: [`docs/teams.md`](docs/teams.md) is the readable view and
-[`teams.yaml`](teams.yaml) is generated from it, so the CLI and the document cannot drift apart.
-
-```bash
-nexus teams                        # 48 teams + 10 language sub-teams, member/stage counts
-nexus teams show red-team          # workflow + every stage's roles (--stage Scoping to filter)
-nexus teams role bengali-nlp       # which teams and stages use a role
-nexus teams check                  # roster vs installed roles: unknown names, broken handoffs
-nexus roles --team qa-testing-team # the team filter on the normal role list
-```
-
-`nexus teams check` fails on a role name that `roles.yaml` / `roles.d/*.yaml` do not define and
-on a handoff that points at a team which is not in the roster; `python3 scripts/build_teams.py
---check` does the same from the repo side and fails when `teams.yaml` or a `মোট Member` count
-drifted from [`docs/teams.md`](docs/teams.md) (also a CI step). `--stats` prints exact per-team
-counts. A project can override or extend the roster in `.nexus/teams.yaml` exactly like
-`roles.yaml`.
-
-### Grow the team: `/addagent`
-
-Adding a specialist is a YAML block — and importing a whole repo of them is one
-command. Point `/addagent` (or `nexus addagent`) at any GitHub repo of
-agent/skill definitions and it fetches, discovers, converts and hot-loads them:
-
-```bash
-nexus addagent https://github.com/obra/superpowers          # -> .nexus/roles.d/superpowers.yaml
-nexus addagent https://github.com/you/repo --dest repo       # commit it into roles.d/
-nexus addagent https://github.com/affaan-m/ecc/tree/main/skills   # just a subdir
-```
-
-It recognises `SKILL.md` files, frontmatter personas (`<category>/<agent>.md`)
-and example-app dirs; auto-derives keywords so routing needs no LLM; maps
-security roles to the uncensored model; de-duplicates mirrors; and never
-clobbers a curated role (collisions are suffixed). In the REPL, `/addagent <url>`
-imports **and reloads**, so the next task can route to the new roles instantly.
-Details: [`docs/addagent.md`](docs/addagent.md).
-
-### Model mapping (why)
-
-| Role category | Agent | Why |
-| --- | --- | --- |
-| Frontend, Backend, Mobile, Database, Security review, Data science | `gemini` (`gemini-3.8-flash`) | best reasoning + reliable native tool calling for real code edits |
-| DevOps, Marketing, Trading, QA, Docs | `deepseek` (`deepseek-flash`) | good enough, ~10x cheaper, 1M context |
-| Pentesting, OSINT, malware/RE analysis | `openrouter-uncensored` (`cognitivecomputations/dolphin-mistral-24b-venice-edition`) | mainstream models over-refuse legitimate authorized security research |
-| Long-horizon architecture, legacy modernization | `gemini-big` (`gemini-4-argon`) | flagship reasoning, 1M context |
-| Deep reasoning / hard debugging | `deepseek-pro` (`deepseek-v4-pro`) | strong reasoning at a low price |
-| Routing classifier | `gemini-flash` (`gemini-3.5-flash-lite`) | high-volume, low-stakes, cents |
-| General / unclassified | `gemini` | safe default |
-| Free hosted open models | `openrouter` (`openrouter/free`), `openrouter-fast` (nemotron lightning) | $0 per token; the free-models router picks a live `:free` model |
-| Free / offline lane (opt-in) | `hermes`, `hermes-big`, `ollama` | local Ollama, no key, `NEXUS_PREFER_LOCAL=1` or `/agent hermes`; `hermes-free` is the same model hosted, also $0 |
-| Local uncensored lane (opt-in) | `ollama-uncensored` (`dolphin-mixtral`, `tool_mode: text`) | same roles as `openrouter-uncensored`, but on your own box |
-
-Every agent has a `fallback:` edge (`gemini → deepseek → openrouter → gemini`), so a missing key
-or a provider outage never stops the run — you just see `⇢ falling back to agent 'deepseek'` and
-the work continues. Model ids are `${VAR:-default}` so you can override any of them from the
-environment without touching `agents.yaml`.
-
-### Adding a role = adding a YAML block (no code)
-
-```yaml
-# roles.yaml (or .nexus/roles.yaml for a project-local specialist)
-roles:
-  rust-wasm:
-    title: Rust + WASM Engineer
-    category: development
-    agent: gemini                 # any key from agents.yaml
-    persona: >-
-      You are a Rust + WebAssembly engineer. Focus on wasm-bindgen boundaries,
-      bundle size, and keeping unsafe code out of the crate root.
-    keywords:
-      - wasm
-      - wasm-bindgen
-      - text: rust frontend      # weighted keyword
-        weight: 2
-    aliases: [rust-wasm-engineer]
-    tools: [read_file, edit_file, write_file, run_command, git, finish]   # optional whitelist
-```
-
-`roles.yaml` is generated: edit [`scripts/build_roles.py`](scripts/build_roles.py) and re-run
-`python scripts/build_roles.py` (CI fails if the two drift apart). Project-local
-`.nexus/roles.yaml` merges **on top** of the bundled file, so a repo can add its own specialists.
-Imported packs live in `roles.d/*.yaml` (committed) or `.nexus/roles.d/` (project-local) and merge
-the same way — see [`/addagent`](#grow-the-team-addagent).
-
----
-
-## Router logic (Phase 2)
+## Router Logic (Phase 2)
 
 **Step 1 — keyword fast-match (instant, no LLM).** Each role has weighted keywords; the router
 scores every role against the task text with word-boundary matching (`api` does not fire on
@@ -567,9 +465,7 @@ sanitized (lowercase, `a-z0-9-` only, code fences and prose stripped) and valida
 full registry; anything unknown falls back to `general`. The classifier runs on `gemini-flash`
 (configurable via `settings.router_agent`) at `temperature: 0`, `max_tokens: 32`.
 
----
-
-## Tools & the approval gate
+## Tools & the Approval Gate
 
 `list_files` · `read_file` · `grep` · `write_file` · `edit_file` · `delete_file` ·
 `run_command` · `git` · `git_prepare` · `gh_create_pr` · `gh` · `gh_merge_pr` ·
@@ -594,9 +490,7 @@ Three independent layers keep it safe:
 
 Details, schemas and examples: [`docs/tools.md`](docs/tools.md).
 
----
-
-## GitHub workflow (Phase 4)
+## GitHub Workflow (Phase 4)
 
 `git_prepare` does the whole delivery in one call:
 
@@ -613,9 +507,7 @@ API with `GITHUB_TOKEN`. Labels and reviewers are optional arguments.
 
 `gh_merge_pr` is `danger` risk: `merge`/`squash`/`rebase`/`close` always ask, even with `--yes`.
 
----
-
-## GUI dashboard (the deck)
+## GUI Dashboard (The Deck)
 
 The CLI and the GUI are the same agent, the same server, the same run — the dashboard just makes the
 process *visible* while it happens:
@@ -659,8 +551,6 @@ Everything is driven by the `/api/*` routes above, so the browser needs no build
 third-party assets: it is one HTML file, one CSS file and one vanilla JS file served by the same
 stdlib server, and it degrades to a static, readable page when `prefers-reduced-motion` is set.
 
----
-
 ## VS Code (Phase 5)
 
 **Works today, zero setup** — `.vscode/tasks.json` and `.vscode/launch.json` are in the repo:
@@ -682,9 +572,7 @@ It is a thin shell: it starts `nexus serve` and loads the same panel UI the brow
 browser and sidebar behave identically. Settings: `nexus.pythonPath`, `nexus.serverPort`,
 `nexus.autoStartServer`, `nexus.autoApprove`. Details: [`docs/vscode.md`](docs/vscode.md).
 
----
-
-## Pipelines (Phase 6) and memory (Phase 7)
+## Pipelines (Phase 6) and Memory (Phase 7)
 
 ```bash
 nexus pipeline ship-feature 'add a rate limiter to the public API'
@@ -702,9 +590,7 @@ Every role keeps its own memory file — `.nexus/memory/<role>.md` — injected 
 system prompt on the next run in the same repo. The agent writes to it with the `remember` tool,
 you can write to it with `/remember` in the REPL.
 
----
-
-## Learning: it grows with you (Hermes loop)
+## Learning: It Grows With You (Hermes Loop)
 
 Nexus keeps what it learns in three layers and loads them again next time:
 
@@ -747,9 +633,7 @@ Full guide: [`docs/learning.md`](docs/learning.md) · বাংলায়: [`d
 **LEARNING BRAIN** card (skills, memory, recall) fed by `/api/brain`,
 `/api/skills` and `/api/recall`.
 
----
-
-## Project layout
+## Project Layout
 
 ```
 Nexus-Agent/
@@ -789,8 +673,6 @@ Nexus-Agent/
 └── docs/                    # architecture, configuration, tools, pipelines, vscode, security, roles, roadmap, addagent
 ```
 
----
-
 ## Dashboard Workbench
 
 The dashboard now includes **Workbench** (or **Ctrl+K**) for provider checks, per-role
@@ -817,9 +699,7 @@ inline `api_key:` → environment variable (`GEMINI_API_KEY`, `DEEPSEEK_API_KEY`
 Behaviour knobs (`settings:` block) and every `NEXUS_*` override are documented in
 [`docs/configuration.md`](docs/configuration.md).
 
----
-
-## Roadmap status
+## Roadmap Status
 
 | Phase | Status | Where |
 | --- | --- | --- |
@@ -837,9 +717,7 @@ Behaviour knobs (`settings:` block) and every `NEXUS_*` override are documented 
 | 10 — Hermes bridge + self-update | ✅ | `nexus/hermes.py`, `nexus skills import`, `nexus update` |
 | Next — MCP tools, session resume, gateway platforms | ⏳ | [`docs/roadmap.md`](docs/roadmap.md), [`docs/architecture.md`](docs/architecture.md#whats-next) |
 
----
-
-## Testing & development
+## Testing & Development
 
 From a fresh clone, activate your virtual environment and install the checkout **before** running
 `pytest`:
@@ -859,9 +737,7 @@ packages used by the context and orchestration tests, so a separate install is n
 Nothing in the test suite touches the network: providers are scripted, the server tests run
 against a real socket on an ephemeral port, and `--demo` covers the loop end to end.
 
----
-
-## Safety & ethics note
+## Safety & Ethics Note
 
 The `pentesting` / `osint` / `malware-analysis` / `reverse-engineering` / `ctf-player` /
 `bug-bounty` roles are routed to an uncensored hosted model (via OpenRouter). That is for **your own systems, your
@@ -875,13 +751,15 @@ guardrails on top (deny-listed commands, `danger` risk class, path guard, plan m
 
 MIT — see [LICENSE](LICENSE). © NXR HAMID
 
-### Studio review workspace
+---
+
+## Studio review workspace
 
 The dashboard **Studio** button adds sessions, review inboxes, checkpoints and
 verification evidence. See [exact implementation status and limits](docs/studio.md)
 for the full selected-feature checklist, required runtimes and security/verification boundaries.
 
-### Repository toolbar
+## Repository toolbar
 
 Directly beneath the task description, the compact dashboard repository bar
 provides local repo selection, current branch and
@@ -891,7 +769,7 @@ commit/push/PR actions. Every mutation requires an expiring preview and typed
 confirmation. See [Repository toolbar](docs/repository-toolbar.md) for safe usage
 and the distinction between Git selection and the agent workspace.
 
-### Hardware monitoring and live activity
+## Hardware monitoring and live activity
 
 The dashboard shows real server CPU/RAM, workspace disk, Nexus process memory and
 available NVIDIA GPU telemetry in place of GitHub/VS Code setup instructions.
@@ -1074,81 +952,74 @@ See [Vision setup, privacy boundaries, commands and offline tests](docs/vision.m
 Extras are split into `vision` (camera/YOLO), `vision-documents` (images/PDF),
 `vision-faces` (biometrics/encryption), and the existing `context` (screen OCR).
 
+---
 
-## Jarvis mode quick start (safe default config)
+## 📺 Demo / Video
 
-Jarvis mode is Nexus's opt-in background worker: a Chief-of-Staff orchestrator
-with a local-first runtime, emergency stop, and scheduled missions. Everything
-ships **OFF** — you opt in by editing operator-owned YAML files.
+<p align="center">
+  <b>📺 See Nexus in action</b><br/>
+  <em>Coming soon: walkthrough video and interactive demo</em>
+</p>
 
-### 1. Install
+| Demo | Description |
+| --- | --- |
+| Quick start (60s) | Install → `nexus --demo` → first task |
+| Jarvis mission | Plan → approve → execute → resume |
+| Voice stop | "Nexus, stop everything" works offline |
+| Approval gate | Write/danger tool prompts in action |
+
+---
+
+## অনুবাদ: বাংলা বিভাগ (Bangla Section)
+
+### নেক্সাস এজেন্ট কী?
+
+নেক্সাস এজেন্ট একটি ব্যক্তিগত AI CLI এজেন্ট যা আপনার কাজকে বিশেষজ্ঞ রোলে রাউট করে। প্রতিটি রোলের জন্য সেরা মডেল ব্যবহার করা হয়।
+
+### দ্রুত শুরু (৬০ সেকেন্ড)
 
 ```bash
 git clone https://github.com/BFH-HAMID/Nexus-Agent && cd Nexus-Agent
 python -m venv .venv && . .venv/bin/activate
-pip install -e ".[dev,hud,voice]"
+pip install -e .
+nexus --demo
 ```
 
-### 2. Safe default config (copy from `jarvis-mode.example/`)
+### মূল বৈশিষ্ট্যগুলো
+
+| বৈশিষ্ট্য | বর্ণনা |
+| --- | --- |
+| স্মার্ট রাউটিং | কি-ওয়ার্ড দ্রুত মিল + LLM ক্লাসিফায়ার ফলব্যাক |
+| ১০০০+ বিশেষজ্ঞ রোল | ১১১ কিউরেটেড + ৮৫২ ইম্পোর্টেড + ৩৭ সিকিউরিটি স্পেশালিস্ট |
+| অনলাইন/অফলাইন | `--demo` পূর্ণ স্ক্রিপ্টেড, শূন্য টোকেন |
+| অনুমোদন গেট | পড়ার টুলস কখনো প্রম্পট করবে না; লিখার টুলস `--yes` থাকলেও প্রম্পট করবে |
+
+### জারবিস মোড
+
+জারবিস মোড নেক্সাসের অপ্ট-ইন ব্যাকগ্রাউন্ড কর্মী। সবকিছু ডিফল্টভাবে **বন্ধ** (`OFF`) থাকে।
 
 ```bash
-cp jarvis-mode.example/voice.yaml .
-cp jarvis-mode.example/persona.yaml .
-cp jarvis-mode.example/autonomy.yaml .
-cp jarvis-mode.example/permissions.yaml .
-cp jarvis-mode.example/security.yaml .
-```
+# মিশন পরিকল্পনা (অনুমোদনের জন্য অপেক্ষা করে)
+nexus chief "আমার ক্যাফের জন্য ল্যান্ডিং পেজ বানাও" --plan-only
 
-Review each file, then flip the switches you want — one at a time:
+# অনুমোদনের পর চালু করুন
+nexus chief "আমার ক্যাফের জন্য ল্যান্ডিং পেজ বানাও" --confirm GO
 
-- `chief.yaml enabled: true` — multi-agent mission orchestrator
-- `autonomy.yaml runtime.enabled: true` — local model execution (L2/L3 only)
-- `permissions.yaml second_factor.enabled: true` — PIN/Telegram for dangerous actions
-- `security.yaml enabled: true` — passive defensive monitoring
-- `voice.yaml enabled: true` — wake-word / STT / TTS voice pipeline
-- `proactive.yaml enabled: true` — morning brief, reminders, monitors
+# ভয়সে বন্ধ করুন (এলএলএম অবলম্বন না হলেও কাজ করে)
+নেক্সাস, সবকিছু বন্ধ করুন
 
-### 3. Verify with `nexus doctor`
-
-```bash
-nexus doctor
-```
-
-Check every optional component shows the state you expect, and the security
-posture (autonomy level, second factor, defensive mode, local runtime).
-
-### 4. Run a mission
-
-```bash
-# Plan a multi-role build (pauses for "Go?" approval)
-nexus chief "Build a landing page for my cafe" --plan-only
-
-# Execute after approval
-nexus chief "Build a landing page for my cafe" --confirm GO
-
-# Voice stop (works even if LLM is unreachable)
-nexus stop --all
-
-# Resume (operator-only)
+# রেজুমে (শুধুমাত্র অপারেটর)
 nexus resume
 ```
 
-### 5. Voice (optional)
+### সুরক্ষা নীতি
 
-```bash
-# Stop everything by voice — matched locally, no LLM needed
-"Nexus, stop everything"
+প্রতিটি নতুন ক্ষমতা ডিফল্টভাবে বন্ধ থাকে এবং শুধু অপারেটরের মালিকানাধীন YAML ফাইলের মাধ্যমে সক্ষম করা যায়। এজেন্টরা এই ফাইলগুলো সম্পাদনা করতে পারে না। `--yes` কখনোই `permissions.yaml` বাইপাস করতে পারবে না।
 
-# Resume requires CLI
-nexus resume
-```
+---
 
-Every new capability is OFF by default and enabled only through an
-operator-owned YAML file. Agents cannot edit these files. `--yes` never
-bypasses `permissions.yaml`.
-
-See [Jarvis daemon](docs/jarvis.md), [Chief-of-Staff](docs/chief.md),
-[Proactive assistant](docs/proactive.md), [Voice](docs/voice.md),
-[Personal integrations](docs/integrations-personal.md),
-[Environment control](docs/environment.md), [Security assistant](docs/security-assistant.md),
-and [Vision](docs/vision.md) for full details.
+<p align="center">
+  <img src="assets/nexus-routing.svg" alt="Nexus Agent routing" width="600"/>
+  <br/>
+  <sub>Built with ❤️ by NXR HAMID • MIT License</sub>
+</p>
