@@ -1,0 +1,106 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="500" viewBox="0 0 900 500" role="img" aria-labelledby="architectureTitle" style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background: #0b0f19; border-radius: 12px;">
+  <title id="architectureTitle">Nexus Agent Architecture</title>
+  <defs>
+    <style>
+      .node { rx: 10; ry: 10; fill: #1e293b; stroke: #334155; stroke-width: 2; }
+      .node.active { fill: #0f172a; stroke: #38bdf8; stroke-width: 3; }
+      .label { font-size: 13px; font-weight: 700; fill: #e2e8f0; text-anchor: middle; }
+      .sub-label { font-size: 11px; fill: #94a3b8; text-anchor: middle; }
+      .arrow { fill: none; stroke: #475569; stroke-width: 2; marker-end: url(#arrowhead); }
+      .arrow.active { stroke: #38bdf8; stroke-dasharray: 6,4; animation: pulse 2s ease-in-out infinite; }
+      .arrow.highlight { stroke: #a78bfa; stroke-dasharray: 5,5; }
+      .packet { fill: #38bdf8; stroke: #fff; stroke-width: 1.5; }
+      @keyframes pulse { 0%, 100% { opacity: 0.6; } 50% { opacity: 1; } }
+      @keyframes movePacket { 0% { transform: translate(0,0); } 100% { transform: translate(120px,0); } }
+    </style>
+    <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#475569" />
+    </marker>
+    <marker id="arrowhead-active" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#38bdf8" />
+    </marker>
+  </defs>
+
+  <!-- Title -->
+  <text x="450" y="35" class="label" font-size="18" fill="#38bdf8">Nexus Agent — System Architecture</text>
+
+  <!-- User -->
+  <rect x="30" y="80" width="140" height="80" class="node" />
+  <text x="100" y="120" class="label">You (User)</text>
+  <text x="100" y="140" class="sub-label">CLI • VS Code • GUI</text>
+
+  <!-- Router -->
+  <rect x="210" y="80" width="140" height="80" class="node active" />
+  <text x="280" y="120" class="label">ROUTER</text>
+  <text x="280" y="140" class="sub-label">keyword → LLM fallback</text>
+
+  <!-- Role Registry -->
+  <rect x="390" y="60" width="140" height="100" class="node active" />
+  <text x="460" y="100" class="label">ROLE REGISTRY</text>
+  <text x="460" y="120" class="sub-label">111 curated + 852 imported</text>
+  <text x="460" y="140" class="sub-label">= 1000 specialists</text>
+
+  <!-- Agents tier -->
+  <rect x="570" y="50" width="110" height="60" class="node" />
+  <text x="625" y="80" class="label">Gemini</text>
+  <text x="625" y="95" class="sub-label">code edits</text>
+
+  <rect x="570" y="120" width="110" height="60" class="node" />
+  <text x="625" y="150" class="label">DeepSeek</text>
+  <text x="625" y="165" class="sub-label">bulk work</text>
+
+  <rect x="570" y="190" width="110" height="60" class="node" />
+  <text x="625" y="220" class="label">OpenRouter</text>
+  <text x="625" y="235" class="sub-label">open models</text>
+
+  <rect x="710" y="50" width="110" height="60" class="node" />
+  <text x="765" y="80" class="label">Ollama</text>
+  <text x="765" y="95" class="sub-label">local, no key</text>
+
+  <rect x="710" y="120" width="110" height="60" class="node" />
+  <text x="765" y="150" class="label">Hermes</text>
+  <text x="765" y="165" class="sub-label">local worker</text>
+
+  <!-- Tools -->
+  <rect x="390" y="280" width="140" height="100" class="node active" />
+  <text x="460" y="320" class="label">TOOL LAYER</text>
+  <text x="460" y="340" class="sub-label">files · shell · git · GitHub</text>
+  <text x="460" y="360" class="sub-label">memory · skills · ask_agent</text>
+
+  <!-- Approval Gate -->
+  <rect x="210" y="280" width="140" height="100" class="node" />
+  <text x="280" y="320" class="label">APPROVAL GATE</text>
+  <text x="280" y="340" class="sub-label">ask / auto / plan</text>
+  <text x="280" y="360" class="sub-label">--yes never bypasses danger</text>
+
+  <!-- Feedback -->
+  <rect x="30" y="280" width="140" height="100" class="node" />
+  <text x="100" y="320" class="label">RESULT</text>
+  <text x="100" y="340" class="sub-label">streaming + summary</text>
+  <text x="100" y="360" class="sub-label">memory + skills</text>
+
+  <!-- Arrows -->
+  <line x1="170" y1="120" x2="210" y2="120" class="arrow active" />
+  <line x1="350" y1="120" x2="390" y2="110" class="arrow active" />
+  <line x1="530" y1="110" x2="570" y2="80" class="arrow highlight" />
+  <line x1="530" y1="110" x2="570" y2="150" class="arrow highlight" />
+  <line x1="530" y1="110" x2="570" y2="220" class="arrow highlight" />
+  <line x1="530" y1="220" x2="710" y2="80" class="arrow highlight" />
+  <line x1="530" y1="220" x2="710" y2="150" class="arrow highlight" />
+  <line x1="680" y1="210" x2="460" y2="320" class="arrow active" />
+  <line x1="460" y1="380" x2="280" y2="330" class="arrow" />
+  <line x1="280" y1="380" x2="100" y2="330" class="arrow" />
+
+  <!-- Animated packets -->
+  <circle cx="200" cy="120" r="6" class="packet" />
+  <animate attributeName="cx" from="200" to="380" dur="3s" repeatCount="indefinite" />
+  <animate attributeName="cy" from="120" to="110" dur="3s" repeatCount="indefinite" />
+
+  <circle cx="520" cy="210" r="6" class="packet" />
+  <animate attributeName="cx" from="520" to="460" dur="3s" repeatCount="indefinite" />
+  <animate attributeName="cy" from="210" to="320" dur="3s" repeatCount="indefinite" />
+
+  <circle cx="460" cy="380" r="6" class="packet" />
+  <animate attributeName="cx" from="460" to="100" dur="3s" repeatCount="indefinite" />
+  <animate attributeName="cy" from="380" to="330" dur="3s" repeatCount="indefinite" />
+</svg>

@@ -1,0 +1,85 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="450" viewBox="0 0 900 450" role="img" aria-labelledby="jarvisTitle" style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background: #0b0f19; border-radius: 12px;">
+  <title id="jarvisTitle">Jarvis Mode Mission Flow</title>
+  <defs>
+    <style>
+      .node { rx: 10; ry: 10; fill: #1e293b; stroke: #334155; stroke-width: 2; }
+      .node.active { fill: #0f172a; stroke: #38bdf8; stroke-width: 3; }
+      .node.pending { stroke: #fbbf24; stroke-width: 3; }
+      .label { font-size: 13px; font-weight: 700; fill: #e2e8f0; text-anchor: middle; }
+      .sub-label { font-size: 11px; fill: #94a3b8; text-anchor: middle; }
+      .arrow { fill: none; stroke: #475569; stroke-width: 2; marker-end: url(#arrowhead); }
+      .arrow.active { stroke: #38bdf8; stroke-dasharray: 6,4; animation: slide 2s ease-in-out infinite; }
+      .arrow.wait { stroke: #fbbf24; stroke-dasharray: 6,4; }
+      .packet { fill: #38bdf8; stroke: #fff; stroke-width: 1.5; }
+      @keyframes slide { 0% { stroke-dashoffset: 12; } 100% { stroke-dashoffset: 0; } }
+    </style>
+    <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#475569" />
+    </marker>
+  </defs>
+
+  <text x="450" y="30" class="label" font-size="18" fill="#38bdf8">Jarvis Mode — Mission Lifecycle</text>
+
+  <!-- Step 1: Plan -->
+  <rect x="40" y="70" width="170" height="90" class="node active" />
+  <text x="125" y="100" class="label">1. PLAN</text>
+  <text x="125" y="120" class="sub-label">nexus chief "Build a landing page"</text>
+  <text x="125" y="135" class="sub-label">--plan-only</text>
+  <text x="125" y="150" class="sub-label">DAG → parallel team assignment</text>
+
+  <!-- Step 2: Approve -->
+  <rect x="250" y="70" width="170" height="90" class="node pending" />
+  <text x="335" y="100" class="label">2. APPROVAL GATE</text>
+  <text x="335" y="120" class="sub-label">Pauses for "Go?" approval</text>
+  <text x="335" y="135" class="sub-label">Operator-owned YAML controls</text>
+  <text x="335" y="150" class="sub-label">--yes cannot bypass danger</text>
+
+  <!-- Step 3: Execute -->
+  <rect x="460" y="70" width="170" height="90" class="node" />
+  <text x="545" y="100" class="label">3. EXECUTE</text>
+  <text x="545" y="120" class="sub-label">Parallel team runs DAG stages</text>
+  <text x="545" y="135" class="sub-label">Each step hands off to next</text>
+  <text x="545" y="150" class="sub-label">Critic reviews before done</text>
+
+  <!-- Step 4: Done -->
+  <rect x="670" y="70" width="170" height="90" class="node" />
+  <text x="755" y="100" class="label">4. DONE</text>
+  <text x="755" y="120" class="sub-label">Final summary + memory write</text>
+  <text x="755" y="135" class="sub-label">Status narration (optional)</text>
+  <text x="755" y="150" class="sub-label">Resume: nexus resume</text>
+
+  <!-- Emergency Stop branch -->
+  <rect x="350" y="220" width="200" height="100" class="node" />
+  <text x="450" y="255" class="label" font-size="14" fill="#f87171">EMERGENCY STOP</text>
+  <text x="450" y="275" class="sub-label" fill="#fca5a5">"Nexus, stop everything"</text>
+  <text x="450" y="290" class="sub-label" fill="#fca5a5">nexus stop --all</text>
+  <text x="450" y="305" class="sub-label" fill="#fca5a5">Latched locally — no LLM needed</text>
+
+  <!-- Resume path -->
+  <rect x="350" y="340" width="200" height="70" class="node" />
+  <text x="450" y="370" class="label" font-size="14" fill="#4ade80">RESUME</text>
+  <text x="450" y="385" class="sub-label" fill="#86efac">nexus resume</text>
+  <text x="450" y="400" class="sub-label" fill="#86efac">Operator-only, clears latch</text>
+
+  <!-- Arrows -->
+  <line x1="210" y1="115" x2="250" y2="115" class="arrow active" />
+  <line x1="420" y1="115" x2="460" y2="115" class="arrow wait" />
+  <line x1="630" y1="115" x2="670" y2="115" class="arrow active" />
+
+  <!-- Emergency stop arrows -->
+  <line x1="125" y1="190" x2="125" y2="220" class="arrow" stroke="#f87171" stroke-dasharray="6,4" />
+  <line x1="335" y1="190" x2="335" y2="220" class="arrow" stroke="#f87171" stroke-dasharray="6,4" />
+  <line x1="545" y1="190" x2="545" y2="220" class="arrow" stroke="#f87171" stroke-dasharray="6,4" />
+  <line x1="755" y1="190" x2="755" y2="220" class="arrow" stroke="#f87171" stroke-dasharray="6,4" />
+
+  <!-- Resume arrow -->
+  <line x1="450" y1="320" x2="450" y2="340" class="arrow" stroke="#4ade80" stroke-dasharray="6,4" />
+
+  <!-- Animated packets -->
+  <circle cx="220" cy="115" r="5" class="packet" />
+  <animate attributeName="cx" from="220" to="410" dur="2.5s" repeatCount="indefinite" />
+  <circle cx="430" cy="115" r="5" class="packet" />
+  <animate attributeName="cx" from="430" to="620" dur="2.5s" repeatCount="indefinite" />
+  <circle cx="640" cy="115" r="5" class="packet" />
+  <animate attributeName="cx" from="640" to="740" dur="2.5s" repeatCount="indefinite" />
+</svg>
