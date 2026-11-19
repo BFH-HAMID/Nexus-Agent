@@ -1795,6 +1795,11 @@ class ChiefOfStaff:
             pipeline=pipeline,
         )
         mission.plan_summary = format_plan_summary(mission)
+        # Opt-in What-if simulation (whatif.yaml) and Council review (council.yaml). They can add one
+        # sentence to the approval card and hold the plan for an explicit GO; they never approve.
+        from .chief_reviews import attach_plan_reviews
+
+        attach_plan_reviews(self, mission, persist=persist)
         mission.log("mission.planned", steps=len(mission.steps), estimated_cost_usd=mission.estimated_cost_usd)
         if persist:
             save_mission(self.workspace, mission)
@@ -1808,6 +1813,10 @@ class ChiefOfStaff:
 
     @staticmethod
     def can_auto_start(mission: Mission, chief_cfg: ChiefConfig, autonomy: dict[str, Any]) -> bool:
+        from .chief_reviews import plan_review_hold
+
+        if plan_review_hold(mission):  # a Council / What-if review asked for an explicit human GO
+            return False
         level = autonomy["level"]
         if level in {"L0", "L1"}:
             return False
@@ -1826,8 +1835,11 @@ class ChiefOfStaff:
         *,
         auto_approve: bool = False,
     ) -> bool:
+        from .chief_reviews import plan_review_hold
+
         self._say_and_show(mission.plan_summary)
-        if mission.approval_granted or auto_approve:
+        # An up-front confirmation given before the review was shown does not release a review hold.
+        if mission.approval_granted or (auto_approve and not plan_review_hold(mission)):
             mission.approval_granted = True
             return True
         if self.can_auto_start(mission, chief_cfg, autonomy):
@@ -1907,9 +1919,13 @@ class ChiefOfStaff:
             _clear_runtime(self.workspace, mission.id, expected=runtime)
 
     def start_background(self, mission_or_id: Mission | str, *, auto_approve: bool = False) -> Mission:
+        from .chief_reviews import plan_review_hold
+
         chief_cfg, autonomy = self.require_enabled()
         mission = load_mission(self.workspace, mission_or_id) if isinstance(mission_or_id, str) else mission_or_id
-        if not (mission.approval_granted or auto_approve or self.can_auto_start(mission, chief_cfg, autonomy)):
+        # A confirmation sent together with the goal predates the review: only approve() releases a review hold.
+        confirmed = auto_approve and not plan_review_hold(mission)
+        if not (mission.approval_granted or confirmed or self.can_auto_start(mission, chief_cfg, autonomy)):
             self._say_and_show(mission.plan_summary)
             mission.status = "awaiting_approval"
             save_mission(self.workspace, mission)

@@ -946,6 +946,26 @@ class LongTermMemory:
             )
         return cleaned, sensitive
 
+    # -- opt-in knowledge graph mirror (knowledge_graph.yaml) ------------- #
+
+    def _graph_sync(self, row: dict[str, Any], *, tainted: bool = False) -> None:
+        """Mirror a confirmed fact into the knowledge graph. No-op while OFF; never raises."""
+        try:
+            from .knowledge_graph import hooks
+
+            hooks.memory_written(self.workspace, row, keyring_module=self._keyring_module, tainted=tainted)
+        except Exception:  # noqa: BLE001 - the optional mirror must never break a memory write
+            pass
+
+    def _graph_forget(self, ids: list[str], needle: str = "") -> int:
+        """Cascade a forget into the knowledge graph. Returns the number of graph facts removed."""
+        try:
+            from .knowledge_graph import hooks
+
+            return hooks.memory_forgotten(self.workspace, ids, needle=needle, keyring_module=self._keyring_module)
+        except Exception:  # noqa: BLE001
+            return 0
+
     # -- user profile store ---------------------------------------------- #
 
     def state_fact(
@@ -1009,6 +1029,7 @@ class LongTermMemory:
                 tainted=tainted,
                 compact_if_needed=False,
             )
+        self._graph_sync(fact, tainted=tainted)
         return dict(fact)
 
     def suggest_fact(
@@ -1077,6 +1098,7 @@ class LongTermMemory:
                         status="confirmed",
                         compact_if_needed=False,
                     )
+                self._graph_sync(row)
                 return dict(row)
         raise MemoryPolicyError(f"Profile fact '{fact_id}' not found")
 
@@ -1182,7 +1204,7 @@ class LongTermMemory:
         """Store an entry into vector memory with FAISS indexing and provenance."""
         self._require_enabled(section="vector")
         self._ensure_loaded()
-        return self._add_vector_entry(
+        entry = self._add_vector_entry(
             text,
             kind=kind,
             source=source,
@@ -1194,6 +1216,8 @@ class LongTermMemory:
             tainted=tainted,
             compact_if_needed=compact_if_needed,
         )
+        self._graph_sync(entry, tainted=tainted)
+        return entry
 
     def record_mission_outcome(
         self,
@@ -1504,13 +1528,17 @@ class LongTermMemory:
         self._profile = remaining_profile
         self._rebuild_index()
         self.save()
-        return {
+        result: dict[str, Any] = {
             "removed_vector_ids": removed_vector,
             "removed_profile_ids": removed_profile,
             "removed_markdown": removed_md,
             "total_removed": len(removed_vector) + len(removed_profile) + removed_md,
             "vector_count": self.vector_count,
         }
+        graph_removed = self._graph_forget(removed_vector + removed_profile, needle)
+        if graph_removed:
+            result["removed_graph_facts"] = graph_removed
+        return result
 
     def forget_topic(
         self,
@@ -1586,7 +1614,7 @@ class LongTermMemory:
         self._profile = keep_profile
         self._rebuild_index()
         self.save()
-        return {
+        topic_result: dict[str, Any] = {
             "status": "deleted",
             "topic": clean_topic,
             "removed_vector_ids": removed_vector,
@@ -1595,6 +1623,10 @@ class LongTermMemory:
             "total_removed": len(removed_vector) + len(removed_profile) + removed_md,
             "vector_count": self.vector_count,
         }
+        graph_removed = self._graph_forget(removed_vector + removed_profile, clean_topic)
+        if graph_removed:
+            topic_result["removed_graph_facts"] = graph_removed
+        return topic_result
 
     def export_json(self) -> dict[str, Any]:
         """Export full profile & vector entries (without raw float vectors) with source and timestamps."""

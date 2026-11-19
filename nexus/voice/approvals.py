@@ -345,6 +345,28 @@ class SpokenApprovalManager:
 
         return SpokenApprovalIntent.NONE, ""
 
+    def decide_pending(self, item: PendingSpokenApproval, approved: bool, *, reason: str) -> bool:
+        """Resolve ``item`` from another explicit local channel (opt-in gesture control).
+
+        The caller applies its own policy first (risk ceiling, taint, speaker rules). This
+        only resolves the item that is still pending and unexpired; an approval is always
+        ``scope="once"``. Returns False when the item is stale.
+        """
+        with self._lock:
+            if self.pending is not item or time.time() > item.expires_at:
+                return False
+            item.state = "approved" if approved else "denied"
+            item.decision = ApprovalDecision(
+                bool(approved),
+                scope="once",
+                reason=str(reason)[:200],
+                risk_class=classify_action_risk(item.spec, item.args).value,
+            )
+            item.event.set()
+            self.pending = None
+            self.history.append({"tool": item.spec.name, "intent": "approve" if approved else "deny", "via": "external"})
+        return True
+
     def request_approval(
         self,
         spec: ToolSpec,

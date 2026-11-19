@@ -1,0 +1,35 @@
+# Nexus hand-gesture control (Task 23) - OPERATOR-OWNED, default OFF.
+#
+# A local camera watches for a few hand poses and maps them (gestures.yaml) to
+# a small closed set of actions. Frames stay in memory and are discarded as soon
+# as the 21 hand landmarks are extracted; nothing is saved or sent anywhere.
+# Needs: pip install "nexus-agent[gesture]" (MediaPipe, which brings OpenCV), and
+# with a current MediaPipe also the hand model file named below (docs/gesture.md).
+#
+# Safety: "emergency_stop" always works. No gesture can resume from a stop.
+# A gesture can never approve a DANGEROUS action, and never in a tainted session.
+# This file is protected: the model cannot edit it.
+schema: 1
+enabled: false
+
+camera:
+  device: 0
+  width: 640
+  height: 480
+  fps: 10
+  hand_model: ""           # absolute path of hand_landmarker.task, outside the workspace.
+                           # Empty: the model built into MediaPipe 0.10.21 and older.
+
+min_confidence: 0.7        # classifier confidence needed (0.5-1.0)
+hold_ms: 600               # a pose must be held this long
+cooldown_ms: 1500          # pause after an action fires
+max_per_minute: 12         # actions per minute (emergency_stop is exempt)
+
+arming:
+  required: true           # show the arming pose first, then one command pose within the window
+  gesture: open_palm
+  window_seconds: 5
+
+approve:
+  enabled: false           # let a gesture answer a pending approval prompt
+  max_risk: MEDIUM         # SAFE | MEDIUM - DANGEROUS is never approvable by gesture

@@ -1,0 +1,46 @@
+# Nexus document automation (Task 28) - OPERATOR-OWNED, default OFF.
+#
+# Looks at the documents you drop into one inbox folder, works out what each
+# one is (invoice, receipt, contract ...), reads the obvious fields (date,
+# total, number) and PROPOSES where to file it. A file is moved only after you
+# approve the move. It can also fill your own text templates.
+# This file is protected: the model cannot edit it.
+schema: 1
+enabled: false
+
+# AES-256-GCM at rest with a key in the OS keyring (pip install "nexus-agent[secure-state]").
+# The index holds names and extracted fields, never the document text.
+encrypt_at_rest: true
+
+inbox: inbox               # workspace folder that is scanned (not its sub-folders)
+archive: documents         # filed documents go below this folder
+types: [txt, md, pdf, docx]   # pdf and docx need: pip install "nexus-agent[docs-auto]"
+naming: "{date}_{category}_{ref}"   # file name; variables: {date} {category} {ref} {name}
+
+dates:
+  day_first: true          # 03/04/2026 is 3 April (false: 4 March)
+
+limits:
+  max_files_per_scan: 50
+  max_file_bytes: 5000000
+  max_text_chars: 200000
+  max_pdf_pages: 50
+  max_records: 5000        # when the index is full, the oldest filed records are forgotten (files stay)
+
+classify:
+  mode: rules              # rules = keywords only | model = also ask a model when the keywords are unsure
+  agent: ""                # agents.yaml name for mode: model (empty = workspace default)
+  allow_cloud: false       # false: document text never goes to a cloud agent
+  max_tokens_per_call: 300
+  min_score: 2             # keyword hits needed; below this a document is "unsorted"
+
+# Empty = the built-in categories (invoice, receipt, contract, statement, letter, report).
+# Your own replace them. folder is below `archive`; variables: {year} {month} {category}
+categories: {}
+#  invoice:
+#    keywords: [invoice, "bill to", "amount due"]
+#    folder: "invoices/{year}"
+
+templates:
+  folder: doc_templates    # your .md / .txt templates with {{placeholders}}
+  output: documents/generated

@@ -121,6 +121,22 @@ _PROTECTED_POLICY_NAMES = frozenset({
     "vision.yaml",
     "memory.yaml",
     "security.yaml",
+    # Tasks 18-30 operator policies and rule files (see nexus/policyfile.py).
+    "knowledge_graph.yaml",
+    "council.yaml",
+    "whatif.yaml",
+    "explain.yaml",
+    "presence.yaml",
+    "presence_rules.yaml",
+    "gesture.yaml",
+    "gestures.yaml",
+    "hardware.yaml",
+    "devpilot.yaml",
+    "meetings.yaml",
+    "translate.yaml",
+    "docs_auto.yaml",
+    "finance.yaml",
+    "tutor.yaml",
 })
 
 _GIT_READONLY_SUBS = frozenset({

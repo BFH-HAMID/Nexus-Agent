@@ -70,7 +70,13 @@ def reexecute(store, root, ident, step, callback):
     audit = Trace(store, root, 'Explicit operator file re-execution', lambda: {})
     audit.body.update(kind='reexecution', parent_trace=ident, parent_step=step)
     audit.add('reexecution_request', binding)
-    gate.decision_observer = audit.decision
+    prior_observer = getattr(gate, 'decision_observer', None)
+
+    def observe(spec_, args_, verdict):  # compose, never replace (e.g. the opt-in explain recorder)
+        audit.decision(spec_, args_, verdict)
+        if prior_observer:
+            prior_observer(spec_, args_, verdict)
+    gate.decision_observer = observe
     registry.ctx.emit = audit.event
     try:
         if not gate.check(outer, binding).approved:

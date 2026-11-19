@@ -154,8 +154,67 @@ nexus voice run --realtime gemini-live  # opt into a realtime adapter instead of
 8. **Live status Q&A & narration routing (`nexus/chief.py`, `nexus/notifications.py`)**: Voice turns record user presence (`mark_user_present`) and answer live questions (`"what is the status?"`, `"what are you doing?"`, `"why did that fail?"`) strictly from live mission state and logs via `answer_status_question()`. When `status_narration` / `notifications` are enabled in `autonomy.yaml`, progress milestones speak when the user is present and fall back to Telegram/desktop notifications when away.
 9. **Optional realtime adapters (`nexus/voice/realtime.py`)**: unified `RealtimeVoiceAdapter` interface with `LocalPipelineRealtimeAdapter` as the default, plus lazy-imported `GeminiLiveAdapter`, `LiveKitAdapter`, and `PipecatAdapter`.
 
+## Spoken commands of the opt-in features
+
+Nine of the opt-in feature packages answer a few spoken sentences themselves in
+`nexus voice run`. Each is OFF until its own YAML enables it; while it is OFF,
+its sentences go to the assistant as before.
+
+| Feature | You say | More |
+|---|---|---|
+| Knowledge graph | "who is Ayesha", "how is Rahim related to Ayesha", "note that Rahim knows Karim" | [knowledge-graph.md](knowledge-graph.md) |
+| Model council | "ask the council whether ..." | [council.md](council.md) |
+| What-if simulator | "what if I run ...", "what happens if I delete ..." | [whatif.md](whatif.md) |
+| Explainable decisions | "why did you do that?", "what did you just do" | [explain.md](explain.md) |
+| Home presence | "I'm home", "I'm leaving", "am I home?" | [home-presence.md](home-presence.md) |
+| Meeting assistant | "start meeting notes", "meeting note: ...", "stop meeting notes", "summarize the meeting" | [meetings.md](meetings.md) |
+| Translator | "translate ... to Bengali", "how do you say ... in Bangla"; "start interpreter" (with `interpreter.enabled: true`) | [translate.md](translate.md) |
+| Personal finance | "how much did I spend last month", "am I over budget" (with `voice: true`) | [finance.md](finance.md) |
+| Tutor | "quiz me on spanish" (with `voice.enabled: true`) | [tutor.md](tutor.md) |
+
+The answer of a package is spoken. It is not sent to the assistant's model and
+does not become part of the conversation.
+
+**Order within a turn.** The first that knows the sentence answers:
+
+1. The pipeline's own commands: "stop everything", the answer to a pending
+   spoken approval, resuming or discarding interrupted speech.
+2. A package in a mode that owns every utterance: the interpreter, a spoken
+   quiz. Until that mode ends, every other sentence is its own, also sentences
+   that are commands at other times ("remember ...", "what is the status").
+3. The existing spoken commands: Chief of Staff, proactive, email, long-term
+   memory.
+4. The other sentences of the packages.
+5. The assistant.
+
+Long-term memory keeps its sentences ("remember ...", "what do you know about
+...", "forget ..."). Only while `memory.yaml` is off as a whole does a package
+that knows such a sentence answer it, instead of "memory is disabled".
+
+**Who is speaking.** With an enrolled voiceprint (or `speaker.enabled: true`)
+the utterance is compared with it when a package needs to know. A package does
+not say stored personal data, and changes nothing, for a voice that does not
+match. Without a speaker check nobody can be told apart: everybody at the
+microphone is treated as you.
+
+**After untrusted content.** When the assistant's last answer used untrusted
+content (a web page, for example), the same sentences are refused until the
+assistant has answered another request. There is no echo cancellation, so the
+microphone may hear the assistant's own voice repeat words that somebody else
+chose.
+
+**Voice privacy mode.** While it is on ("privacy mode on"), the knowledge
+graph, the finance figures and meeting notes are not said aloud.
+
+**Wake word.** Every turn starts with the wake word, in interpreter mode and
+in a spoken quiz too. For those two, push-to-talk or `wake.enabled: false` is
+the practical setting.
+
 ## Known limits
 
+- The spoken commands of the opt-in features were tested with scripted speech
+  recognition and a recorded text-to-speech stand-in (`tests/test_featurepack_voice.py`),
+  not with a microphone.
 - Live microphone capture, wake word inference, neural VAD, local STT/TTS models, Resemblyzer embeddings, and realtime adapters require installing optional extras and local model/hardware/credential support; offline test suites verify contracts deterministically with fake audio frames and scripted providers.
 - Real-time acoustic echo cancellation (AEC) is not built into `sounddevice` capture; use headphones or push-to-talk if speaker playback feeds back into the microphone.
 - Cloud/realtime providers (`stt.provider: cloud`, `tts.provider: edge` / `elevenlabs`, `realtime.provider: gemini-live` / `livekit` / `pipecat`) transmit audio/text (after secret redaction on local TTS) to the configured provider; use local `faster-whisper` + `piper` / `kokoro` + `realtime.provider: local` for strictly offline operation.

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import queue
+import sys
 import threading
 import time
 from collections.abc import Callable, Iterable, Iterator
@@ -183,6 +184,9 @@ class VoicePipeline:
         self._duplex_monitor: FullDuplexMonitor | None = None
         self._pending_barge_prefix: bytes = b""
         self._pending_chief_mission_id: str | None = None
+        # The approval gate of the assistant's last turn (set by ``build_agent_handler``); ``None`` until
+        # the assistant has answered once. Opt-in gesture control and feature packages read its taint.
+        self.active_gate: Any = None
 
     def _require_enabled(self) -> None:
         if not self.config.enabled:
@@ -710,6 +714,43 @@ class VoicePipeline:
             # Substantive new turn clears old paused buffer.
             self.duplex_state.paused_sentences.clear()
 
+        def _feature_result(reply: str, intent: str) -> VoiceTurnResult:
+            """Speak the answer of an opt-in feature package. It is not sent to a model or kept as conversation."""
+            spoken_lang = resolve_reply_language(self.persona, "", reply)  # a translation is not in the user's language
+            metrics.language = spoken_lang
+            spoken, interrupted = self._play_sentences(
+                [reply],
+                language=spoken_lang,
+                metrics=metrics,
+                t_turn_start=t_turn_start,
+                barge_in_frames=barge_in_frames,
+                on_start_speaking=lambda: _record_state(
+                    VoiceState.SPEAKING, transcript=transcript.text, language=spoken_lang
+                ),
+            )
+            metrics.total_turn_ms = round((time.perf_counter() - t_turn_start) * 1000.0, 2)
+            _record_state(VoiceState.IDLE, **metrics.to_dict())
+            return VoiceTurnResult(
+                transcript=transcript,
+                response_text=reply,
+                spoken_sentences=spoken,
+                states=turn_states,
+                speaker_match=self.last_speaker_match,
+                wake_event=wake_event,
+                interrupted=interrupted,
+                metrics=metrics,
+                reply_language=spoken_lang,
+                approval_intent=intent,
+            )
+
+        # 2a. An opt-in feature package in a mode that owns every utterance (the interpreter, a spoken quiz).
+        #     It is asked before the commands below, which would otherwise take sentences such as
+        #     "remember ..." or "what is the status" out of a conversation that is being translated.
+        feature_ctx = self._feature_context(utterance_pcm)
+        feature_reply, feature_intent = self._handle_feature_turn(transcript.text, feature_ctx, modal=True)
+        if feature_reply is not None:
+            return _feature_result(feature_reply, feature_intent or "")
+
         # 2b. Chief-of-Staff spoken mission trigger, confirmation, & status/pause/resume/cancel
         chief_reply, chief_intent, chief_err = self._handle_chief_turn(
             transcript.text,
@@ -807,6 +848,15 @@ class VoicePipeline:
 
         # 2e. Opt-in long-term memory voice commands & privacy mode
         mem_reply, mem_intent, mem_err = self._handle_memory_turn(transcript.text)
+
+        # 2f. Spoken commands of the opt-in feature packages (each OFF until its YAML enables it).
+        #     Memory keeps its commands; only while long-term memory is switched off as a whole does
+        #     its "disabled" answer step aside for a package that knows the sentence.
+        if mem_reply is None or (mem_intent == "memory_blocked" and not self._memory_enabled()):
+            feature_reply, feature_intent = self._handle_feature_turn(transcript.text, feature_ctx, modal=False)
+            if feature_reply is not None:
+                return _feature_result(feature_reply, feature_intent or "")
+
         if mem_reply is not None:
             spoken, interrupted = self._play_sentences(
                 [mem_reply],
@@ -1249,6 +1299,68 @@ class VoicePipeline:
             return None, None, None
         return reply, f"proactive_{res.get('intent', intent)}", None
 
+    def _memory_enabled(self) -> bool:
+        """False only when long-term memory is known to be switched off as a whole."""
+        try:
+            return bool(getattr(self.long_term_memory, "enabled", True))
+        except Exception:  # noqa: BLE001 - an unreadable memory policy keeps memory's own answer
+            return True
+
+    def _speaker_verdict(self, audio_pcm: bytes | None) -> bool | None:
+        """Whether this utterance is the enrolled speaker's: True or False, or None when no speaker check is in use.
+
+        The same rule as for a spoken approval: a check that is enabled but cannot be made counts as failed.
+        Nothing is kept: the approval gate goes on deciding by ``last_speaker_match`` as before.
+        """
+        match = self.last_speaker_match  # this turn's, when the pipeline was built with a verifier
+        if match is None:
+            try:
+                verifier = self.active_speaker_verifier()
+                if verifier is None:
+                    return False if self.config.speaker.enabled else None
+                if not audio_pcm:
+                    return False
+                match = verifier.verify(audio_pcm)
+            except Exception:  # noqa: BLE001 - the comparison could not be made (missing dependency, bad audio)
+                return False
+        return bool(match is not None and match.enrolled and match.matched)
+
+    def _feature_context(self, audio_pcm: bytes | None = None) -> dict[str, Any]:
+        """What an opt-in feature package is told about this turn (see ``nexus/featurepacks.py``)."""
+        from ..featurepacks import Context
+
+        try:
+            private = bool(getattr(self.long_term_memory, "voice_privacy_mode", False))
+        except Exception:  # noqa: BLE001 - when the setting cannot be read, stored data is not spoken
+            private = True
+        return Context({
+            "source": "voice",
+            # the assistant's last turn read untrusted content, so what the microphone hears next may be
+            # the assistant's own voice repeating words somebody else chose
+            "tainted": bool(getattr(self.active_gate, "tainted", False)),
+            "privacy_mode": private,
+            "keyring_module": self._keyring_module,
+        }, lazy={
+            # compared only when a package asks: a turn no package answers costs nothing more than before
+            "speaker_verified": lambda: self._speaker_verdict(audio_pcm),
+        })
+
+    def _handle_feature_turn(self, text: str, ctx: dict[str, Any], *, modal: bool) -> tuple[str | None, str | None]:
+        """``(reply, intent)`` from an enabled opt-in feature package, else ``(None, None)``."""
+        try:
+            from .. import featurepacks
+
+            answer = featurepacks.handle_text(self.workspace, text, ctx, modal=modal)
+        except Exception as exc:  # noqa: BLE001 - an opt-in package must never take the voice loop down
+            print(f"voice: an opt-in feature failed and was skipped - {type(exc).__name__}: {str(exc)[:160]}",
+                  file=sys.stderr)
+            return None, None
+        if not answer:
+            return None, None
+        reply, intent = answer
+        reply = str(reply or "").strip()
+        return (reply, str(intent or "feature")) if reply else (None, None)
+
     def _handle_memory_turn(self, text: str) -> tuple[str | None, str | None, str | None]:
         from ..memory import MemoryPolicyError, parse_memory_command
 
@@ -1388,6 +1500,7 @@ def build_agent_handler(
         )
         if pipeline is not None:
             agent.cancel_event = pipeline.llm_cancel_event
+            pipeline.active_gate = agent.gate  # lets opt-in gesture control see whether the session is tainted
             gate_check = pipeline.make_approval_gate_check()
             if gate_check is not None:
                 agent.gate.voice_speaker_check = gate_check

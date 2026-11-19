@@ -958,12 +958,17 @@ class ProviderRegistry:
         timeout: float | None = None,
         on_event: Any = None,
         on_text: Any = None,
+        allow: Any = None,
     ) -> tuple[Provider, Completion]:
         """Try ``name``; on failure walk its ``fallback`` chain.
 
         ``on_text`` (optional) receives streamed text slices. Once text has been
         streamed to the caller we never fall back to another provider, because
         that would print a second, different answer on top of the first one.
+
+        ``allow`` (optional) is a predicate over agent names. The chain stops at
+        the first agent it rejects, so a caller that must stay on local models
+        never has its request handed to a cloud fallback.
         """
         from .types import Event, EventType
 
@@ -971,6 +976,9 @@ class ProviderRegistry:
         current: str | None = name
         last_error: Exception | None = None
         while current and current not in tried:
+            if allow is not None and not allow(current):
+                reason = f"; '{tried[-1]}' failed: {last_error}" if tried else ""
+                raise ProviderError(f"agent '{current}' is not allowed for this call{reason}", retryable=False)
             tried.append(current)
             provider = self.get(current)
             if self.wire_guard:

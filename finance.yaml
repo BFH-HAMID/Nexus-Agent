@@ -1,0 +1,63 @@
+# Nexus personal finance (Task 29) - OPERATOR-OWNED, default OFF.
+#
+# You export statements from your bank as CSV and import them here. Nexus keeps
+# them in a sealed ledger and tells you where the money went: by category and
+# month, against your budgets, which payments repeat, and what stands out.
+#
+# Read-only towards the world: it never connects to a bank, never pays or
+# transfers anything, and never goes online by itself.
+# This file is protected: the model cannot edit it.
+schema: 1
+enabled: false
+
+# AES-256-GCM at rest with a key in the OS keyring (pip install "nexus-agent[secure-state]").
+# With true and no keyring nothing is stored: there is no plaintext fallback.
+encrypt_at_rest: true
+
+currency: BDT              # the currency of your accounts and of the budgets below
+
+statements:
+  decimal: "."             # "." reads 1,234.56   |   "," reads 1.234,56
+  day_first: true          # 03/04/2026 is 3 April (used only when the file itself does not tell)
+  max_file_bytes: 2000000
+  max_rows: 20000
+
+# Optional, one entry per account whose statements differ from the defaults above.
+# Once you list accounts here, every import must name one of them (--account).
+accounts: {}
+#  card:
+#    currency: USD
+#    expenses: positive     # this statement shows purchases as positive numbers
+#    columns:               # only for titles Nexus does not recognise or cannot tell apart;
+#      amount: "Billing Amount"   # the columns you do not name are still found by their titles
+
+# Empty = the built-in categories (nexus finance categories shows them). Your own replace them.
+# A keyword is a whole word or phrase of the description. The longest match wins.
+# "transfer" is special: money between your own accounts, counted neither as income nor as spending.
+categories: {}
+#  groceries: [shwapno, agora, "meena bazar"]
+#  transfer: ["own account", "credit card payment"]
+
+# Monthly budgets per category, in `currency`.
+budgets: {}
+#  groceries: 15000
+
+limits:
+  max_transactions: 20000  # a full ledger refuses new imports; nothing is dropped silently
+
+alerts:
+  large_amount: 0          # 0 = off; a single payment at or above this is listed by `nexus finance unusual`
+  unusual_factor: 3        # a payment this many times the usual one for its category is listed too
+
+categorize:
+  mode: rules              # rules = keywords only | model = `nexus finance suggest` may ask a model
+  agent: ""                # agents.yaml name for mode: model (empty = workspace default)
+  allow_cloud: false       # false: merchant texts never go to a cloud agent
+  max_tokens_per_call: 600
+
+# true: "how much did I spend last month" is answered aloud, for a verified speaker only.
+voice: false
+
+# true: the agent gets three read-only tools (summary, transactions, insights). What they return
+# goes to the model that runs the session, which may be a cloud model.
+agent_tools: false

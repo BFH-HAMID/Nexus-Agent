@@ -1,0 +1,37 @@
+# Nexus personal knowledge graph (Task 18) - OPERATOR-OWNED, default OFF.
+#
+# When enabled, Nexus links what you explicitly told it (long-term memory facts)
+# into a small graph of entities and relations so it can answer
+# "what do you know about X" and "how is X related to Y".
+#
+# This file is protected: the model cannot edit it through any tool.
+# Nothing here grants a tool, a network call or an approval.
+schema: 1
+enabled: false
+
+# AES-256-GCM at rest with a key in the OS keyring (pip install "nexus-agent[secure-state]").
+# With true and no keyring the graph refuses to open instead of writing plaintext.
+encrypt_at_rest: true
+
+extraction:
+  mode: rules              # rules = deterministic patterns, no model call | model = strict-JSON local model
+  agent: ""                # agents.yaml name used when mode: model (empty = workspace default)
+  allow_cloud: false       # false: a cloud agent is refused even when profile is online
+  max_facts_per_text: 12
+
+sources:
+  memory: true             # facts you stated/confirmed in long-term memory (trusted)
+  knowledge: false         # indexed documents: stored as UNVERIFIED, never injected into prompts
+
+limits:
+  max_entities: 5000
+  max_relations: 20000
+  max_hops: 3              # path search depth for "how is X related to Y"
+  max_results: 25
+
+# Facts in these categories are never added. "credentials" can not be removed.
+exclude_categories: [credentials, finance, health]
+
+context:
+  inject: false            # add a short "related facts" block (trusted facts only) to prompts
+  max_chars: 1200

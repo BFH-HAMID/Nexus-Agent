@@ -205,6 +205,8 @@ class CameraPipeline:
                             recheck(self.root, cfg)
                             lease.check()
                             events.append(sink(event))
+                            from ..presence.hooks import vision_event  # opt-in home presence; no-op while OFF
+                            vision_event(self.root, event)
                     if camcfg['store_frames']:
                         from .media import encode_image, pillow
                         Image, _ = pillow()
