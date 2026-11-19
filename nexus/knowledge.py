@@ -531,6 +531,10 @@ def index_collection(state, payload: dict[str, Any]) -> dict[str, Any]:
     now = time.time()
     total_chunks = 0
     rows: list[dict[str, Any]] = []
+    from .knowledge_graph import hooks as graph_hooks
+
+    # Opt-in knowledge graph (knowledge_graph.yaml sources.knowledge): unverified facts only.
+    graph_docs: list[tuple[str, str]] | None = [] if graph_hooks.wants_knowledge(workspace) else None
     connection = _connect(workspace)
     try:
         if _stat(db_path(workspace)) > MAX_DB_BYTES:
@@ -582,6 +586,8 @@ def index_collection(state, payload: dict[str, Any]) -> dict[str, Any]:
                                            (cursor.lastrowid, body))
                 total_chunks += len(pieces)
                 rows.append({"path": relative, "id": ident, "chunks": len(pieces), "bytes": len(text.encode())})
+                if graph_docs is not None:
+                    graph_docs.append((ident, text[:20_000]))
                 if total_chunks >= MAX_CHUNKS:
                     skipped.append({"path": relative, "reason": f"stopped at {MAX_CHUNKS} chunks"})
                     break
@@ -596,6 +602,8 @@ def index_collection(state, payload: dict[str, Any]) -> dict[str, Any]:
                       "indexed": rows, "skipped": skipped, "chunks": total_chunks, "encoder": encoder}
     finally:
         connection.close()
+    if graph_docs is not None:
+        graph_hooks.knowledge_indexed(workspace, name, graph_docs)
     securitycenter.audit_action(state, "knowledge.index", "user",
                                 {"name": name, "scope": f"{len(rows)} document(s), {total_chunks} chunk(s)",
                                  "fingerprint": hashlib.sha256(
@@ -627,6 +635,9 @@ def delete_collection(state, payload: dict[str, Any]) -> dict[str, Any]:
             connection.execute("DELETE FROM collection WHERE name = ?", (name,))
     finally:
         connection.close()
+    from .knowledge_graph import hooks as graph_hooks
+
+    graph_hooks.knowledge_removed(workspace, name)
     securitycenter.audit_action(state, "knowledge.collection.delete", "user",
                                 {"name": name, "scope": "collection and its chunks"},
                                 risk="high", target="knowledge")
@@ -657,6 +668,9 @@ def remove_document(state, payload: dict[str, Any]) -> dict[str, Any]:
             name, path = row["collection"], row["path"]
     finally:
         connection.close()
+    from .knowledge_graph import hooks as graph_hooks
+
+    graph_hooks.knowledge_removed(workspace, name, ident)
     securitycenter.audit_action(state, "knowledge.document.remove", "user",
                                 {"name": path[:160], "scope": name}, risk="medium", target="knowledge")
     return collection_view(workspace, name)

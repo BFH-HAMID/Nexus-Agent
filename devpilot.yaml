@@ -1,0 +1,56 @@
+# Nexus DevPilot (Task 25) - OPERATOR-OWNED, default OFF.
+#
+# DevPilot asks a model for a patch, applies it to a throw-away checkout of
+# your last commit, runs your test command there and repeats a few times.
+# Your working tree is only changed by a separate, approved `apply`.
+#
+# READ THIS FIRST: the checkout protects your files from half-finished edits.
+# It is NOT a sandbox. The test command runs on this machine, as you, and it
+# runs code the model wrote. Every run therefore needs a fresh human approval.
+# DevPilot never commits, pushes or opens a pull request.
+# This file is protected: the model cannot edit it.
+schema: 1
+enabled: false
+
+agent: ""                  # agents.yaml name that writes the patches; "" = the default agent
+allow_cloud: false         # a cloud agent would receive your source files
+max_iterations: 4          # model calls per run (a request to read more files uses one)
+max_tokens_per_call: 4000
+max_cost_usd: 0.50         # stop when the estimated spend reaches this (0 = no limit)
+timeout_seconds: 1800      # whole run, checks included
+
+checks:
+  test: ""                 # "" = detect (see `nexus devpilot detect`), "none" = no tests
+  lint: ""                 # "" = detect, "none" = skip
+  timeout_seconds: 600     # per command
+  baseline: true           # run the checks once before the first patch
+  link: []                 # untracked folders the checks need, e.g. [node_modules]; shared, not copied
+
+context:
+  max_files: 12            # files shown to the model per attempt
+  max_bytes: 120000
+  listing: 400             # file names shown so the model can ask for more
+
+patch:
+  max_files: 8             # files one run may change
+  max_file_bytes: 200000
+  allow_new_files: true
+  allow_delete: false
+  allow: []                # globs the patch may touch; [] = anywhere in the repository
+  protect:                 # globs the patch may never touch
+    - ".github/**"
+    - ".gitlab-ci.yml"
+    - ".circleci/**"
+    - "Jenkinsfile"
+    - ".pre-commit-config.yaml"
+    - ".husky/**"
+    - ".gitmodules"
+    - ".gitattributes"
+    - ".envrc"
+    - ".vscode/**"
+    - ".devcontainer/**"
+
+apply:
+  require_passing_checks: true   # only a run whose tests passed can be applied
+
+keep_runs: 10

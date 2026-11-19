@@ -38,7 +38,7 @@ dependencies = [
 context = ["mss>=9,<11", "Pillow>=10,<13", "pytesseract>=0.3.13,<1"]
 mcp = ["jsonschema>=4.23,<5", "keyring>=25"]
 hud = ["keyring>=25", "feedparser>=6.0,<7", "fastapi>=0.115,<1", "uvicorn>=0.30,<1", "websockets>=13,<17", "textual>=0.80,<9"]
-dev = ["feedparser>=6.0,<7", "jsonschema>=4.23,<5", "fastapi>=0.115,<1", "uvicorn>=0.30,<1", "websockets>=13,<17", "textual>=0.80,<9", "pytest>=8.0", "tomli>=2; python_version < '3.11'", "ruff>=0.6", "cryptography>=44", "keyring>=25", "faiss-cpu>=1.8,<2", "numpy>=1.25,<3", "python-docx>=1.1,<2", "openpyxl>=3.1,<4", "python-pptx>=1.0,<2", "mss>=9,<11", "Pillow>=10,<13", "pytesseract>=0.3.13,<1", "pypdfium2>=4.30,<6", "pypdf>=5,<7"]
+dev = ["feedparser>=6.0,<7", "jsonschema>=4.23,<5", "fastapi>=0.115,<1", "uvicorn>=0.30,<1", "websockets>=13,<17", "textual>=0.80,<9", "pytest>=8.0", "tomli>=2; python_version < '3.11'", "ruff>=0.6", "cryptography>=44", "keyring>=25", "faiss-cpu>=1.8,<2", "numpy>=1.25,<3", "python-docx>=1.1,<2", "openpyxl>=3.1,<4", "python-pptx>=1.0,<2", "mss>=9,<11", "Pillow>=10,<13", "pytesseract>=0.3.13,<1", "pypdfium2>=4.30,<6", "pypdf>=5,<7", "pyserial>=3.5,<4"]
 orchestrator = ["faiss-cpu>=1.8,<2", "numpy>=1.25,<3"]
 assistant = ["faiss-cpu>=1.8,<2", "numpy>=1.25,<3", "keyring>=25", "pypdf>=5,<7", "python-docx>=1.1,<2", "openpyxl>=3.1,<4", "python-pptx>=1.0,<2", "Pillow>=10,<13"]
 voice = ["faster-whisper>=1.1,<2", "edge-tts>=7,<8", "sounddevice>=0.5,<1", "silero-vad>=5,<6", "numpy>=1.25,<3"]
@@ -59,6 +59,12 @@ smart-home = ["paho-mqtt>=2,<3"]
 desktop = ["pywinauto>=0.6.8,<0.7; sys_platform == 'win32'"]
 computer = ["playwright>=1.50,<2", "python-docx>=1.1,<2", "openpyxl>=3.1,<4", "python-pptx>=1.0,<2"]
 secure-state = ["cryptography>=44", "keyring>=25", "filelock>=3.16"]
+# Opt-in feature packages (docs/gesture.md, hardware.md, meetings.md, docs-auto.md). Each is OFF until its YAML enables it.
+# MediaPipe brings OpenCV itself; 0.10.30 and newer also need a hand model file (docs/gesture.md).
+gesture = ["mediapipe>=0.10.21,<2"]
+hardware = ["pyserial>=3.5,<4", "paho-mqtt>=2,<3", "gpiozero>=2,<3"]
+meetings = ["faster-whisper>=1.1,<2"]
+docs-auto = ["pypdf>=5,<7", "python-docx>=1.1,<2"]
 # only if you point agents.yaml at the legacy Anthropic Messages API
 anthropic = ["anthropic>=0.40"]
 
@@ -135,9 +141,38 @@ packages = ["nexus"]
 "docs/chief.md" = "nexus/_config/docs/chief.md"
 "docs/evaluation.md" = "nexus/_config/docs/evaluation.md"
 "examples/mcp" = "nexus/_config/examples/mcp"
+# opt-in feature packages: the policy templates (all OFF) and their pages
+"knowledge_graph.yaml" = "nexus/_config/knowledge_graph.yaml"
+"council.yaml" = "nexus/_config/council.yaml"
+"whatif.yaml" = "nexus/_config/whatif.yaml"
+"explain.yaml" = "nexus/_config/explain.yaml"
+"presence.yaml" = "nexus/_config/presence.yaml"
+"presence_rules.yaml" = "nexus/_config/presence_rules.yaml"
+"gesture.yaml" = "nexus/_config/gesture.yaml"
+"gestures.yaml" = "nexus/_config/gestures.yaml"
+"hardware.yaml" = "nexus/_config/hardware.yaml"
+"devpilot.yaml" = "nexus/_config/devpilot.yaml"
+"meetings.yaml" = "nexus/_config/meetings.yaml"
+"translate.yaml" = "nexus/_config/translate.yaml"
+"docs_auto.yaml" = "nexus/_config/docs_auto.yaml"
+"finance.yaml" = "nexus/_config/finance.yaml"
+"tutor.yaml" = "nexus/_config/tutor.yaml"
+"docs/knowledge-graph.md" = "nexus/_config/docs/knowledge-graph.md"
+"docs/council.md" = "nexus/_config/docs/council.md"
+"docs/whatif.md" = "nexus/_config/docs/whatif.md"
+"docs/explain.md" = "nexus/_config/docs/explain.md"
+"docs/home-presence.md" = "nexus/_config/docs/home-presence.md"
+"docs/gesture.md" = "nexus/_config/docs/gesture.md"
+"docs/hardware.md" = "nexus/_config/docs/hardware.md"
+"docs/devpilot.md" = "nexus/_config/docs/devpilot.md"
+"docs/meetings.md" = "nexus/_config/docs/meetings.md"
+"docs/translate.md" = "nexus/_config/docs/translate.md"
+"docs/docs-auto.md" = "nexus/_config/docs/docs-auto.md"
+"docs/finance.md" = "nexus/_config/docs/finance.md"
+"docs/tutor.md" = "nexus/_config/docs/tutor.md"
 
 [tool.hatch.build.targets.sdist]
-include = ["nexus", "roles.d", "skills", "tests", "scripts", "examples", "frontend/world", "agents.yaml", "roles.yaml", "pipelines.yaml", "teams.yaml", "role-index.yaml", "permissions.yaml", "autonomy.yaml", "hud.yaml", "widget.yaml", "mcp.yaml", "memory.yaml", "telegram.yaml", "context.yaml", "vision.yaml", "security.yaml", "voice.yaml", "persona.yaml", "chief.yaml", ".env.example", "docs", "README.md", "LICENSE"]
+include = ["nexus", "roles.d", "skills", "tests", "scripts", "examples", "frontend/world", "agents.yaml", "roles.yaml", "pipelines.yaml", "teams.yaml", "role-index.yaml", "permissions.yaml", "autonomy.yaml", "hud.yaml", "widget.yaml", "mcp.yaml", "memory.yaml", "telegram.yaml", "context.yaml", "vision.yaml", "security.yaml", "voice.yaml", "persona.yaml", "chief.yaml", "knowledge_graph.yaml", "council.yaml", "whatif.yaml", "explain.yaml", "presence.yaml", "presence_rules.yaml", "gesture.yaml", "gestures.yaml", "hardware.yaml", "devpilot.yaml", "meetings.yaml", "translate.yaml", "docs_auto.yaml", "finance.yaml", "tutor.yaml", ".env.example", "docs", "README.md", "LICENSE"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

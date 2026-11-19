@@ -1,0 +1,28 @@
+# Nexus home-presence rules (Task 22) - OPERATOR-OWNED, default OFF.
+#
+# Each rule maps one presence event to one action from a closed set. Text is
+# written here by you; nothing in a rule is ever interpreted as a command.
+#
+#   when: arrive | leave | idle | active
+#   do:   notify | brief | dnd_on | dnd_off | mark_present | mark_away | propose
+#
+# Optional per rule: text, importance (low|medium|high), after_away_minutes,
+# between ("HH:MM-HH:MM", local time), cooldown_minutes, dnd_minutes.
+# This file is protected: the model cannot edit it.
+schema: 1
+enabled: false
+
+rules: []
+# rules:
+#   - id: welcome-home
+#     when: arrive
+#     after_away_minutes: 30
+#     between: "06:00-23:00"
+#     do: brief
+#     cooldown_minutes: 120
+#   - id: route-to-phone
+#     when: leave
+#     do: mark_away
+#   - id: back-at-desk
+#     when: arrive
+#     do: mark_present

@@ -1,0 +1,24 @@
+# Nexus what-if simulator (Task 20) - OPERATOR-OWNED, default OFF.
+#
+# Predicts what a tool call, a command or a Chief plan WOULD do - files touched,
+# a diff preview, reversibility, external effects, approvals needed - without
+# running anything. The simulator has no tool registry and never spawns a
+# process. This file is protected: the model cannot edit it.
+schema: 1
+enabled: false
+
+mode: static               # static = deterministic analysis only | model = also answer open "what if" questions
+agent: ""                  # agents.yaml name for mode: model (empty = workspace default)
+allow_cloud: false         # false: a cloud agent is refused for open questions
+max_tokens_per_call: 900
+
+max_steps: 40              # plan steps analysed per simulation
+max_diff_lines: 60         # diff preview length for write/edit simulations
+max_file_bytes: 400000     # larger files are summarised, not diffed
+
+store_scenarios: true      # keep simulation records in trusted Nexus state
+keep_scenarios: 50
+
+chief:
+  simulate_before_approval: false   # add a one-line simulation to every Chief approval card
+  hold_irreversible: true           # plans with irreversible or external steps then need an explicit GO

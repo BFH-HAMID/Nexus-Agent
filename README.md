@@ -59,6 +59,7 @@
 - [Roadmap Status](#roadmap-status)
 - [Testing & Development](#testing--development)
 - [Safety & Ethics Note](#safety--ethics-note)
+- [Opt-in feature packages (Tasks 18-30)](#opt-in-feature-packages-tasks-18-30)
 - [অনুবাদ: বাংলা বিভাগ (Bangla Section)](#অনুবাদ-বাংলা-কোর্টার-bangla-section)
 - [License](#license)
 
@@ -951,6 +952,48 @@ encrypted templates. No camera or model starts just by opening the HUD.
 See [Vision setup, privacy boundaries, commands and offline tests](docs/vision.md).
 Extras are split into `vision` (camera/YOLO), `vision-documents` (images/PDF),
 `vision-faces` (biometrics/encryption), and the existing `context` (screen OCR).
+
+
+## Opt-in feature packages (Tasks 18-30)
+
+Thirteen packages, each **OFF** until its own operator-owned YAML in the
+workspace root says `enabled: true`. While a package is off it registers no
+tool, answers no command and writes no state. The shipped YAML files are
+templates with every switch off.
+
+| Feature | Policy file | Command | Guide |
+|---|---|---|---|
+| Personal knowledge graph: links the facts you told it | `knowledge_graph.yaml` | `nexus kg` | [knowledge-graph.md](docs/knowledge-graph.md) |
+| Model council: several agents answer, a fixed tally decides | `council.yaml` | `nexus council` | [council.md](docs/council.md) |
+| What-if simulator: what a command or plan would do, without running it | `whatif.yaml` | `nexus whatif` | [whatif.md](docs/whatif.md) |
+| Explainable decisions: why an action was approved or refused | `explain.yaml` | `nexus explain`, `nexus audit explain` | [explain.md](docs/explain.md) |
+| Home presence: present, idle or away, and rules that react | `presence.yaml`, `presence_rules.yaml` | `nexus presence` | [home-presence.md](docs/home-presence.md) |
+| Gesture control: a few hand poses for stop, deny, approve | `gesture.yaml`, `gestures.yaml` | `nexus gesture` | [gesture.md](docs/gesture.md) |
+| Hardware control: listed devices, listed commands (serial, MQTT, GPIO) | `hardware.yaml` | `nexus hardware` | [hardware.md](docs/hardware.md) |
+| DevPilot: a model writes a patch, your tests judge it, you apply it | `devpilot.yaml` | `nexus devpilot` | [devpilot.md](docs/devpilot.md) |
+| Meeting assistant: consented notes, summaries, action items | `meetings.yaml` | `nexus meetings` | [meetings.md](docs/meetings.md) |
+| Translator: glossary, protected code and links, checked replies | `translate.yaml` | `nexus translate` | [translate.md](docs/translate.md) |
+| Document automation: proposes where a document belongs, moves it after approval | `docs_auto.yaml` | `nexus docs-auto` | [docs-auto.md](docs/docs-auto.md) |
+| Personal finance: reads exported statements, never touches the bank | `finance.yaml` | `nexus finance` | [finance.md](docs/finance.md) |
+| Tutor: flashcards with spaced repetition | `tutor.yaml` | `nexus tutor` | [tutor.md](docs/tutor.md) |
+
+- `nexus doctor` shows one `opt:<feature>` row per package; `nexus <command> status`
+  says what is on and what is missing.
+- Most also have a slash command in the REPL (`/help`), and nine answer a few
+  spoken sentences in `nexus voice run`
+  ([which, and in what order](docs/voice.md#spoken-commands-of-the-opt-in-features)).
+- State lives under `NEXUS_HOME`, outside the workspace. The knowledge graph,
+  meetings, the document index, the finance ledger and the tutor's cards can be
+  sealed with a key from the OS keyring (`pip install "nexus-agent[secure-state]"`).
+- A model is called only where the guide says so, and a cloud model only when
+  that package's `allow_cloud` is true.
+- Extras for the heavier parts: `gesture`, `hardware`, `meetings` (audio
+  import), `docs-auto` (PDF and DOCX).
+
+Every guide ends with what was and was not tried. In short: the tests are
+offline, with scripted models and stand-ins for cameras, serial ports, brokers
+and speech; no feature was run against real devices, a real bank export or a
+live microphone.
 
 ---
 

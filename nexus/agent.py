@@ -459,6 +459,12 @@ class NexusAgent:
             retrieved = knowledge.prompt_block(self.ws, task)
             if retrieved:
                 extras.append(retrieved)
+            # Trusted related facts only, and only when knowledge_graph.yaml turns injection on.
+            from .knowledge_graph import hooks as graph_hooks
+
+            graph_block = graph_hooks.prompt_block(self.ws, task)
+            if graph_block:
+                extras.append(graph_block)
         interval = nudge_interval(self.config.settings)
         if interval and self._turns_since_nudge >= interval:
             extras.append(self.learning.nudge())

@@ -788,6 +788,14 @@ def handle_slash(agent: NexusAgent, line: str) -> bool:
         target.write_text("\n".join(lines), encoding="utf-8")
         print(COLORS.dim(f"transcript saved -> {target}"))
     else:
+        # Tasks 18-30 feature packages own a few slash commands (/kg, /council, /why, ...).
+        from . import featurepacks
+
+        feature_reply = featurepacks.slash(agent.ws, cmd, arg, {"config": agent.config, "providers": agent.providers,
+                                                               "source": "cli", "session_id": getattr(agent, "session_id", "")})
+        if feature_reply is not None:
+            print(feature_reply)
+            return True
         # Hermes-style shortcut: /<skill-name> [task] runs that skill
         from . import skills as skilllib
 
@@ -1740,6 +1748,12 @@ def cmd_doctor(args: argparse.Namespace) -> int:
             f"set {enabled_key}: true in {cfg_file} to opt in (operator-owned file)",
         )
 
+    # -- Tasks 18-30 feature packages: strict policy check, all default OFF ----- #
+    from .featurepacks import doctor_rows as feature_doctor_rows
+
+    for row_name, row_ok, row_detail, row_hint in feature_doctor_rows(workspace):
+        add(row_name, row_ok, row_detail, row_hint)
+
     # -- security posture ------------------------------------------------------ #
     autonomy_path = workspace / "autonomy.yaml"
     perms_path = workspace / "permissions.yaml"
@@ -1927,11 +1941,21 @@ def cmd_stop(args: argparse.Namespace) -> int:
             # pause is best-effort; the latch itself is the hard stop.
             pass
 
+    # Opt-in hardware control (hardware.yaml): put allowlisted devices in their operator-defined safe state.
+    from .hardware.hooks import emergency_stop as hardware_safe
+
+    safe_rows = hardware_safe(Path(args.workspace).resolve() if getattr(args, "workspace", None) else Path.cwd())
+
     if getattr(args, "json", False):
-        print(json.dumps({"stopped": True, "resume": "nexus resume"}, ensure_ascii=False))
+        payload = {"stopped": True, "resume": "nexus resume"}
+        if safe_rows:
+            payload["hardware_safe"] = safe_rows
+        print(json.dumps(payload, ensure_ascii=False))
     else:
         print(COLORS.red("EMERGENCY STOP latched. All missions cancelled, pipelines paused, "
                           "processes/containers stopped. Resume requires `nexus resume`."))
+        for row in safe_rows:
+            print(f"hardware safe: {row['device']}.{row['command']} - {'ok' if row['ok'] else 'FAILED'} ({row['detail']})")
     return 0
 
 
@@ -2516,6 +2540,10 @@ def cmd_audit(args: argparse.Namespace) -> int:
 
     workspace = Path(args.workspace).resolve() if getattr(args, "workspace", None) else Path.cwd().resolve()
     action = getattr(args, "action", None) or "verify"
+    if action in {"explain", "export"}:  # Task 21 (opt-in: explain.yaml)
+        from .explain.cli import audit_command
+
+        return audit_command(args, workspace)
     if action == "tail":
         rows = audit.tail(
             workspace,
@@ -2757,6 +2785,9 @@ def build_parser() -> argparse.ArgumentParser:
     add_service_parser(sub)
     from .jarvis.cli import add_parser as add_jarvis_parser
     add_jarvis_parser(sub)
+    # Tasks 18-30: opt-in feature packages (kg, council, whatif, explain, presence, ...).
+    from .featurepacks import add_parsers as add_feature_parsers
+    add_feature_parsers(sub)
 
     p = sub.add_parser("roles", help="list / search / inspect roles")
     p.add_argument("--workspace", "-C")
@@ -2958,7 +2989,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.set_defaults(func=cmd_sandbox)
 
     p = sub.add_parser("audit", help="verify or inspect the tamper-evident hash-chained audit log")
-    p.add_argument("action", nargs="?", default="verify", choices=["verify", "tail"])
+    p.add_argument("action", nargs="?", default="verify", choices=["verify", "tail", "explain", "export"])
+    from .explain.cli import add_audit_options
+
+    add_audit_options(p)
     p.add_argument("--limit", "-n", type=int, default=20)
     p.add_argument("--action", dest="filter_action", default="", help="filter by action prefix (e.g. tool.)")
     p.add_argument("--workspace", "-C")

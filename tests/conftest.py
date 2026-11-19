@@ -102,6 +102,21 @@ def _isolated_nexus_home(tmp_path_factory, monkeypatch):
     return home
 
 
+@pytest.fixture(autouse=True)
+def _no_real_keyring(monkeypatch):
+    """Never read or write the developer's OS keyring: a test that needs one injects a fake.
+
+    Without this, an encrypted feature that is asked for its status looks into
+    the real keyring, which on a desktop can open an unlock prompt.
+    """
+    try:
+        import keyring.core
+        from keyring.backends import fail
+    except ImportError:
+        return
+    monkeypatch.setattr(keyring.core, "_keyring_backend", fail.Keyring())
+
+
 # --------------------------------------------------------------------------- #
 # scripted provider
 # --------------------------------------------------------------------------- #

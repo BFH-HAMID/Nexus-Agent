@@ -93,8 +93,9 @@ class Permissions:
         return path
 
     def operator_control(self, path):
+        from .policyfile import NEW_POLICY_NAMES
         target = (self.root / path).resolve() if isinstance(path, str) and not Path(path).is_absolute() else Path(path)
-        controls = [self.root / name for name in ('permissions.yaml', 'autonomy.yaml', 'context.yaml', 'memory.yaml', 'mcp.yaml', 'telegram.yaml', 'hud.yaml', 'widget.yaml', 'voice.yaml', 'persona.yaml', 'chief.yaml', 'proactive.yaml', 'vision.yaml', 'security.yaml')]
+        controls = [self.root / name for name in ('permissions.yaml', 'autonomy.yaml', 'context.yaml', 'memory.yaml', 'mcp.yaml', 'telegram.yaml', 'hud.yaml', 'widget.yaml', 'voice.yaml', 'persona.yaml', 'chief.yaml', 'proactive.yaml', 'vision.yaml', 'security.yaml', *NEW_POLICY_NAMES)]
         if any(target == p or (target.exists() and p.exists() and os.path.samefile(target, p)) for p in controls):
             return True
         # Deserialized local detector weights are operator-trusted executable input,

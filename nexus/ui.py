@@ -435,6 +435,19 @@ HELP_SECTIONS: tuple[tuple[str, tuple[tuple[str, str], ...]], ...] = (
         ("/memory [role]", "saved role memory"),
         ("/remember <text>", "save a note for the active role"),
     )),
+    ("opt-in features (each OFF until its YAML enables it)", (
+        ("/kg [name|stats|path A | B|forget name]", "personal knowledge graph"),
+        ("/council <question>", "several models debate, a judge summarises"),
+        ("/whatif <question>|run <command>", "simulate before acting; never executes"),
+        ("/why [seq]|run [id]", "explain the last action(s) from the audit trail"),
+        ("/presence [status|home|away|auto]", "home presence state"),
+        ("/devpilot [show|diff RUN]", "review patch runs (start one: nexus devpilot run)"),
+        ("/meeting [list|start|note|stop|summary]", "consented meeting notes"),
+        ("/translate <lang> <text>|detect <text>|languages", "translate text"),
+        ("/docs [scan|find WORDS]", "document inbox: proposals only (file: nexus docs-auto file)"),
+        ("/finance [summary|months|recurring|unusual]", "read-only personal finance from imported statements"),
+        ("/tutor [quiz|review|stats] [DECK]", "flashcards with spaced repetition (answer a quiz: /tutor a ...)"),
+    )),
 )
 
 

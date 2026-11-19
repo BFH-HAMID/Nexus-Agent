@@ -1,0 +1,30 @@
+# Nexus model council (Task 19) - OPERATOR-OWNED, default OFF.
+#
+# Several agents from agents.yaml answer the same question independently, each
+# through a different lens, optionally critique each other, and a deterministic
+# tally (not a model) decides: approve / revise / reject / no_quorum.
+#
+# The council has no tools. Its verdict is advice: it can add friction to a
+# Chief plan (require a human "GO"), but it can never approve, start or change
+# anything. This file is protected: the model cannot edit it.
+schema: 1
+enabled: false
+
+members: []                # 2-5 agent names from agents.yaml, e.g. [local-chat, local-worker, hermes]
+lenses: [planner, skeptic, safety]   # rotated across members: planner | skeptic | safety | user_advocate | cost | domain_expert
+judge: ""                  # agent that writes the summary (empty = first member). It cannot change the tally.
+rounds: 1                  # critique rounds after the independent round (0-2)
+quorum: 2                  # minimum non-abstaining members for a verdict
+
+allow_cloud: false         # false: cloud agents are refused as members even when profile is online
+max_tokens_per_call: 700
+max_calls: 12              # hard cap on model calls per deliberation
+max_cost_usd: 0.25         # estimated spend cap per deliberation (see docs/council.md)
+timeout_seconds: 120
+
+store_sessions: true       # keep redacted deliberation records in trusted Nexus state
+keep_sessions: 50
+
+chief:
+  review_high_risk_plans: false   # review Chief plans that contain a high/critical step
+  block_on_reject: true           # anything but "approve" then needs an explicit human GO

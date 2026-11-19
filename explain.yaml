@@ -1,0 +1,20 @@
+# Nexus explainability and audit export (Task 21) - OPERATOR-OWNED, default OFF.
+#
+# When ON, every recorded approval decision gets a plain-language "why" in the
+# tamper-evident audit chain, and Nexus can answer "why did you do that?" from
+# those records only - it never invents a rationale. Explanations are built by
+# templates from audit rows; no model is involved.
+# This file is protected: the model cannot edit it.
+schema: 1
+enabled: false
+
+record: non_safe           # which gate decisions get an explain.decision record:
+                           #   all      = every decision (doubles audit volume)
+                           #   non_safe = denials + approved MEDIUM/DANGEROUS actions
+                           #   denied   = denials only
+                           #   off      = record nothing; explain from existing audit rows only
+max_evidence: 8            # audit rows cited per explanation
+voice: true                # answer "why did you do that?" by voice / chat
+
+export:
+  max_events: 5000         # newest events kept per export (older ones are reported as truncated)

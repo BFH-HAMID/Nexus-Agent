@@ -232,11 +232,16 @@ def cmd_run(args: argparse.Namespace) -> int:
 
     stop = threading.Event()
     max_turns = getattr(args, "max_turns", None)
+    from ..gesture.runtime import attach as attach_gestures  # opt-in (gesture.yaml); None while OFF
+
+    attach_gestures(workspace, pipeline, stop)
     try:
         results = pipeline.run(handler=handler, stop_event=stop, max_turns=max_turns)
     except KeyboardInterrupt:
         stop.set()
         return 130
+    finally:
+        stop.set()  # also ends the gesture camera loop
     print(json.dumps({"turns": len(results), "at": time.time()}))
     return 0
 

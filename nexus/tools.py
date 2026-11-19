@@ -1257,6 +1257,9 @@ def build_tools(ctx: ToolContext, *, role: str = "general", include_ask_agent: b
     register_computer(reg, ctx)
     from .security_assistant.tools import register as register_security
     register_security(reg, ctx)
+    # Tasks 18-30: each opt-in package registers tools only while its operator YAML is ON.
+    from .featurepacks import register_tools as register_feature_tools
+    register_feature_tools(reg, ctx)
     return reg
 
 

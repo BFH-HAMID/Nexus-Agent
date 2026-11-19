@@ -1,0 +1,40 @@
+# Nexus meeting assistant (Task 26) - OPERATOR-OWNED, default OFF.
+#
+# Keeps notes for meetings you tell it about: notes you dictate or type while
+# the meeting runs, or a transcript file you import afterwards. It summarises
+# them offline and lists action items. It does not open the microphone, and it
+# never sends a transcript or a summary anywhere by itself.
+#
+# Every meeting needs a consent statement from you (who was told, who agreed).
+# This file is protected: the model cannot edit it.
+schema: 1
+enabled: false
+
+# AES-256-GCM at rest with a key in the OS keyring (pip install "nexus-agent[secure-state]").
+# With true and no keyring, meetings refuse to open instead of writing plaintext.
+encrypt_at_rest: true
+
+retention_days: 30         # meetings older than this are deleted; 0 = keep until you delete them
+consent_notice: "Notes are being taken for this meeting."   # shown or spoken when notes start
+
+limits:
+  max_meetings: 200
+  max_transcript_chars: 400000
+  max_import_bytes: 2000000
+
+summary:
+  mode: extractive         # extractive = offline, quotes the transcript | model = also ask a model
+  agent: ""                # agents.yaml name for mode: model (empty = workspace default)
+  allow_cloud: false       # false: the transcript never goes to a cloud agent
+  max_tokens_per_call: 900
+  max_points: 6
+
+audio:
+  enabled: false           # allow importing audio files (local faster-whisper only; pip install "nexus-agent[meetings]")
+  model: small
+  language: auto
+  max_megabytes: 200
+
+# true: the agent gets two read-only tools (list, summary). What they return goes
+# to the model that runs the session, which may be a cloud model.
+agent_tools: false

@@ -1,0 +1,16 @@
+# Nexus gesture bindings (Task 23) - OPERATOR-OWNED, default OFF.
+#
+# pose: action. Poses: open_palm, fist, thumbs_up, thumbs_down, peace, point_up.
+# Actions: none | emergency_stop | deny | approve | stop_speaking | focus_on | focus_off
+# (the arming pose from gesture.yaml cannot also be bound to an action).
+# This file is protected: the model cannot edit it.
+schema: 1
+enabled: false
+
+bindings:
+  open_palm: none
+  fist: emergency_stop
+  thumbs_up: none          # set to "approve" only together with approve.enabled in gesture.yaml
+  thumbs_down: deny
+  peace: stop_speaking
+  point_up: none

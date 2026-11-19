@@ -1,0 +1,29 @@
+# Nexus translator (Task 27) - OPERATOR-OWNED, default OFF.
+#
+# Translates text with one of your agents. Language detection, the glossary
+# and the protection of code, links and placeholders are done locally; only
+# the translation itself is a model call. This file is protected: the model
+# cannot edit it.
+schema: 1
+enabled: false
+
+agent: ""                  # agents.yaml name (empty = workspace default)
+allow_cloud: false         # false: the text never goes to a cloud agent
+default_target: en         # language code used when none is given
+targets: []                # allowed target languages, e.g. [en, bn]; empty = any known language
+
+max_chars: 4000            # per request
+max_tokens_per_call: 1500
+rate_per_hour: 120         # model calls per hour, all sources together
+
+# Fixed translations per target language. A glossary term is never left to the
+# model: it is replaced by the exact text you write here (no inflection).
+glossary: {}
+#  bn:
+#    invoice: "চালান"
+#    Nexus: "Nexus"
+
+interpreter:
+  enabled: false           # allow the voice command "start interpreter"
+  pair: [en, bn]           # speech in one language is translated into the other
+  max_minutes: 30          # the mode ends by itself after this long

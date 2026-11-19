@@ -1,0 +1,59 @@
+# Nexus hardware control (Task 24) - OPERATOR-OWNED, default OFF.
+#
+# Lets Nexus talk to devices YOU list here, using only the commands YOU write
+# here. The model picks a device name, a command name and bounded parameters;
+# it can never compose a payload, a port, a topic or a pin.
+#
+#   class: read      -> tool hardware_read      (no approval)
+#   class: actuate   -> tool hardware_actuate   (normal approval)
+#   class: critical  -> tool hardware_critical  (fresh approval every time; the default)
+#
+# Start with dry_run: true - commands are checked, approved and logged, but
+# nothing is transmitted. Device replies are treated as untrusted data.
+# Never put passwords here: name the environment variable that holds them.
+# Needs for real devices: pip install "nexus-agent[hardware]".
+# This file is protected: the model cannot edit it.
+schema: 1
+enabled: false
+
+dry_run: true              # true = transmit nothing, only show/log what would be sent
+safe_on_stop: true         # `nexus stop` also sends every device's `safe` command
+
+rate:
+  max_per_minute: 20       # commands per minute, all devices together (safe commands are exempt)
+
+response:
+  max_bytes: 2000          # longest reply kept from a device
+  timeout_ms: 1500         # how long to wait for a device
+
+devices: {}
+# devices:
+#   desk_lamp:
+#     transport: serial                  # serial | mqtt | gpio | mock
+#     port: /dev/ttyUSB0
+#     baud: 9600
+#     settle_ms: 2000                    # wait after opening (boards that reset on connect)
+#     safe: "off"                        # sent by `nexus hardware safe` and on `nexus stop`
+#     commands:
+#       "on":   {payload: "LAMP ON\n", class: actuate}
+#       "off":  {payload: "LAMP OFF\n", class: actuate}
+#       dim:    {payload: "DIM {level}\n", class: actuate, params: {level: {min: 0, max: 100}}}
+#       status: {payload: "LAMP?\n", class: read}
+#   heater:
+#     transport: mqtt
+#     host: broker.local
+#     port: 8883
+#     topic: home/heater/set
+#     state_topic: home/heater/state
+#     username_env: MQTT_USERNAME
+#     password_env: MQTT_PASSWORD
+#     safe: "off"
+#     commands:
+#       "on":  {payload: "ON", cooldown_seconds: 300}      # class defaults to critical
+#       "off": {payload: "OFF", class: actuate}
+#       state: {class: read}
+#   door_relay:
+#     transport: gpio
+#     pin: 17
+#     commands:
+#       pulse: {state: "on", pulse_ms: 500}

@@ -1,0 +1,31 @@
+# Nexus home presence (Task 22) - OPERATOR-OWNED, default OFF.
+#
+# Works out whether you are present, idle or away from coarse, content-free
+# signals, and lets presence_rules.yaml react with a small closed set of
+# actions (notify, do-not-disturb, mark present/away, offer a brief, propose).
+# Presence never runs a tool, a command or a model. No keystrokes, window
+# titles, images or device addresses are stored - only state changes.
+# This file is protected: the model cannot edit it.
+schema: 1
+enabled: false
+
+signals:
+  manual: true             # `nexus presence set home|away`, "I'm home" / "I'm leaving"
+  input_idle: false        # seconds since the last keyboard/mouse input (a number, nothing else)
+  vision: false            # person / owner events from the opt-in camera pipeline (vision.yaml)
+  lan_devices: false       # a known device is in this machine's neighbour (ARP) table - passive, no scanning
+
+idle_after_seconds: 300    # no input for this long -> idle
+away_after_seconds: 1800   # no sign of you at all for this long -> away
+debounce_seconds: 20       # a new state must hold this long before it is accepted
+manual_hold_minutes: 720   # a manual home/away mark expires after this long (0 = until changed)
+
+lan:
+  devices: []              # salted hashes from `nexus presence device-hash <MAC>`; never raw addresses
+
+history:
+  keep_events: 200         # state changes kept (from, to, when, which signal)
+  keep_days: 14
+
+actions:
+  max_per_hour: 6          # rule actions per hour, all rules together

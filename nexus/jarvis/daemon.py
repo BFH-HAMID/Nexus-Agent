@@ -124,13 +124,18 @@ class Daemon:
         proactive_clock = (lambda: float(now)) if now is not None else time.time
         proactive = ProactiveEngine(self.queue.root, studio=self.studio, clock=proactive_clock).tick_once(now=now)
         Inbox(self.studio).push()
-        return {
+        result = {
             'emitted': emitted,
             'scheduled': scheduled,
             'watchdog_stopped': watchdog_stopped,
             'proactive': proactive,
             'skipped': False,
         }
+        from ..presence.hooks import daemon_tick  # opt-in home presence (presence.yaml); None while OFF
+        presence = daemon_tick(self.queue.root, now=now)
+        if presence is not None:
+            result['presence'] = presence
+        return result
 
     def request(self, action):
         if action not in {'start', 'stop', 'pause', 'resume', 'kill'}:
